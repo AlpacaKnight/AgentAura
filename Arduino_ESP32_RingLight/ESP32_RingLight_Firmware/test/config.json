@@ -1,0 +1,31 @@
+{
+  "_comment":  "ESP32 Ring Light 真机测试配置 - 填写后运行测试脚本",
+  "_comment2": "至少填写 host 或 serial 其中一项; 留空字符串表示不启用该接口",
+  "_comment3": "BLE 测试前先用 scan_ble.py 扫描确认设备可见",
+
+  "host": "",
+  "http_port": 80,
+  "udp_port": 8888,
+
+  "serial_port": "",
+  "serial_baud": 115200,
+
+  "ble_device_name": "ESP32-Ring",
+  "ble_service_uuid": "8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0",
+  "ble_char_color_uuid": "8e7f1a02-2b3c-4d5e-9f01-a1b2c3d4e5f0",
+  "ble_char_state_uuid": "8e7f1a03-2b3c-4d5e-9f01-a1b2c3d4e5f0",
+
+  "mqtt_host": "",
+  "mqtt_port": 1883,
+  "mqtt_user": "",
+  "mqtt_pass": "",
+  "mqtt_topic": "ring",
+
+  "test_http": true,
+  "test_udp": true,
+  "test_agent": true,
+  "test_effects": true,
+  "test_serial": true,
+  "test_ble": true,
+  "test_mqtt": true
+}
