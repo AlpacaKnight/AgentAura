@@ -43,6 +43,11 @@ void showFrame() {
 }
 
 void loop() {
+  // 自动关灯定时 (agent init 彩虹 3 秒后): 到点则关灯并跳过本帧动画
+  if (tickAutoOff()) {
+    return;
+  }
+
   unsigned long now = millis();
   unsigned long interval = intervalForSpeed(state.speed);
   if (now - sLastTick >= interval) {

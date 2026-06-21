@@ -85,9 +85,9 @@ static void fxBreathS(const CRGB& c1, const CRGB&) {
   fill_solid(leds, NUM_LEDS, c1);
 }
 
-// 2. breath: 正弦呼吸 (speed=128 时 ~5 秒一个周期)
+// 2. breath: 正弦呼吸 (步进 6 让渐变更丝滑, 配合较高 speed 节奏更快)
 static void fxBreath(const CRGB& c1, const CRGB&) {
-  uint8_t lvl = sin8((uint8_t)((animStep * 10) & 0xFF));  // ×10 加速呼吸节奏
+  uint8_t lvl = sin8((uint8_t)((animStep * 6) & 0xFF));
   // 让最低不低于 ~8, 避免"完全黑"
   uint8_t b = scale8(lvl, 240) + 8;
   CRGB c = c1;

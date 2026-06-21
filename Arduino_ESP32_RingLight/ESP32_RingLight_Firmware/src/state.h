@@ -44,4 +44,14 @@ void setCurrentBrightness(uint8_t v);
 void setCurrentSpeed(uint8_t v);
 void setPower(bool on);
 
+// ---------- 自动关灯定时 (用于 agent init 彩虹 3 秒后自动关闭) ----------
+// 安排 ms 毫秒后自动关灯 (仅触发一次; 已有定时会被覆盖)
+void scheduleAutoOff(unsigned long ms);
+// 取消自动关灯定时 (收到任何新指令时调用)
+void cancelAutoOff();
+// 是否有等待中的自动关灯定时
+bool isAutoOffPending();
+// 在 loop 中轮询: 到点则关灯并清除定时. 返回 true 表示本次刚触发
+bool tickAutoOff();
+
 #endif // RING_STATE_H

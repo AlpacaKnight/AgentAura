@@ -46,6 +46,36 @@ void setPower(bool on) {
   ledDriver::showFrame();
 }
 
+// ============================================================
+//               自动关灯定时 (agent init 彩虹 3 秒后关闭)
+// ============================================================
+static unsigned long sAutoOffDeadline = 0;   // 0 = 无等待中的定时
+static bool          sAutoOffActive  = false;
+
+void scheduleAutoOff(unsigned long ms) {
+  sAutoOffDeadline = millis() + ms;
+  sAutoOffActive   = true;
+}
+
+void cancelAutoOff() {
+  sAutoOffActive  = false;
+  sAutoOffDeadline = 0;
+}
+
+bool isAutoOffPending() {
+  return sAutoOffActive;
+}
+
+bool tickAutoOff() {
+  if (!sAutoOffActive) return false;
+  if (millis() < sAutoOffDeadline) return false;
+  // 到点: 关灯 (内部会 showFrame 一次输出黑屏)
+  sAutoOffActive = false;
+  sAutoOffDeadline = 0;
+  setPower(false);
+  return true;
+}
+
 // 生成统一状态 JSON (§9)
 String getStateJson() {
   JsonDocument doc;

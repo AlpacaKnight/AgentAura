@@ -37,7 +37,7 @@
 | ⚙️ **AP 配置页** | 首次启动自动 AP 热点，网页配置 WiFi + MQTT |
 | 🏠 **HA 自动发现** | MQTT Discovery 一键接入 Home Assistant |
 | 💾 **NVS 持久化** | 灯效/颜色/亮度/速度/WiFi/MQTT 全部掉电保存 |
-| 🤖 **智能体映射** | 一条指令切换"运行/忙碌/错误/空闲/初始化…"等 8 种预设状态 |
+| 🤖 **智能体映射** | 一条指令切换"运行/忙碌/错误/空闲/初始化…"等 8 种预设状态（部分状态支持自动关灯） |
 | 📡 **局域网发现** | UDP 广播 `discover` 自动发现设备 |
 | 🌐 **mDNS** | `http://ringlight.local` 访问，无需记 IP |
 | 🔗 **WLED 兼容** | `/win` API 兼容 WLED 协议（可选） |
@@ -202,6 +202,9 @@ uv run pio device monitor
 #define UDP_PORT            8888
 #define MQTT_PORT           1883
 #define BLE_ENABLED         true     // 编译期可关闭 BLE
+// 智能体状态自动关灯时长 (无新指令到点自动关灯)
+#define INIT_AUTO_OFF_MS    3000UL   // agent init 彩虹持续 3 秒
+#define IDLE_AUTO_OFF_MS    5000UL   // agent idle 呼吸灯持续 5 秒
 ```
 
 ---
@@ -327,7 +330,7 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 | # | 名称 | 参数 | 说明 |
 |:-:|:-----|:-----|:-----|
 | 0 | `solid` | R,G,B | 单色常亮 |
-| 1 | `breath` | R,G,B | 呼吸灯：正弦波亮度循环 |
+| 1 | `breath` | R,G,B | 呼吸灯：正弦波亮度渐变循环（步进 6，丝滑过渡） |
 | 2 | `flow` | R,G,B,Speed | 流水跑马：灯珠依次亮起流转 |
 | 3 | `rainbow` | Speed | 彩虹渐变轮转 |
 | 4 | `gradient` | R1,G1,B1,R2,G2,B2 | 双色渐变沿环旋转 |
@@ -348,20 +351,36 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 
 ## 八、智能体状态映射
 
-一条 `agent STATE` 指令即可切换预设的"颜色+效果"组合，适合智能体运行状态可视化：
+一条 `agent STATE` 指令即可切换预设的"颜色+效果"组合，适合智能体运行状态可视化。每个状态自带**专用速度**与**自动关灯**配置（见下表）。
 
-| 指令 | 状态 | 颜色 | 效果 | 说明 |
-|:-----|:-----|:-----|:-----|:-----|
-| `agent running` | 🟢 正常运行 | 绿 `0,255,0` | `breath` | 缓慢绿色呼吸 |
-| `agent busy` | 🟡 忙碌/处理中 | 黄 `255,200,0` | `flow` | 黄色跑马流转 |
-| `agent waiting` | 🟡 等待审批 | 黄 `255,200,0` | `blink` | 黄色闪烁 |
-| `agent error` | 🔴 错误/异常 | 红 `255,0,0` | `blink` | 红色快速闪烁 |
-| `agent idle` | 🔵 空闲 | 蓝 `0,100,255` | `breath` | 蓝色缓慢呼吸 |
-| `agent init` | 🌈 初始化中 | 默认 | `rainbow` | 彩虹渐变轮转 |
-| `agent offline` | 🌑 离线/待机 | 关灯 | — | 关闭灯光（`power off`） |
-| `agent upgrade` | 🟠 升级中 | 橙 `255,165,0` | `meteor` | 橙色流星效果 |
+| 指令 | 状态 | 颜色 | 效果 | 速度 | 自动关灯 | 说明 |
+|:-----|:-----|:-----|:-----|:-----|:---------|:-----|
+| `agent running` | 🟢 正常运行 | 绿 `0,255,0` | `breath` | 用户值 | 无 | 缓慢绿色呼吸 |
+| `agent busy` | 🟡 忙碌/处理中 | 黄 `255,200,0` | `flow` | 用户值 | 无 | 黄色跑马流转 |
+| `agent waiting` | 🟡 等待审批 | 黄 `255,200,0` | `blink` | 用户值 | 无 | 黄色闪烁 |
+| `agent error` | 🔴 错误/异常 | 红 `255,0,0` | `blink` | 用户值 | 无 | 红色快速闪烁 |
+| `agent idle` | 🔵 空闲 | 蓝 `0,100,255` | `breath` | **230（快速丝滑）** | **5 秒** | 蓝色快速丝滑呼吸，5 秒后自动关灯 |
+| `agent init` | 🌈 初始化中 | 默认 | `rainbow` | 用户值 | **3 秒** | 彩虹渐变轮转，3 秒后自动关灯 |
+| `agent offline` | 🌑 离线/待机 | 关灯 | — | — | 无 | 关闭灯光（`power off`） |
+| `agent upgrade` | 🟠 升级中 | 橙 `255,165,0` | `meteor` | 用户值 | 无 | 橙色流星效果 |
 
 > **别名**：`processing`=busy, `standby`=offline, `updating`=upgrade
+>
+> **"用户值"** 表示沿用 NVS 中保存的 `speed`（即用户通过 `speed N` 设置或默认 `DEFAULT_SPEED=128`）。只有 `idle` 会强制一个专用高速（230）以获得快速丝滑的呼吸效果。
+
+### 自动关灯机制（Auto-Off）
+
+`init` 和 `idle` 两个状态带有**定时自动关灯**：
+
+- 触发后立即点亮显示对应效果；
+- 若在设定时长内（`init`=3 秒、`idle`=5 秒）**没有任何新指令**，设备自动关灯（`power off`）；
+- 若在此期间收到**任何新指令**（如 `rgb` / `effect` / `agent <其他状态>` / `brightness` 等），**自动关灯立即取消**，新指令正常生效并接管灯光。
+
+> 该机制通过全局倒计时实现（`scheduleAutoOff` / `cancelAutoOff`），相关常量在 `src/config.h`：
+> ```cpp
+> #define INIT_AUTO_OFF_MS    3000UL   // agent init 彩虹持续 3 秒
+> #define IDLE_AUTO_OFF_MS    5000UL   // agent idle 呼吸灯持续 5 秒
+> ```
 
 ### 与 QwenPaw 插件的事件映射
 
@@ -586,4 +605,4 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 
 ---
 
-*固件版本：v1.0.0 · 编译验证通过 · 日期：2026-06-20*
+*固件版本：v1.0.0 · 编译验证通过 · 日期：2026-06-21*

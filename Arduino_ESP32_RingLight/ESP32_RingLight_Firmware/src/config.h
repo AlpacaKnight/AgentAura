@@ -28,6 +28,11 @@
 #define DEFAULT_COLOR_B     0
 #define DEFAULT_POWER       true
 
+// agent init 彩虹持续时间, 到点无新指令则自动关灯
+#define INIT_AUTO_OFF_MS    3000UL
+// agent idle 呼吸灯持续时间, 到点无新指令则自动关灯
+#define IDLE_AUTO_OFF_MS    10000UL
+
 // -------------------- 网络默认 --------------------
 #define UDP_PORT            8888
 #define HTTP_PORT           80

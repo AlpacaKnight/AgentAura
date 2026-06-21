@@ -21,25 +21,38 @@ namespace cmd {
 
 // ---------- 智能体状态预设 (§5) ----------
 // offline 特殊: 关灯 (power=false), 不使用 effect
-struct AgentPreset { const char* name; EffectType e; uint8_t r, g, b; bool powerOff; };
+// speed:    0xFF = 不强制 (沿用当前 state.speed); 否则强制设定该速度
+// autoOffMs: 0 = 不自动关灯; >0 = 显示该毫秒后无新指令则自动关灯
+struct AgentPreset {
+  const char* name; EffectType e;
+  uint8_t r, g, b; bool powerOff;
+  uint8_t speed; unsigned long autoOffMs;
+};
 static const AgentPreset kAgentPresets[] = {
-  {"running",   EFX_BREATH,   0,   255, 0,   false},    // 正常运行
-  {"busy",      EFX_FLOW,     255, 200, 0,   false},    // 忙碌/处理中
-  {"processing",EFX_FLOW,     255, 200, 0,   false},    // 同 busy 别名
-  {"waiting",   EFX_BLINK,    255, 200, 0,   false},    // 等待审批
-  {"error",     EFX_BLINK,    255, 0,   0,   false},    // 错误/异常
-  {"idle",      EFX_BREATH,   0,   100, 255, false},    // 空闲
-  {"init",      EFX_RAINBOW,  0,   0,   0,   false},    // 初始化中: 彩虹渐变循环
-  {"offline",   EFX_SOLID,    0,   0,   0,   true},     // 离线: 关灯
-  {"standby",   EFX_SOLID,    0,   0,   0,   true},     // 同 offline 别名
-  {"upgrade",   EFX_METEOR,   255, 165, 0,   false},    // 升级中
-  {"updating",  EFX_METEOR,   255, 165, 0,   false},
+  {"running",   EFX_BREATH,   0,   255, 0,   false, 0xFF, 0},               // 正常运行
+  {"busy",      EFX_FLOW,     255, 200, 0,   false, 0xFF, 0},               // 忙碌/处理中
+  {"processing",EFX_FLOW,     255, 200, 0,   false, 0xFF, 0},               // 同 busy 别名
+  {"waiting",   EFX_BLINK,    255, 200, 0,   false, 0xFF, 0},               // 等待审批
+  {"error",     EFX_BLINK,    255, 0,   0,   false, 0xFF, 0},               // 错误/异常
+  {"idle",      EFX_BREATH,   0,   100, 255, false, 230,  IDLE_AUTO_OFF_MS},// 空闲: 快速丝滑呼吸, 5s 自动关灯
+  {"init",      EFX_RAINBOW,  0,   0,   0,   false, 0xFF, INIT_AUTO_OFF_MS},// 初始化中: 彩虹 3s 自动关灯
+  {"offline",   EFX_SOLID,    0,   0,   0,   true,  0xFF, 0},               // 离线: 关灯
+  {"standby",   EFX_SOLID,    0,   0,   0,   true,  0xFF, 0},               // 同 offline 别名
+  {"upgrade",   EFX_METEOR,   255, 165, 0,   false, 0xFF, 0},               // 升级中
+  {"updating",  EFX_METEOR,   255, 165, 0,   false, 0xFF, 0},
 };
 
 // 启动动画后 power=false (关灯等待命令); 收到设置灯效/颜色指令时唤醒
 static void wakeIfNeeded() {
   if (!state.power) state.power = true;
 }
+
+// applyAndSave 是所有"设置类"指令 (rgb/effect/brightness/speed/power
+// 以及 JSON 入口) 的公共收尾. 任何这类指令都应取消 agent init 挂起的
+// 自动关灯, 让新指令立即生效.
+// 例外: handleAgentState("init") 需要在 applyAndSave 之后再 scheduleAutoOff,
+// 因此 applyAndSave 在这里无条件 cancel, 由 init 调用方随后重新安排.
+void applyAndSave();
 
 bool handleAgentState(const String& stateName) {
   String n = stateName;
@@ -51,11 +64,17 @@ bool handleAgentState(const String& stateName) {
         // offline/standby: 关灯
         setPower(false);
       } else {
+        // 某些状态 (idle) 强制一个专用 speed, 让呼吸更快速丝滑
+        if (p.speed != 0xFF) setCurrentSpeed(p.speed);
         setCurrentColor(p.r, p.g, p.b);
         setCurrentEffect(p.e);
         wakeIfNeeded();
       }
-      applyAndSave();
+      applyAndSave();   // 内部会 cancelAutoOff()
+      // 部分状态 (init/idle) 显示固定时长后自动关灯 (若期间无新指令)
+      if (!p.powerOff && p.autoOffMs > 0) {
+        scheduleAutoOff(p.autoOffMs);
+      }
       return true;
     }
   }
@@ -63,6 +82,8 @@ bool handleAgentState(const String& stateName) {
 }
 
 void applyAndSave() {
+  // 收到任何设置类指令都取消挂起的自动关灯, 新指令立即接管
+  cancelAutoOff();
   ledDriver::showFrame();
   storage::saveSettings();
 }
