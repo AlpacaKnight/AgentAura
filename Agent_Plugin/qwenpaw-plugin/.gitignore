@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/*.zip
+
+# Node / Vite (ui/)
+ui/node_modules/
+ui/dist/
+ui/package-lock.json
+ui/yarn.lock
+ui/pnpm-lock.yaml
+ui/.npmrc.local
+
+# Build output — dist/index.js is the committed frontend bundle,
+# but zip artifacts should not be tracked.
+dist/*.zip
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# pytest / mypy caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

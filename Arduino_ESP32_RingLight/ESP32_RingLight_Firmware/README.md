@@ -357,11 +357,29 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 | `agent waiting` | 🟡 等待审批 | 黄 `255,200,0` | `blink` | 黄色闪烁 |
 | `agent error` | 🔴 错误/异常 | 红 `255,0,0` | `blink` | 红色快速闪烁 |
 | `agent idle` | 🔵 空闲 | 蓝 `0,100,255` | `breath` | 蓝色缓慢呼吸 |
-| `agent init` | 🟣 初始化中 | 紫 `200,0,255` | `cycle` | 紫色渐变循环 |
-| `agent offline` | ⚪ 待机/离线 | 白 `100,100,100` | `pulse` | 微白脉冲 |
+| `agent init` | 🌈 初始化中 | 默认 | `rainbow` | 彩虹渐变轮转 |
+| `agent offline` | 🌑 离线/待机 | 关灯 | — | 关闭灯光（`power off`） |
 | `agent upgrade` | 🟠 升级中 | 橙 `255,165,0` | `meteor` | 橙色流星效果 |
 
-> 别名：`processing`=busy, `standby`=offline, `updating`=upgrade
+> **别名**：`processing`=busy, `standby`=offline, `updating`=upgrade
+
+### 与 QwenPaw 插件的事件映射
+
+搭配 [AgentAura QwenPaw 插件](../../Agent_Plugin/qwenpaw-plugin) 使用时，QwenPaw 的生命周期事件会自动映射到上述状态：
+
+| QwenPaw 事件 | ESP32 状态 | 说明 |
+|:---|:---|:---|
+| `qwenpaw.startup` | `init` | QwenPaw 启动 → 彩虹 |
+| `qwenpaw.shutdown` | `offline` | QwenPaw 关闭 → 关灯 |
+| `query.received` | `running` | 收到新消息 → 绿色呼吸 |
+| `query.running` / `tool.detected` / `query.first_token` | `busy` | 思考/调用工具/回复中 → 黄色跑马 |
+| `query.done` / `query.cancelled` | `idle` | 完成/取消 → 蓝色呼吸 |
+| `query.error` | `error` | 出错 → 红色闪烁 |
+| `approval.pending` | `waiting` | 等待审批 → 黄色闪烁 |
+| `approval.approved` | `busy` | 审批通过 → 黄色跑马 |
+| `approval.denied` / `approval.timed_out` | `error` | 审批拒绝/超时 → 红色闪烁 |
+
+插件支持 HTTP / UDP / USB 串口三种连接方式，可在 QwenPaw 控制台的 **RingLight** 配置页面选择。
 
 ---
 

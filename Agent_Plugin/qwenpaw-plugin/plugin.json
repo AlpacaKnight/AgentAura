@@ -1,0 +1,69 @@
+{
+  "id": "agentaura",
+  "name": "AgentAura",
+  "version": "0.2.1",
+  "description": "Sync QwenPaw agent lifecycle events to ESP32 Ring Light hardware.",
+  "description_i18n": {
+    "zh-CN": "将 QwenPaw 智能体生命周期事件实时同步到 ESP32 环形灯硬件。",
+    "en-US": "Sync QwenPaw agent lifecycle events to ESP32 Ring Light hardware."
+  },
+  "author": "AgentAura",
+  "entry": {
+    "backend": "plugin.py",
+    "frontend": "dist/index.js"
+  },
+  "dependencies": [
+    "httpx>=0.27.0",
+    "pyserial>=3.5"
+  ],
+  "min_version": "1.1.5",
+  "config": {
+    "transport": {
+      "type": "string",
+      "title": "Connection Transport",
+      "description": "How to talk to the device: http (WiFi REST), udp (WiFi datagram), or serial (USB CDC)",
+      "default": "http",
+      "enum": ["http", "udp", "serial"]
+    },
+    "host": {
+      "type": "string",
+      "title": "Device Host",
+      "description": "ESP32 IP address or hostname (for http/udp). e.g. 192.168.1.100 or ringlight.local",
+      "default": ""
+    },
+    "port": {
+      "type": "integer",
+      "title": "Port",
+      "description": "HTTP port (default 80) or UDP port (default 8888). Ignored for serial.",
+      "default": 80
+    },
+    "serial_port": {
+      "type": "string",
+      "title": "Serial Port",
+      "description": "COM port (Windows) or /dev/tty* path (macOS/Linux). Only used when transport=serial.",
+      "default": ""
+    },
+    "baud": {
+      "type": "integer",
+      "title": "Baud Rate",
+      "description": "Serial baud rate. Firmware default is 115200.",
+      "default": 115200
+    },
+    "auto_discover": {
+      "type": "boolean",
+      "title": "Auto discover device on startup (UDP broadcast)",
+      "default": true
+    },
+    "debounce_ms": {
+      "type": "integer",
+      "title": "State debounce (ms) - skip repeated identical states within this window",
+      "default": 500
+    }
+  },
+  "meta": {
+    "device_http_port_default": 80,
+    "device_udp_port_default": 8888,
+    "device_serial_baud_default": 115200,
+    "udp_discovery_port": 8888
+  }
+}
