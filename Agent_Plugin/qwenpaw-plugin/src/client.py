@@ -82,7 +82,7 @@ class _HttpTransport(_Transport):
             )
             if resp.status_code >= 400:
                 logger.warning(
-                    "RingLight[http] cmd %r -> HTTP %s: %s",
+                    "AgentAura[http] cmd %r -> HTTP %s: %s",
                     command,
                     resp.status_code,
                     (resp.text or "")[:120],
@@ -92,13 +92,13 @@ class _HttpTransport(_Transport):
             if body.startswith("OK"):
                 return True
             logger.warning(
-                "RingLight[http] cmd %r -> non-OK body: %s",
+                "AgentAura[http] cmd %r -> non-OK body: %s",
                 command,
                 body[:120],
             )
             return False
         except Exception as exc:
-            logger.debug("RingLight[http] cmd %r failed: %s", command, exc)
+            logger.debug("AgentAura[http] cmd %r failed: %s", command, exc)
             return False
 
     def health(self) -> dict[str, Any] | None:
@@ -113,7 +113,7 @@ class _HttpTransport(_Transport):
             if isinstance(data, dict):
                 return data
         except Exception as exc:
-            logger.debug("RingLight[http] health probe failed: %s", exc)
+            logger.debug("AgentAura[http] health probe failed: %s", exc)
         return None
 
     def describe(self) -> dict[str, Any]:
@@ -555,12 +555,12 @@ class RingLightClient:
 def _apply_env_config() -> None:
     """One-time bootstrap from environment variables on module import."""
     client = RingLightClient()
-    transport = os.environ.get("RINGLIGHT_TRANSPORT", "").strip().lower() or None
-    host = os.environ.get("RINGLIGHT_HOST", "").strip() or None
-    port_raw = os.environ.get("RINGLIGHT_PORT", "").strip()
-    serial_port = os.environ.get("RINGLIGHT_SERIAL_PORT", "").strip() or None
-    baud_raw = os.environ.get("RINGLIGHT_BAUD", "").strip()
-    debounce_raw = os.environ.get("RINGLIGHT_DEBOUNCE_MS", "").strip()
+    transport = os.environ.get("AGENTAURA_TRANSPORT", "").strip().lower() or None
+    host = os.environ.get("AGENTAURA_HOST", "").strip() or None
+    port_raw = os.environ.get("AGENTAURA_PORT", "").strip()
+    serial_port = os.environ.get("AGENTAURA_SERIAL_PORT", "").strip() or None
+    baud_raw = os.environ.get("AGENTAURA_BAUD", "").strip()
+    debounce_raw = os.environ.get("AGENTAURA_DEBOUNCE_MS", "").strip()
     port = int(port_raw) if port_raw.isdigit() else None
     baud = int(baud_raw) if baud_raw.isdigit() else None
     debounce = int(debounce_raw) if debounce_raw.isdigit() else None

@@ -212,7 +212,7 @@ function RingLightConfigPage() {
       setSerialPorts(r.ports || []);
       if ((r.ports || []).length === 0) {
         message.info(
-          "未发现串口。若使用 serial 模式，请安装 pyserial：pip install pyserial",
+          "未发现串口，请确认设备已通过 USB 连接并被系统识别",
         );
       }
     } catch (e: any) {
@@ -331,7 +331,7 @@ function RingLightConfigPage() {
           React.createElement(
             Title,
             { level: 3, style: { marginBottom: 4 } },
-            "💡 QwenPaw RingLight",
+            "💡 AgentAura",
           ),
           React.createElement(
             Paragraph,
@@ -459,7 +459,7 @@ function RingLightConfigPage() {
                     style: { marginBottom: 16 },
                     message: "USB 串口模式",
                     description:
-                      "需要安装 pyserial：pip install pyserial。设备通过 USB 连接到本机，无需 WiFi。",
+                      "pyserial 会在安装插件时自动安装。设备通过 USB 连接到本机，无需 WiFi。",
                   },
                 ),
                 React.createElement(
@@ -482,7 +482,7 @@ function RingLightConfigPage() {
                     })),
                     notFoundContent:
                       serialPorts.length === 0
-                        ? "未发现串口（需安装 pyserial）"
+                        ? "未发现串口设备"
                         : undefined,
                   }),
                 ),
@@ -565,7 +565,7 @@ function RingLightConfigPage() {
               ? React.createElement(
                   AntText,
                   { type: "secondary" },
-                  "点击「扫描设备」搜索局域网内的 ESP32 Ring Light",
+                  "点击「扫描设备」搜索局域网内的 ESP32环形灯 设备",
                 )
               : React.createElement(Table, {
                   rowKey: "ip",
@@ -619,7 +619,7 @@ class AgentAuraPlugin {
       {
         path: "/plugin/agentaura/config",
         component: RingLightConfigPage,
-        label: "RingLight",
+        label: "AgentAura",
         icon: "💡",
         priority: 42,
       },

@@ -56,12 +56,12 @@ def dispatch_sync(event: str, **payload: Any) -> None:
     """
     state = EVENT_TO_AGENT_STATE.get(event)
     if state is None:
-        logger.debug("ringlight: event %s has no mapping (skip)", event)
+        logger.debug("agentaura: event %s has no mapping (skip)", event)
         return
     try:
         RingLightClient().set_agent_state(state)
     except Exception:
-        logger.debug("ringlight: dispatch_sync %s failed", event, exc_info=True)
+        logger.debug("agentaura: dispatch_sync %s failed", event, exc_info=True)
 
 
 def schedule_emit(event: str, **payload: Any) -> None:
@@ -90,6 +90,6 @@ def schedule_emit(event: str, **payload: Any) -> None:
         except asyncio.CancelledError:
             pass
         except Exception:
-            logger.debug("ringlight: schedule_emit task failed", exc_info=True)
+            logger.debug("agentaura: schedule_emit task failed", exc_info=True)
 
     task.add_done_callback(_done)

@@ -1,4 +1,4 @@
-# QwenPaw RingLight Plugin
+# AgentAura Plugin
 
 将 QwenPaw 智能体（AI Agent）的生命周期事件实时同步到 ESP32 环形灯硬件。
 当 QwenPaw 启动、收到消息、思考、调用工具、等待审批、出错、关闭时，
@@ -98,7 +98,7 @@ pip install -r requirements.txt
 
 ### 1. 前端配置页面（推荐）
 
-安装插件后，QwenPaw 控制台侧边栏出现 **💡 RingLight** 页面：
+安装插件后，QwenPaw 控制台侧边栏出现 **💡 AgentAura** 页面：
 
 1. **连接状态**：显示当前传输方式、设备在线状态、当前灯效
 2. **连接配置**：
@@ -113,12 +113,12 @@ pip install -r requirements.txt
 ### 2. 环境变量（启动前设置）
 
 ```bash
-RINGLIGHT_TRANSPORT=http           # http / udp / serial
-RINGLIGHT_HOST=192.168.1.100       # http/udp 模式
-RINGLIGHT_PORT=80                  # http 默认 80，udp 默认 8888
-RINGLIGHT_SERIAL_PORT=COM3         # serial 模式
-RINGLIGHT_BAUD=115200              # serial 波特率
-RINGLIGHT_DEBOUNCE_MS=500
+AGENTAURA_TRANSPORT=http           # http / udp / serial
+AGENTAURA_HOST=192.168.1.100       # http/udp 模式
+AGENTAURA_PORT=80                  # http 默认 80，udp 默认 8888
+AGENTAURA_SERIAL_PORT=COM3         # serial 模式
+AGENTAURA_BAUD=115200              # serial 波特率
+AGENTAURA_DEBOUNCE_MS=500
 ```
 
 ### 3. HTTP API

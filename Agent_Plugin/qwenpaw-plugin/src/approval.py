@@ -47,7 +47,7 @@ def patch_approval_service() -> None:
             )
         except Exception:
             logger.debug(
-                "RingLight: schedule approval.pending failed",
+                "AgentAura: schedule approval.pending failed",
                 exc_info=True,
             )
         return pending
@@ -77,7 +77,7 @@ def patch_approval_service() -> None:
                 )
         except Exception:
             logger.debug(
-                "RingLight: schedule approval.resolved failed",
+                "AgentAura: schedule approval.resolved failed",
                 exc_info=True,
             )
         return resolved
@@ -92,7 +92,7 @@ def patch_approval_service() -> None:
                 )
             except Exception:
                 logger.debug(
-                    "RingLight: schedule approval.bulk_cancel failed",
+                    "AgentAura: schedule approval.bulk_cancel failed",
                     exc_info=True,
                 )
         return n
@@ -101,7 +101,7 @@ def patch_approval_service() -> None:
     ApprovalService.resolve_request = resolve_request_wrapped
     ApprovalService.cancel_all_pending_by_root_session = cancel_all_wrapped
     _PATCHED = True
-    logger.info("RingLight patched ApprovalService")
+    logger.info("AgentAura patched ApprovalService")
 
 
 def restore_approval_service() -> None:
@@ -116,4 +116,4 @@ def restore_approval_service() -> None:
     ApprovalService.resolve_request = _ORIG_RESOLVE_REQUEST
     ApprovalService.cancel_all_pending_by_root_session = _ORIG_CANCEL_ALL
     _PATCHED = False
-    logger.info("RingLight restored ApprovalService")
+    logger.info("AgentAura restored ApprovalService")
