@@ -7,7 +7,7 @@
     "zh-CN": "将 QwenPaw 智能体生命周期事件实时同步到 ESP32 环形灯硬件。",
     "en-US": "Sync QwenPaw agent lifecycle events to ESP32 Ring Light hardware."
   },
-  "author": "AgentAura",
+  "author": "AlpacaKnight",
   "entry": {
     "backend": "plugin.py",
     "frontend": "dist/index.js"
