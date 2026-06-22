@@ -41,6 +41,7 @@ export class TranscriptWatcher implements vscode.Disposable {
     private _fileOffset: number = 0;
     private _lineRemainder: string = '';
     private _terminalDisposables: vscode.Disposable[] = [];
+    private _terminalExecutionActive: boolean = false;
     private _running: boolean = false;
 
     private _idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,7 +56,11 @@ export class TranscriptWatcher implements vscode.Disposable {
     private _pendingToolCallIds: Set<string> = new Set();
     private _pendingApprovalIsOutsideReadOnly: boolean = false;
     private _approvalTimer: ReturnType<typeof setTimeout> | null = null;
-    private _approvalDelay: number = 2000;
+    // Copilot emits toolRequests for both real approval prompts and tools that
+    // are auto-approved. Some auto-approved tool_start events are only visible
+    // to this extension several seconds later, so wait for a noticeable stall
+    // before showing the yellow approval blink.
+    private _approvalDelay: number = 4000;
     private _approvalScanTimer: ReturnType<typeof setInterval> | null = null;
     private _approvalScanInterval: number = 500;
 
@@ -204,10 +209,23 @@ export class TranscriptWatcher implements vscode.Disposable {
                 this._terminalDisposables.push(
                     vscode.window.onDidStartTerminalShellExecution(() => {
                         if (!this._pendingApproval && this._lastState !== 'waiting') { return; }
+                        this._terminalExecutionActive = true;
+                        this._clearApproval();
+                        this._setState('busy');
+                        this._markActive();
+                        this._outputChannel.appendLine('[TranscriptWatcher] → terminal execution_start (busy)');
+                    })
+                );
+            }
+            if (vscode.window.onDidEndTerminalShellExecution) {
+                this._terminalDisposables.push(
+                    vscode.window.onDidEndTerminalShellExecution(() => {
+                        if (!this._terminalExecutionActive) { return; }
+                        this._terminalExecutionActive = false;
                         this._clearApproval();
                         this._setState('running');
-                        this._markActive();
-                        this._outputChannel.appendLine('[TranscriptWatcher] → terminal execution_start (running)');
+                        this._armIdleTimer();
+                        this._outputChannel.appendLine('[TranscriptWatcher] → terminal execution_end (running)');
                     })
                 );
             }
@@ -328,15 +346,16 @@ export class TranscriptWatcher implements vscode.Disposable {
 
             case 'tool.execution_start':
                 this._clearApproval();
-                this._setState('running');
+                this._setState('busy');
                 this._markActive();
-                this._outputChannel.appendLine(`[TranscriptWatcher] → tool_start: ${event.data?.toolName || 'unknown'} (running)`);
+                this._outputChannel.appendLine(`[TranscriptWatcher] → tool_start: ${event.data?.toolName || 'unknown'} (busy)`);
                 break;
 
             case 'tool.execution_complete':
+                this._terminalExecutionActive = false;
                 this._clearApproval();
                 this._setState('running');
-                this._markActive();
+                this._armIdleTimer();
                 this._outputChannel.appendLine('[TranscriptWatcher] → tool_complete (running)');
                 break;
 
@@ -389,9 +408,9 @@ export class TranscriptWatcher implements vscode.Disposable {
             this._readNewLines();
             if (this._pendingApproval && this._hasPendingToolExecutedInTranscript()) {
                 this._clearApproval();
-                this._setState('running');
+                this._setState('busy');
                 this._markActive();
-                this._outputChannel.appendLine('[TranscriptWatcher] → tool execution detected by transcript scan (running)');
+                this._outputChannel.appendLine('[TranscriptWatcher] → tool execution detected by transcript scan (busy)');
                 return;
             }
 
@@ -425,9 +444,9 @@ export class TranscriptWatcher implements vscode.Disposable {
             this._readNewLines();
             if (this._pendingApproval && this._hasPendingToolExecutedInTranscript()) {
                 this._clearApproval();
-                this._setState('running');
+                this._setState('busy');
                 this._markActive();
-                this._outputChannel.appendLine('[TranscriptWatcher] → tool execution detected by approval scan (running)');
+                this._outputChannel.appendLine('[TranscriptWatcher] → tool execution detected by approval scan (busy)');
             }
         }, this._approvalScanInterval);
     }

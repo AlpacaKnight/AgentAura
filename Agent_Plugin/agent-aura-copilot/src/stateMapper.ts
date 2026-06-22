@@ -3,7 +3,7 @@
  *
  * Agent states (from firmware API):
  *   running   - 🟢 Green breath, normal running
- *   busy      - 🟡 Yellow flow, busy processing
+ *   busy      - 🟡 Yellow marquee/flow, tool executing
  *   waiting   - 🟡 Yellow blink, waiting for approval
  *   error     - 🔴 Red blink, error
  *   idle      - 🔵 Blue breath (fast), 5s auto-off
