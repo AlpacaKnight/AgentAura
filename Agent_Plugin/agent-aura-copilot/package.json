@@ -1,0 +1,149 @@
+{
+  "name": "agent-aura-copilot",
+  "displayName": "AgentAura - Copilot Ring Light",
+  "description": "Sync GitHub Copilot activity states to ESP32 Ring Light hardware in real-time",
+  "version": "0.1.0",
+  "publisher": "AlpacaKnight",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "copilot",
+    "ring light",
+    "esp32",
+    "hardware",
+    "agent",
+    "status"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentAura.connect",
+        "title": "AgentAura: Connect to Ring Light"
+      },
+      {
+        "command": "agentAura.disconnect",
+        "title": "AgentAura: Disconnect"
+      },
+      {
+        "command": "agentAura.discover",
+        "title": "AgentAura: Discover Devices"
+      },
+      {
+        "command": "agentAura.sendCommand",
+        "title": "AgentAura: Send Command to Ring Light"
+      },
+      {
+        "command": "agentAura.setState",
+        "title": "AgentAura: Set Agent State"
+      }
+    ],
+    "configuration": {
+      "title": "AgentAura Ring Light",
+      "properties": {
+        "agentAura.transport": {
+          "type": "string",
+          "enum": [
+            "http",
+            "udp",
+            "serial"
+          ],
+          "default": "http",
+          "description": "Connection transport: http (WiFi REST), udp (WiFi datagram), or serial (USB CDC)"
+        },
+        "agentAura.host": {
+          "type": "string",
+          "default": "",
+          "description": "ESP32 device IP address or hostname (for http/udp)"
+        },
+        "agentAura.httpPort": {
+          "type": "number",
+          "default": 80,
+          "description": "HTTP port (default 80)"
+        },
+        "agentAura.udpPort": {
+          "type": "number",
+          "default": 8888,
+          "description": "UDP port (default 8888)"
+        },
+        "agentAura.serialPort": {
+          "type": "string",
+          "default": "",
+          "description": "Serial port path, e.g. /dev/ttyACM0 or COM3 (for serial transport)"
+        },
+        "agentAura.serialBaud": {
+          "type": "number",
+          "default": 115200,
+          "description": "Serial baud rate"
+        },
+        "agentAura.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable Copilot state sync to hardware"
+        },
+        "agentAura.idleTimeout": {
+          "type": "number",
+          "default": 5000,
+          "description": "Milliseconds of inactivity before sending 'idle' state"
+        },
+        "agentAura.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show connection status in the status bar"
+        }
+      }
+    },
+    "chatParticipants": [
+      {
+        "id": "agent-aura.ring",
+        "fullName": "Ring Light",
+        "name": "ring",
+        "description": "Control ESP32 Ring Light hardware directly from Copilot Chat",
+        "isSticky": false
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentAura",
+          "title": "Ring Light",
+          "icon": "media/ring-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentAura": [
+        {
+          "type": "webview",
+          "id": "agentAura.controlPanel",
+          "name": "Control Panel"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.93.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  }
+}
