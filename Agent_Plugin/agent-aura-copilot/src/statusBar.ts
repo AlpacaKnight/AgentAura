@@ -46,7 +46,8 @@ export class StatusBarUI implements vscode.Disposable {
 
         // Listen for connection changes
         this._disposables.push(
-            client.onDidChangeConnection(() => this.update())
+            client.onDidChangeConnection(() => this.update()),
+            client.onDidChangeState(() => this.update())
         );
 
         this.update();

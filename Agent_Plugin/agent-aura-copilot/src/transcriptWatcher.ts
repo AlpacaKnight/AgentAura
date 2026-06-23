@@ -72,11 +72,17 @@ export class TranscriptWatcher implements vscode.Disposable {
     constructor(client: DeviceClient, outputChannel: vscode.OutputChannel) {
         this._client = client;
         this._outputChannel = outputChannel;
+        this.reloadConfig();
+    }
+
+    reloadConfig() {
+        const config = vscode.workspace.getConfiguration('agentAura');
+        this._idleTimeout = config.get<number>('idleTimeout') ?? 6000;
     }
 
     start() {
         if (this._running) { return; }
-        this._running = true;
+        this.reloadConfig();
 
         const transcriptDir = this._findTranscriptDir();
         if (!transcriptDir) {
@@ -84,6 +90,7 @@ export class TranscriptWatcher implements vscode.Disposable {
             return;
         }
 
+        this._running = true;
         this._outputChannel.appendLine(`[TranscriptWatcher] Monitoring: ${transcriptDir}`);
 
         try {

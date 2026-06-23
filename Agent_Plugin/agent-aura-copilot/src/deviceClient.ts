@@ -44,6 +44,8 @@ export class DeviceClient implements vscode.Disposable {
 
     private readonly _onDidChangeConnection = new vscode.EventEmitter<boolean>();
     readonly onDidChangeConnection = this._onDidChangeConnection.event;
+    private readonly _onDidChangeState = new vscode.EventEmitter<AgentState | null>();
+    readonly onDidChangeState = this._onDidChangeState.event;
 
     constructor(outputChannel: vscode.OutputChannel) {
         this._outputChannel = outputChannel;
@@ -71,7 +73,7 @@ export class DeviceClient implements vscode.Disposable {
         if (this._serialHandle || this._connected) {
             await this._closeSerialHandle();
             this._connected = false;
-            this._lastState = null;
+            this._setLastState(null);
             this._onDidChangeConnection.fire(false);
         }
         this._unreachableUntil = 0;
@@ -91,7 +93,7 @@ export class DeviceClient implements vscode.Disposable {
 
     disconnect() {
         this._connected = false;
-        this._lastState = null;
+        this._setLastState(null);
         void this._closeSerialHandle();
         this._onDidChangeConnection.fire(false);
     }
@@ -112,7 +114,6 @@ export class DeviceClient implements vscode.Disposable {
             this._outputChannel.appendLine(`[AgentAura] State → ${state} (skipped: unreachable cooldown)`);
             return false;
         }
-        this._lastState = state;
         this._outputChannel.appendLine(`[AgentAura] State → ${state}`);
 
         let ok: boolean;
@@ -120,6 +121,9 @@ export class DeviceClient implements vscode.Disposable {
             ok = await this._httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '');
         } else {
             ok = await this.sendRawCommand(`agent ${state}`);
+        }
+        if (ok) {
+            this._setLastState(state);
         }
         if (!ok) {
             this._outputChannel.appendLine(`[AgentAura] State → ${state} FAILED (transport: ${this._transport}, host: ${this._host})`);
@@ -194,6 +198,7 @@ export class DeviceClient implements vscode.Disposable {
     dispose() {
         this.disconnect();
         this._onDidChangeConnection.dispose();
+        this._onDidChangeState.dispose();
     }
 
     // ─── Private Transport Methods ───────────────────────────────────
@@ -304,17 +309,23 @@ export class DeviceClient implements vscode.Disposable {
         });
     }
 
-    private _connectSerial(): Promise<void> {
-        return new Promise(async (resolve) => {
-            if (!this._serialPort) {
-                vscode.window.showErrorMessage('AgentAura: Serial port not configured');
-                resolve();
-                return;
-            }
+    private async _connectSerial(): Promise<void> {
+        if (!this._serialPort) {
+            vscode.window.showErrorMessage('AgentAura: Serial port not configured');
+            return;
+        }
 
-            try {
-                // Dynamic import to avoid hard dependency when not using serial
-                const { SerialPort } = await import('serialport');
+        try {
+            // Dynamic import to avoid hard dependency when not using serial
+            const { SerialPort } = await import('serialport');
+            await new Promise<void>((resolve) => {
+                let settled = false;
+                const finish = () => {
+                    if (settled) { return; }
+                    settled = true;
+                    resolve();
+                };
+
                 const serialHandle = new SerialPort({
                     path: this._serialPort,
                     baudRate: this._serialBaud,
@@ -325,7 +336,7 @@ export class DeviceClient implements vscode.Disposable {
                     this._connected = true;
                     this._onDidChangeConnection.fire(true);
                     this._outputChannel.appendLine(`[AgentAura] Serial connected: ${this._serialPort}`);
-                    resolve();
+                    finish();
                 });
 
                 serialHandle.on('error', (err: Error) => {
@@ -334,24 +345,25 @@ export class DeviceClient implements vscode.Disposable {
                     if (this._serialHandle === serialHandle) {
                         this._serialHandle = null;
                         this._connected = false;
+                        this._setLastState(null);
                         this._onDidChangeConnection.fire(false);
                     }
-                    resolve();
+                    finish();
                 });
 
                 serialHandle.on('close', () => {
                     if (this._serialHandle === serialHandle) {
                         this._serialHandle = null;
                         this._connected = false;
+                        this._setLastState(null);
                         this._onDidChangeConnection.fire(false);
                     }
                 });
-            } catch (err: any) {
-                this._outputChannel.appendLine(`[AgentAura] Failed to open serial: ${err.message}`);
-                vscode.window.showErrorMessage(`AgentAura: Cannot open serial port - ${err.message}`);
-                resolve();
-            }
-        });
+            });
+        } catch (err: any) {
+            this._outputChannel.appendLine(`[AgentAura] Failed to open serial: ${err.message}`);
+            vscode.window.showErrorMessage(`AgentAura: Cannot open serial port - ${err.message}`);
+        }
     }
 
     private _closeSerialHandle(): Promise<void> {
@@ -382,5 +394,11 @@ export class DeviceClient implements vscode.Disposable {
 
     private _markUnreachable() {
         this._unreachableUntil = Date.now() + UNREACHABLE_COOLDOWN_MS;
+    }
+
+    private _setLastState(state: AgentState | null) {
+        if (state === this._lastState) { return; }
+        this._lastState = state;
+        this._onDidChangeState.fire(state);
     }
 }

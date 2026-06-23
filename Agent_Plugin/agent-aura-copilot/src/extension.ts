@@ -80,6 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('agentAura')) {
                 client.reloadConfig();
+                transcriptWatcher.reloadConfig();
                 const enabled = vscode.workspace.getConfiguration('agentAura').get<boolean>('enabled') ?? true;
                 if (!enabled) {
                     transcriptWatcher.stop();
@@ -109,9 +110,10 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('[AgentAura] Extension activated');
 }
 
-export function deactivate() {
+export async function deactivate(): Promise<void> {
     if (client) {
-        client.sendAgentState('offline');
+        await client.sendAgentState('offline');
+        client.disconnect();
     }
 }
 

@@ -140,7 +140,10 @@
     "@electron/rebuild": "^3.6.0",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.93.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vscode/vsce": "^3.0.0",
+    "eslint": "^8.57.1",
     "typescript": "^5.4.0"
   },
   "dependencies": {
