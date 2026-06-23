@@ -44,12 +44,16 @@
 
 ### 🔍 设备发现
 
-一键扫描局域网内的 Ring Light 设备并自动配置连接。
+一键扫描局域网内的 Ring Light 设备，可从命令面板选择设备，也可以在侧边栏中扫描并填入连接配置。
 
 ### 🎛️ 侧边栏控制面板
 
 左侧活动栏 💡 图标，点击打开完整控制面板：
 
+- 🔌 连接 / 配置：切换 HTTP、UDP、Serial，保存主机、端口、串口和波特率
+- 🔎 发现设备：扫描局域网设备，点击结果后自动填入主机和端口
+- 🔁 连接 / 断开：无需打开 Settings 或命令面板即可管理连接
+- ✅ 同步开关：启用或暂停 Copilot 状态同步，手动灯光控制仍可使用
 - ⚡ 电源开关
 - 🔆 亮度/速度滑杆实时调节
 - 🎨 颜色取色器 + 10 个预设色
@@ -114,14 +118,17 @@ npx @vscode/vsce package # 打包 .vsix
 ## 快速开始
 
 1. 确保 ESP32 Ring Light 已连接 WiFi 并获取到 IP 地址
-2. 打开命令面板 (`Ctrl+Shift+P`) → `AgentAura: Discover Devices`
-3. 选择你的设备
-4. 开始使用 Copilot，灯光会自动同步状态！
+2. 打开左侧活动栏的 Ring Light 面板
+3. 点击 **发现**，选择扫描到的设备，或手动填写 IP/串口配置
+4. 点击 **连接**
+5. 开始使用 Copilot，灯光会自动同步状态！
 
-或者手动配置:
+也可以通过命令面板 (`Ctrl+Shift+P`) → `AgentAura: Discover Devices` 选择设备并连接。
 
-1. 打开 Settings → 搜索 `agentAura.host`
-2. 填入设备 IP 地址 (如 `192.168.1.100`)
+或者手动配置 Settings:
+
+1. 打开 Settings → 搜索 `agentAura.host` 或 `agentAura.serialPort`
+2. 填入设备 IP 地址或串口路径 (如 `192.168.1.100` / `/dev/ttyACM0`)
 3. 命令面板 → `AgentAura: Connect to Ring Light`
 
 ## 命令面板

@@ -68,6 +68,13 @@ export class DeviceClient implements vscode.Disposable {
     async connect(): Promise<void> {
         this.reloadConfig();
         this._outputChannel.appendLine(`[AgentAura] Connecting via ${this._transport}...`);
+        if (this._serialHandle || this._connected) {
+            await this._closeSerialHandle();
+            this._connected = false;
+            this._lastState = null;
+            this._onDidChangeConnection.fire(false);
+        }
+        this._unreachableUntil = 0;
         if (this._transport === 'serial') {
             await this._connectSerial();
         } else {
@@ -85,10 +92,7 @@ export class DeviceClient implements vscode.Disposable {
     disconnect() {
         this._connected = false;
         this._lastState = null;
-        if (this._serialHandle) {
-            try { this._serialHandle.close(); } catch { /* ignore */ }
-            this._serialHandle = null;
-        }
+        void this._closeSerialHandle();
         this._onDidChangeConnection.fire(false);
     }
 
@@ -311,32 +315,62 @@ export class DeviceClient implements vscode.Disposable {
             try {
                 // Dynamic import to avoid hard dependency when not using serial
                 const { SerialPort } = await import('serialport');
-                this._serialHandle = new SerialPort({
+                const serialHandle = new SerialPort({
                     path: this._serialPort,
                     baudRate: this._serialBaud,
                 });
 
-                this._serialHandle.on('open', () => {
+                serialHandle.on('open', () => {
+                    this._serialHandle = serialHandle;
                     this._connected = true;
                     this._onDidChangeConnection.fire(true);
                     this._outputChannel.appendLine(`[AgentAura] Serial connected: ${this._serialPort}`);
                     resolve();
                 });
 
-                this._serialHandle.on('error', (err: Error) => {
+                serialHandle.on('error', (err: Error) => {
                     this._outputChannel.appendLine(`[AgentAura] Serial error: ${err.message}`);
-                    this._connected = false;
-                    this._onDidChangeConnection.fire(false);
+                    try { serialHandle.destroy?.(); } catch { /* ignore */ }
+                    if (this._serialHandle === serialHandle) {
+                        this._serialHandle = null;
+                        this._connected = false;
+                        this._onDidChangeConnection.fire(false);
+                    }
                     resolve();
                 });
 
-                this._serialHandle.on('close', () => {
-                    this._connected = false;
-                    this._onDidChangeConnection.fire(false);
+                serialHandle.on('close', () => {
+                    if (this._serialHandle === serialHandle) {
+                        this._serialHandle = null;
+                        this._connected = false;
+                        this._onDidChangeConnection.fire(false);
+                    }
                 });
             } catch (err: any) {
                 this._outputChannel.appendLine(`[AgentAura] Failed to open serial: ${err.message}`);
                 vscode.window.showErrorMessage(`AgentAura: Cannot open serial port - ${err.message}`);
+                resolve();
+            }
+        });
+    }
+
+    private _closeSerialHandle(): Promise<void> {
+        return new Promise((resolve) => {
+            const handle = this._serialHandle;
+            this._serialHandle = null;
+            if (!handle) {
+                resolve();
+                return;
+            }
+
+            try {
+                if (handle.isOpen) {
+                    handle.close(() => resolve());
+                } else {
+                    try { handle.destroy?.(); } catch { /* ignore */ }
+                    resolve();
+                }
+            } catch {
                 resolve();
             }
         });

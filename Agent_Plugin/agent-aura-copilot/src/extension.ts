@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('agentAura.connect', () => connectDevice()),
+        vscode.commands.registerCommand('agentAura.connect', () => connectDevice(true)),
         vscode.commands.registerCommand('agentAura.disconnect', () => disconnectDevice()),
         vscode.commands.registerCommand('agentAura.discover', () => discoverDevices()),
         vscode.commands.registerCommand('agentAura.sendCommand', () => sendCommandPrompt()),
@@ -63,7 +63,11 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(client, transcriptWatcher, statusBar, chatParticipant);
 
     // Register sidebar WebView panel
-    const controlPanel = new ControlPanelProvider(client, outputChannel);
+    const controlPanel = new ControlPanelProvider(client, outputChannel, {
+        connect: () => connectDevice(false),
+        disconnect: disconnectDevice,
+        discover: scanDevices,
+    });
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             ControlPanelProvider.viewType,
@@ -76,6 +80,12 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('agentAura')) {
                 client.reloadConfig();
+                const enabled = vscode.workspace.getConfiguration('agentAura').get<boolean>('enabled') ?? true;
+                if (!enabled) {
+                    transcriptWatcher.stop();
+                } else if (client.connected) {
+                    transcriptWatcher.start();
+                }
                 statusBar.update();
             }
         })
@@ -107,7 +117,7 @@ export function deactivate() {
 
 // ─── Command Handlers ───────────────────────────────────────────
 
-async function connectDevice() {
+async function connectDevice(allowPrompt = true): Promise<boolean> {
     const config = vscode.workspace.getConfiguration('agentAura');
     const transport = config.get<string>('transport') || 'http';
 
@@ -115,38 +125,54 @@ async function connectDevice() {
         // Serial mode: check serialPort, not host
         let serialPort = config.get<string>('serialPort');
         if (!serialPort) {
+            if (!allowPrompt) {
+                vscode.window.showErrorMessage('AgentAura: Serial port is not configured');
+                return false;
+            }
             serialPort = await vscode.window.showInputBox({
                 prompt: 'Enter serial port path',
                 placeHolder: '/dev/ttyACM0 or COM3',
             });
-            if (!serialPort) { return; }
+            if (!serialPort) { return false; }
             await config.update('serialPort', serialPort, vscode.ConfigurationTarget.Global);
         }
         await client.connect();
-        transcriptWatcher.start();
+        if (!client.connected) { return false; }
+        if (config.get<boolean>('enabled') ?? true) {
+            transcriptWatcher.start();
+        }
         client.sendAgentState('init');
         statusBar.update();
         vscode.window.showInformationMessage(`AgentAura: Connected via serial ${serialPort}`);
+        return true;
     } else {
         // HTTP/UDP mode: need host
         let host = config.get<string>('host');
         if (!host) {
+            if (!allowPrompt) {
+                vscode.window.showErrorMessage('AgentAura: Host is not configured');
+                return false;
+            }
             host = await vscode.window.showInputBox({
                 prompt: 'Enter ESP32 Ring Light IP address or hostname',
                 placeHolder: '192.168.1.100 or ringlight.local',
             });
-            if (!host) { return; }
+            if (!host) { return false; }
             await config.update('host', host, vscode.ConfigurationTarget.Global);
         }
         await client.connect();
-        transcriptWatcher.start();
+        if (!client.connected) { return false; }
+        if (config.get<boolean>('enabled') ?? true) {
+            transcriptWatcher.start();
+        }
         client.sendAgentState('init');
         statusBar.update();
         vscode.window.showInformationMessage(`AgentAura: Connected to ${host}`);
+        return true;
     }
 }
 
-async function disconnectDevice() {
+async function disconnectDevice(): Promise<void> {
     await client.sendAgentState('offline');
     transcriptWatcher.stop();
     client.disconnect();
@@ -154,8 +180,12 @@ async function disconnectDevice() {
     vscode.window.showInformationMessage('AgentAura: Disconnected');
 }
 
+async function scanDevices() {
+    return discovery.scan();
+}
+
 async function discoverDevices() {
-    const devices = await discovery.scan();
+    const devices = await scanDevices();
     if (devices.length === 0) {
         vscode.window.showWarningMessage('AgentAura: No devices found on the network');
         return;
@@ -174,10 +204,14 @@ async function discoverDevices() {
 
     if (selected) {
         const config = vscode.workspace.getConfiguration('agentAura');
+        await config.update('transport', 'http', vscode.ConfigurationTarget.Global);
         await config.update('host', selected.ip, vscode.ConfigurationTarget.Global);
         client.reloadConfig();
-        client.connect();
-        transcriptWatcher.start();
+        await client.connect();
+        if (!client.connected) { return; }
+        if (config.get<boolean>('enabled') ?? true) {
+            transcriptWatcher.start();
+        }
         client.sendAgentState('init');
         statusBar.update();
         vscode.window.showInformationMessage(`AgentAura: Connected to ${selected.label}`);
