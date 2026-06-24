@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "transport": "http",
+  "host": "192.168.1.100",
+  "port": 80,
+  "serialPort": "",
+  "baud": 115200,
+  "debounceMs": 500,
+  "cooldownMs": 3000,
+  "timeoutMs": 650,
+  "autoDiscover": true
+}

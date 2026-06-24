@@ -10,7 +10,7 @@
 
 - ESP32 开发板圆形幻彩灯 WS2812B 圆环灯板
 
-<p align="center"><img src="docs/ESP32开发板圆形幻彩灯WS2812B圆环.png" alt="ESP32 开发板圆形幻彩灯 WS2812B 圆环灯板" width="320"/></p>
+![ESP32 开发板圆形幻彩灯 WS2812B 圆环灯板](docs/ESP32开发板圆形幻彩灯WS2812B圆环.png)
 
 ---
 
@@ -18,10 +18,11 @@
 
 本插件的所有功能都是使用 vibe coding 开发的，纯科技、无手搓，除了插件说明这一段，没有一行是手动修改的。有 bug 是正常的，自己写 bug 可能更多，有问题请留言，我会尽量修复。
 
-**插件 | 设备的一些说明**
+### 插件 | 设备的一些说明
+
 - QwenPaw：由于 QwenPaw 支持 hooks，可以从官方接口直接拿到状态，功能比较完善，会优先更新。
 - VS Code Copilot：还在“打补丁”的阶段，原生没 hooks，也没有接口能拿到完整的运行状态，信息跑起来有点费劲，体验上很不稳定，建议勇士抱着实验精神凑合试用。
-- Codex / Claude：会支持，刚开始开发，codex 宠物用的是类似机制，claude 也有同类硬件产品，问题都不大。
+- Codex：已支持，采用类似 Codex 宠物的 hook 机制，将 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest` 等事件同步到环形灯。Claude 后续会继续补。
 - qwen code / kimi cli / zcode 等国产工具：尽量支持，看时间和当时的 token 余额而定。
 - 未来计划：希望做带屏幕、可确认交互的硬件设备，但时间还没敲定，市场好货多的时候可能就随缘。
 
@@ -31,6 +32,11 @@
   - 监听 GitHub Copilot Chat 的 transcript 和 VS Code 终端事件。
   - 解析 Copilot 会话生命周期（用户消息、推理开始、工具执行、审批/确认、回复结束），并将其映射为 `running` / `busy` / `waiting` / `idle` / `error` 等状态。
   - 通过 `DeviceClient` 发送控制指令到设备，支持 HTTP / UDP / Serial 三种传输方式。
+
+- `Agent_Plugin/agent-aura-codex`
+  - 通过 Codex `~/.codex/hooks.json` 注册命令型 hook，捕获用户提交、工具执行、权限请求和停止事件。
+  - 将 Codex 事件映射为固件内置状态指令，如 `agent running`、`agent busy`、`agent waiting`、`agent idle`。
+  - 提供 CLI 配置、设备发现、手动测试和打包脚本，支持 HTTP / UDP / Serial 三种传输方式。
 
 - `Agent_Plugin/qwenpaw-plugin`
   - 包装 QwenPaw 的 `AgentRunner` 与 `ApprovalService`，捕获智能体事件和审批流程。
@@ -44,13 +50,14 @@
 
 ## 项目结构
 
-```
+```text
 AgentAura/
 ├── main.py                              # Python 入口（预留）
 ├── pyproject.toml                       # uv 依赖管理
 ├── README.md                            # 本文件
 ├── Agent_Plugin/                        # IDE 插件集合
 │   ├── agent-aura-copilot/              # Copilot VS Code 插件
+│   ├── agent-aura-codex/                # Codex hook 插件
 │   └── qwenpaw-plugin/                  # QwenPaw 插件
 ├── Arduino_ESP32_RingLight/             # 硬件：ESP32 环形灯
 │   ├── ESP32_RingLight_Demo/
@@ -60,19 +67,15 @@ AgentAura/
 
 ### 目录命名约定
 
-| 目录模式 | 类别 | 示例 |
-|:---------|:-----|:-----|
-| `Arduino_{MCU}_{硬件类型}/` | 硬件子项目 | `Arduino_ESP32_RingLight` — 基于 ESP32 的环形灯 |
-| `Agent_Plugin/{plugin_name}/` | IDE 插件 | `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/qwenpaw-plugin` |
+- `Arduino_{MCU}_{硬件类型}/`：硬件子项目，例如 `Arduino_ESP32_RingLight` 表示基于 ESP32 的环形灯。
+- `Agent_Plugin/{plugin_name}/`：IDE 插件，例如 `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/qwenpaw-plugin`。
 
 ---
 
 ## 开发环境
 
-| 依赖 | 版本 | 用途 |
-|:-----|:-----|:-----|
-| Python | ≥ 3.13 | 主项目运行 |
-| [uv](https://docs.astral.sh/uv/) | 最新 | Python 依赖与虚拟环境管理 |
+- Python ≥ 3.13：主项目运行。
+- [uv](https://docs.astral.sh/uv/) 最新版：Python 依赖与虚拟环境管理。
 
 ```bash
 # 安装 uv 后同步依赖

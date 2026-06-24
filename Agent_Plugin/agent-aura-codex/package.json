@@ -1,0 +1,42 @@
+{
+  "name": "agent-aura-codex",
+  "displayName": "AgentAura - Codex Ring Light",
+  "description": "Sync OpenAI Codex hook lifecycle events to AgentAura ESP32 Ring Light hardware",
+  "version": "0.1.0",
+  "author": "AgentAura",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "agent-aura-codex": "./out/index.js"
+  },
+  "files": [
+    "agent-aura-codex.config.example.json",
+    "out/**",
+    "scripts/**",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "bash scripts/pack.sh"
+  },
+  "keywords": [
+    "codex",
+    "agentaura",
+    "esp32",
+    "ring-light",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  }
+}
