@@ -2,6 +2,8 @@ import { RingLightClient } from './deviceClient';
 import { loadConfig } from './config';
 import { AgentState, isAgentState } from './types';
 
+const STDIN_READ_TIMEOUT_MS = 1000;
+
 export const CODEX_HOOK_EVENTS = [
     'UserPromptSubmit',
     'PreToolUse',
@@ -104,7 +106,7 @@ async function readStdinJson(): Promise<unknown | undefined> {
         };
         const onData = (chunk: string) => buffer += chunk;
 
-        timer = setTimeout(finish, 120);
+        timer = setTimeout(finish, STDIN_READ_TIMEOUT_MS);
         timer.unref?.();
 
         process.stdin.setEncoding('utf8');

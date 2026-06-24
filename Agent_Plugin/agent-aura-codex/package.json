@@ -20,7 +20,8 @@
     "build": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "bash scripts/pack.sh"
+    "package": "bash scripts/pack.sh",
+    "test": "npm run compile && node --test test/*.test.js"
   },
   "keywords": [
     "codex",

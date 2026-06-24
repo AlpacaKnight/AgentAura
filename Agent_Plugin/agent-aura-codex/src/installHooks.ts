@@ -66,16 +66,17 @@ export function printCodexHooks(): CodexHooksFile {
 }
 
 function buildHookCommand(eventName: string): string {
+    const node = process.execPath || 'node';
     const entry = path.resolve(__dirname, 'index.js');
     if (process.platform === 'win32') {
-        return `set ${MARKER}&& node "${entry.replace(/"/g, '\\"')}" hook "${eventName}" >nul 2>nul`;
+        return `set ${MARKER}&& ${windowsQuote(node)} ${windowsQuote(entry)} hook ${windowsQuote(eventName)} >nul 2>nul`;
     }
-    return `${MARKER} node ${shellQuote(entry)} hook ${shellQuote(eventName)} >/dev/null 2>&1 || true`;
+    return `${MARKER} ${shellQuote(node)} ${shellQuote(entry)} hook ${shellQuote(eventName)} >/dev/null 2>&1 || true`;
 }
 
 function normalizeHooksFile(value: unknown): CodexHooksFile & { hooks: Record<string, CodexHookGroup[]> } {
     const document = value && typeof value === 'object' ? value as CodexHooksFile : { hooks: {} };
-    if (!document.hooks || typeof document.hooks !== 'object') {
+    if (!document.hooks || typeof document.hooks !== 'object' || Array.isArray(document.hooks)) {
         document.hooks = {};
     }
     for (const [eventName, groups] of Object.entries(document.hooks)) {
@@ -110,6 +111,10 @@ function isAgentAuraHook(hook: CodexCommandHook): boolean {
     return command.includes(MARKER)
         || command.includes('agent-aura-codex')
         || command.includes('agentaura-codex');
+}
+
+function windowsQuote(value: string): string {
+    return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function shellQuote(value: string): string {

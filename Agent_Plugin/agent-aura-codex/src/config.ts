@@ -42,13 +42,14 @@ const DEFAULT_CONFIG: AgentAuraConfig = {
 
 export function loadConfig(): AgentAuraConfig {
     const fileConfig = readJsonFile<Partial<AgentAuraConfig>>(configPath()) || {};
-    const config = normalizeConfig({ ...DEFAULT_CONFIG, ...fileConfig });
+    const config = normalizeConfig(fileConfig);
     applyEnvironmentOverrides(config);
     return normalizeConfig(config);
 }
 
 export function saveConfig(patch: Partial<AgentAuraConfig>): AgentAuraConfig {
-    const next = normalizeConfig({ ...loadConfig(), ...patch });
+    const fileConfig = readJsonFile<Partial<AgentAuraConfig>>(configPath()) || {};
+    const next = normalizeConfig({ ...fileConfig, ...patch });
     writeJsonFile(configPath(), next);
     return next;
 }
@@ -96,7 +97,14 @@ export function setDisabled(disabled: boolean): void {
 }
 
 export function readHooksDocument(): unknown {
-    return readJsonFile<unknown>(codexHooksPath()) || { hooks: {} };
+    const filePath = codexHooksPath();
+    try {
+        if (!fs.existsSync(filePath)) { return { hooks: {} }; }
+        return JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cannot read Codex hooks file ${filePath}: ${message}`);
+    }
 }
 
 export function writeHooksDocument(document: unknown): void {
