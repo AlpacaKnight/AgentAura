@@ -68,7 +68,7 @@ function shouldSkipClaudeHook(eventName, payload) {
     suppressHooks(undefined, 'agent-aura slash command');
     return true;
   }
-  if (eventName === 'UserPromptSubmit') {
+  if (eventName === 'SessionStart' || eventName === 'UserPromptSubmit') {
     clearHookSuppression();
     return false;
   }

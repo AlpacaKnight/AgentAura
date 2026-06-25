@@ -27,7 +27,8 @@ function discoverDevices(timeoutMs = 2500) {
     const timer = setTimeout(finish, timeoutMs);
     timer.unref?.();
 
-    socket.on('error', () => {
+    socket.on('error', (error) => {
+      debugLog(`discovery socket error: ${error.message}`);
       clearTimeout(timer);
       finish();
     });
@@ -55,6 +56,7 @@ function discoverDevices(timeoutMs = 2500) {
       const payload = Buffer.from('discover\n', 'utf8');
       socket.send(payload, DISCOVERY_PORT, '255.255.255.255', (error) => {
         if (error) {
+          debugLog(`discovery send error: ${error.message}`);
           clearTimeout(timer);
           finish();
         }
@@ -66,6 +68,13 @@ function discoverDevices(timeoutMs = 2500) {
 async function discoverFirst(timeoutMs = 1500) {
   const devices = await discoverDevices(timeoutMs);
   return devices[0] || null;
+}
+
+function debugLog(message) {
+  const value = process.env.AGENTAURA_CLAUDE_DEBUG || process.env.AGENTAURA_DEBUG || '';
+  if (['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())) {
+    process.stderr.write(`[agent-aura-claude] ${message}\n`);
+  }
 }
 
 module.exports = {

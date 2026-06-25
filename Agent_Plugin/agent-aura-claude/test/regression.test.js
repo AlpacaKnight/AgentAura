@@ -25,6 +25,8 @@ const ENV_KEYS = [
   'AGENTAURA_CLAUDE_AUTO_DISCOVER',
   'AGENTAURA_CLAUDE_TRANSPORT',
   'AGENTAURA_CLAUDE_ENABLED',
+  'AGENTAURA_CLAUDE_DEBUG',
+  'AGENTAURA_DEBUG',
 ];
 
 function withIsolatedEnv(fn) {
@@ -124,6 +126,31 @@ test('plugin data directory is used for runtime state when provided', () => {
   }));
 });
 
+test('invalid config warnings are debug gated', () => {
+  withIsolatedEnv(() => withTempClaudeHome((claudeHome) => {
+    fs.writeFileSync(path.join(claudeHome, 'agent-aura-claude.json'), '{not json', 'utf8');
+
+    const originalWrite = process.stderr.write;
+    const writes = [];
+    process.stderr.write = (chunk, ...args) => {
+      writes.push(String(chunk));
+      return typeof args.at(-1) === 'function' ? args.at(-1)() : true;
+    };
+
+    try {
+      loadConfig();
+      assert.equal(writes.length, 0);
+
+      process.env.AGENTAURA_CLAUDE_DEBUG = '1';
+      loadConfig();
+      assert.equal(writes.length, 1);
+      assert.match(writes[0], /failed to parse/);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  }));
+});
+
 test('manual AgentAura slash command suppresses surrounding hooks', () => {
   withIsolatedEnv(() => withTempClaudeHome(() => {
     assert.equal(payloadContainsAgentAuraCommand({ prompt: '/agent-aura-claude:aura busy' }), true);
@@ -148,6 +175,16 @@ test('manual hook suppression expires', () => {
   withIsolatedEnv(() => withTempClaudeHome(() => {
     suppressHooks(1, 'test');
     assert.equal(hooksSuppressed(Date.now() + 10), false);
+  }));
+});
+
+test('SessionStart clears stale hook suppression from previous session', () => {
+  withIsolatedEnv(() => withTempClaudeHome(() => {
+    suppressHooks(60000, 'stale from previous session');
+    assert.equal(hooksSuppressed(), true);
+    assert.equal(shouldSkipClaudeHook('SessionStart', {}), false);
+    assert.equal(hooksSuppressed(), false);
+    assert.equal(loadRuntimeState().hookSuppressedUntil, undefined);
   }));
 });
 

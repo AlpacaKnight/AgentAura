@@ -297,9 +297,17 @@ function readJsonFile(filePath) {
       return null;
     }
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  } catch {
+  } catch (error) {
+    if (error instanceof SyntaxError && debugEnabled()) {
+      process.stderr.write(`[agent-aura-claude] warning: failed to parse ${filePath}: ${error.message}\n`);
+    }
     return null;
   }
+}
+
+function debugEnabled() {
+  const value = process.env.AGENTAURA_CLAUDE_DEBUG || process.env.AGENTAURA_DEBUG || '';
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
 function writeJsonFile(filePath, value) {
