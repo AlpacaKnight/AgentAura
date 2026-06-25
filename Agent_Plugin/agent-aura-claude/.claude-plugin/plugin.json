@@ -1,0 +1,89 @@
+{
+  "name": "agent-aura-claude",
+  "displayName": "AgentAura - Claude Ring Light",
+  "version": "0.1.0",
+  "description": "Sync Claude Code lifecycle events to AgentAura ESP32 Ring Light hardware.",
+  "author": {
+    "name": "AgentAura"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "agentaura",
+    "esp32",
+    "ring-light",
+    "hooks"
+  ],
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable ring sync",
+      "description": "Send Claude Code lifecycle state changes to the AgentAura ring light.",
+      "default": true
+    },
+    "transport": {
+      "type": "string",
+      "title": "Transport",
+      "description": "Device transport: http, udp, or serial.",
+      "default": "http"
+    },
+    "host": {
+      "type": "string",
+      "title": "Device host",
+      "description": "Ring light IP address for HTTP or UDP. Leave empty to use UDP discovery.",
+      "default": ""
+    },
+    "port": {
+      "type": "number",
+      "title": "Device port",
+      "description": "HTTP defaults to 80. UDP defaults to 8888.",
+      "default": 80,
+      "min": 1,
+      "max": 65535
+    },
+    "serial_port": {
+      "type": "string",
+      "title": "Serial port",
+      "description": "USB CDC serial device path, for example /dev/ttyACM0.",
+      "default": ""
+    },
+    "baud": {
+      "type": "number",
+      "title": "Serial baud",
+      "description": "USB CDC baud rate.",
+      "default": 115200,
+      "min": 1200,
+      "max": 4000000
+    },
+    "debounce_ms": {
+      "type": "number",
+      "title": "Debounce milliseconds",
+      "description": "Minimum interval before the same state is sent again.",
+      "default": 500,
+      "min": 0,
+      "max": 60000
+    },
+    "cooldown_ms": {
+      "type": "number",
+      "title": "Failure cooldown milliseconds",
+      "description": "How long to pause sending after a device or discovery failure.",
+      "default": 3000,
+      "min": 0,
+      "max": 60000
+    },
+    "timeout_ms": {
+      "type": "number",
+      "title": "Device timeout milliseconds",
+      "description": "Timeout for a single device request.",
+      "default": 650,
+      "min": 100,
+      "max": 10000
+    },
+    "auto_discover": {
+      "type": "boolean",
+      "title": "Auto discover",
+      "description": "Discover the ring light on UDP port 8888 when no host is configured.",
+      "default": true
+    }
+  }
+}

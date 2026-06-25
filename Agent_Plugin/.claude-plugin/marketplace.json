@@ -1,0 +1,17 @@
+{
+  "name": "agentaura",
+  "owner": {
+    "name": "AgentAura"
+  },
+  "metadata": {
+    "description": "AgentAura ESP32 Ring Light plugins for Claude Code",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "agent-aura-claude",
+      "source": "./agent-aura-claude",
+      "description": "Sync Claude Code lifecycle events to AgentAura ESP32 Ring Light hardware (HTTP/UDP/USB serial)."
+    }
+  ]
+}
