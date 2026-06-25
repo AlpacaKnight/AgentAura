@@ -1,5 +1,5 @@
 #!/bin/sh
-# AgentAura /aura command dispatcher.
+# AgentAura /agent-aura-claude:aura command dispatcher.
 # Usage: aura-dispatch.sh <plugin-root> [on|off|status|cmd <raw>|<state>]
 ROOT="$1"
 shift 2>/dev/null

@@ -17,9 +17,9 @@ agent-aura-claude/
 │   └── plugin.json              # Claude Code plugin manifest (name, userConfig schema)
 ├── bin/
 │   ├── agent-aura-claude.js     # CLI entry point (shebang, requires src/index.js)
-│   └── aura-dispatch.sh         # Shell dispatcher for the /aura slash command
+│   └── aura-dispatch.sh         # Shell dispatcher for the /agent-aura-claude:aura slash command
 ├── commands/
-│   └── aura.md                  # /aura slash command definition
+│   └── aura.md                  # /agent-aura-claude:aura slash command definition
 ├── hooks/
 │   └── hooks.json               # Claude Code hook registrations (18 lifecycle events)
 ├── src/
@@ -80,6 +80,7 @@ Manages all configuration persistence and loading:
   - `timeoutMs`: 100–10000
 - **`saveConfig(patch)`**: Merges patch into file config, normalizes, writes to disk. Environment overrides are NOT persisted — only the patch and existing file config are saved.
 - **Runtime state**: `loadRuntimeState()`, `saveRuntimeState(patch)`, `clearRuntimeState()` — tracks last-sent state, last failure timestamp, discovery state
+- **Manual command hook suppression**: `suppressHooks()` writes `hookSuppressedUntil` to runtime state so `/agent-aura-claude:aura ...` commands are not immediately overwritten by surrounding `UserPromptSubmit` / `Stop` hooks. A following non-AgentAura `UserPromptSubmit` clears the suppression.
 - **Disabled marker**: `isDisabled()` checks for existence of `~/.claude/agent-aura-claude.disabled`; `setDisabled(bool)` creates/removes the marker file
 
 ### `src/discovery.js` — UDP Device Discovery
@@ -133,6 +134,7 @@ The `RingLightClient` class is the primary interface to the hardware:
   - `payloadSignalsError(payload)`: Inspects payload for `success: false`, `ok: false`, error/denied keys with truthy values, or string values like `denied`/`rejected`/`failed`/`failure`/`error`
   - `payloadSignalsWaiting(payload)`: Inspects payload for permission/approval/elicitation keys with truthy values, or string values like `pending`/`waiting`/`approval_required`/`permission_prompt`/`elicitation_dialog`
   - `mapNotificationToAgentState(payload)`: Maps Notification payloads: `permission_prompt`/`elicitation_dialog` → `waiting`, `idle_prompt` → `idle`, `auth_success`/`elicitation_complete`/`elicitation_response` → `running`
+- **Manual command suppression**: `shouldSkipClaudeHook()` skips hooks when the payload begins with `/agent-aura-claude:aura`, and skips following hooks while `hookSuppressedUntil` is active. This keeps manual state commands from being immediately overwritten by the same slash command's outer `UserPromptSubmit` / `Stop` lifecycle events. A non-AgentAura `UserPromptSubmit` clears the suppression so normal work resumes immediately.
 
 ### `src/index.js` — CLI Command Dispatcher
 
@@ -157,12 +159,14 @@ The `RingLightClient` class is the primary interface to the hardware:
 
 ### `bin/aura-dispatch.sh` — Slash Command Dispatcher
 
-Shell script that dispatches `/aura` subcommands to the Node CLI:
-- `/aura on` → `enable`
-- `/aura off` → `disable`
-- `/aura status` (or bare `/aura`) → `status --probe`
-- `/aura cmd <raw>` → `command <raw>`
-- `/aura <state>` → `test <state>`
+Shell script that dispatches `/agent-aura-claude:aura` subcommands to the Node CLI. Claude Code plugin commands are always namespaced by plugin name, so bare `/aura` is not registered:
+- `/agent-aura-claude:aura on` → `enable`
+- `/agent-aura-claude:aura off` → `disable`
+- `/agent-aura-claude:aura status` (or no arguments) → `status --probe`
+- `/agent-aura-claude:aura cmd <raw>` → `command <raw>`
+- `/agent-aura-claude:aura <state>` → `test <state>`
+
+Manual slash commands call `suppressHooks()` before sending or probing so their surrounding Claude lifecycle hooks do not immediately overwrite the requested state. The next normal user prompt clears the suppression.
 
 ## Configuration System
 
@@ -294,15 +298,17 @@ The CLI is invoked via `node bin/agent-aura-claude.js <command>` or directly via
 
 ## Slash Commands
 
-### `/aura`
+### `/agent-aura-claude:aura`
 
 Defined in `commands/aura.md`. Dispatches via `bin/aura-dispatch.sh` to the Node CLI:
 
-- `/aura on` — Enable ring sync
-- `/aura off` — Disable ring sync
-- `/aura status` (or bare `/aura`) — Show config and probe device
-- `/aura cmd <raw>` — Send raw firmware command (e.g., `/aura cmd rgb 255,0,0`)
-- `/aura <state>` — Send a test agent state (e.g., `/aura busy`)
+- `/agent-aura-claude:aura on` — Enable ring sync
+- `/agent-aura-claude:aura off` — Disable ring sync
+- `/agent-aura-claude:aura status` (or no arguments) — Show config and probe device
+- `/agent-aura-claude:aura cmd <raw>` — Send raw firmware command (e.g., `/agent-aura-claude:aura cmd rgb 255,0,0`)
+- `/agent-aura-claude:aura <state>` — Send a test agent state (e.g., `/agent-aura-claude:aura busy`)
+
+The command suppresses surrounding hooks for a short window, so manual `busy` / `waiting` / `idle` states remain visible instead of being immediately replaced by `running` or `idle` from Claude's own command lifecycle. The next non-AgentAura prompt clears the suppression.
 
 Allowed tools: `Bash(sh:*)` — the command runs shell commands.
 
@@ -336,7 +342,8 @@ Allowed tools: `Bash(sh:*)` — the command runs shell commands.
   4. Plugin data directory is used for runtime state when `CLAUDE_PLUGIN_DATA` is provided
   5. Claude hook events map to firmware agent states
   6. Claude payload signals can refine hook state (Notification permission_prompt → waiting, PostToolUse success:false → error)
-  7. Bundled Claude plugin hooks use the `node` exec form with `${CLAUDE_PLUGIN_ROOT}/bin/agent-aura-claude.js`
+  7. Manual AgentAura slash commands suppress surrounding hooks, normal prompts clear suppression, and suppression expires
+  8. Bundled Claude plugin hooks use the `node` exec form with `${CLAUDE_PLUGIN_ROOT}/bin/agent-aura-claude.js`
 
 ## Security Considerations
 
@@ -352,7 +359,7 @@ Allowed tools: `Bash(sh:*)` — the command runs shell commands.
 
 ```bash
 # From Claude Code marketplace
-/plugin marketplace add
+/plugin marketplace add /home/xuyd2/Git/open/AgentAura/Agent_Plugin
 /plugin install agent-aura-claude@agentaura
 ```
 
@@ -367,5 +374,7 @@ Runtime state tracks:
 - `lastSentAt`: Timestamp of the last successful send (used for debouncing)
 - `lastErrorAt`: Timestamp of the last failure (used for cooldown)
 - `lastErrorState`: The state that failed (used for cooldown)
+- `hookSuppressedUntil`: Timestamp until which automatic hooks are skipped after a manual `/agent-aura-claude:aura ...` command
+- `hookSuppressionReason`: Last reason recorded for hook suppression
 
 Runtime state can be cleared via `reset-cache` CLI command or `clearRuntimeState()`.

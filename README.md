@@ -21,8 +21,9 @@
 ### 插件 | 设备的一些说明
 
 - QwenPaw：由于 QwenPaw 支持 hooks，可以从官方接口直接拿到状态，功能比较完善，会优先更新。
+- Claude Code：已支持，使用 Claude Code 原生插件结构和 hooks，将会话开始、用户提交、工具调用、权限等待、停止等事件同步到环形灯，并提供 `/agent-aura-claude:aura` 命令在会话内手动控制。
 - VS Code Copilot：还在“打补丁”的阶段，原生没 hooks，也没有接口能拿到完整的运行状态，信息跑起来有点费劲，体验上很不稳定，建议勇士抱着实验精神凑合试用。
-- Codex：已支持，采用类似 Codex 宠物的 hook 机制，将 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest` 等事件同步到环形灯。Claude 后续会继续补。
+- Codex：已支持，采用类似 Codex 宠物的 hook 机制，将 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest` 等事件同步到环形灯。
 - qwen code / kimi cli / zcode 等国产工具：尽量支持，看时间和当时的 token 余额而定。
 - 未来计划：希望做带屏幕、可确认交互的硬件设备，但时间还没敲定，市场好货多的时候可能就随缘。
 
@@ -37,6 +38,12 @@
   - 通过 Codex `~/.codex/hooks.json` 注册命令型 hook，捕获用户提交、工具执行、权限请求和停止事件。
   - 将 Codex 事件映射为固件内置状态指令，如 `agent running`、`agent busy`、`agent waiting`、`agent idle`。
   - 提供 CLI 配置、设备发现、手动测试和打包脚本，支持 HTTP / UDP / Serial 三种传输方式。
+
+- `Agent_Plugin/agent-aura-claude`
+  - 通过 Claude Code marketplace 插件和 `hooks/hooks.json` 捕获 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 等生命周期事件。
+  - 将 Claude Code 事件映射为固件内置状态指令，如 `agent init`、`agent running`、`agent busy`、`agent waiting`、`agent idle`、`agent error`、`agent offline`。
+  - 提供 `/agent-aura-claude:aura` 会话内命令，可手动发送状态、原始固件指令、查看连接状态，以及启用/暂停状态同步。
+  - 支持 Claude 插件 `userConfig` 配置和 HTTP / UDP / USB 串口三种传输方式；串口依赖随插件默认安装。
 
 - `Agent_Plugin/qwenpaw-plugin`
   - 包装 QwenPaw 的 `AgentRunner` 与 `ApprovalService`，捕获智能体事件和审批流程。
@@ -57,6 +64,7 @@ AgentAura/
 ├── README.md                            # 本文件
 ├── Agent_Plugin/                        # IDE 插件集合
 │   ├── agent-aura-copilot/              # Copilot VS Code 插件
+│   ├── agent-aura-claude/               # Claude Code marketplace 插件
 │   ├── agent-aura-codex/                # Codex hook 插件
 │   └── qwenpaw-plugin/                  # QwenPaw 插件
 ├── Arduino_ESP32_RingLight/             # 硬件：ESP32 环形灯
@@ -68,7 +76,7 @@ AgentAura/
 ### 目录命名约定
 
 - `Arduino_{MCU}_{硬件类型}/`：硬件子项目，例如 `Arduino_ESP32_RingLight` 表示基于 ESP32 的环形灯。
-- `Agent_Plugin/{plugin_name}/`：IDE 插件，例如 `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/qwenpaw-plugin`。
+- `Agent_Plugin/{plugin_name}/`：IDE / Agent CLI 插件，例如 `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/agent-aura-claude`、`Agent_Plugin/qwenpaw-plugin`。
 
 ---
 

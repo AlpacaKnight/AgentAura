@@ -6,9 +6,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { loadConfig, runtimeStatePath, saveConfig } = require('../src/config');
+const { hooksSuppressed, loadConfig, loadRuntimeState, runtimeStatePath, saveConfig, suppressHooks } = require('../src/config');
 const { parseDeviceState } = require('../src/deviceClient');
-const { mapClaudeEventToAgentState } = require('../src/hooks');
+const { mapClaudeEventToAgentState, payloadContainsAgentAuraCommand, shouldSkipClaudeHook } = require('../src/hooks');
 
 const ENV_KEYS = [
   'CLAUDE_HOME',
@@ -121,6 +121,33 @@ test('plugin data directory is used for runtime state when provided', () => {
     } finally {
       fs.rmSync(pluginData, { recursive: true, force: true });
     }
+  }));
+});
+
+test('manual AgentAura slash command suppresses surrounding hooks', () => {
+  withIsolatedEnv(() => withTempClaudeHome(() => {
+    assert.equal(payloadContainsAgentAuraCommand({ prompt: '/agent-aura-claude:aura busy' }), true);
+    assert.equal(payloadContainsAgentAuraCommand({ prompt: 'explain /agent-aura-claude:aura busy' }), false);
+    assert.equal(shouldSkipClaudeHook('UserPromptSubmit', { prompt: '/agent-aura-claude:aura busy' }), true);
+    assert.equal(hooksSuppressed(), true);
+    assert.equal(shouldSkipClaudeHook('Stop', {}), true);
+  }));
+});
+
+test('non-AgentAura user prompt clears manual hook suppression', () => {
+  withIsolatedEnv(() => withTempClaudeHome(() => {
+    suppressHooks(8000, 'test');
+    assert.equal(hooksSuppressed(), true);
+    assert.equal(shouldSkipClaudeHook('UserPromptSubmit', { prompt: 'normal request' }), false);
+    assert.equal(hooksSuppressed(), false);
+    assert.equal(loadRuntimeState().hookSuppressedUntil, undefined);
+  }));
+});
+
+test('manual hook suppression expires', () => {
+  withIsolatedEnv(() => withTempClaudeHome(() => {
+    suppressHooks(1, 'test');
+    assert.equal(hooksSuppressed(Date.now() + 10), false);
   }));
 });
 

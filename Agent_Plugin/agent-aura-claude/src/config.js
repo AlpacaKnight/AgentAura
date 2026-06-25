@@ -18,6 +18,8 @@ const DEFAULT_CONFIG = {
   autoDiscover: true,
 };
 
+const DEFAULT_HOOK_SUPPRESSION_MS = 8000;
+
 function claudeDir() {
   return process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 }
@@ -82,6 +84,29 @@ function clearRuntimeState() {
   } catch {
     // Missing state is fine.
   }
+}
+
+function suppressHooks(durationMs = DEFAULT_HOOK_SUPPRESSION_MS, reason = 'manual command') {
+  const runtime = loadRuntimeState();
+  saveRuntimeState({
+    ...runtime,
+    hookSuppressedUntil: Date.now() + durationMs,
+    hookSuppressionReason: reason,
+  });
+}
+
+function clearHookSuppression() {
+  const runtime = loadRuntimeState();
+  if (!runtime.hookSuppressedUntil && !runtime.hookSuppressionReason) {
+    return;
+  }
+  const { hookSuppressedUntil, hookSuppressionReason, ...next } = runtime;
+  saveRuntimeState(next);
+}
+
+function hooksSuppressed(now = Date.now()) {
+  const until = Number(loadRuntimeState().hookSuppressedUntil || 0);
+  return Number.isFinite(until) && until > now;
 }
 
 function isDisabled() {
@@ -284,6 +309,7 @@ function writeJsonFile(filePath, value) {
 
 module.exports = {
   DEFAULT_CONFIG,
+  DEFAULT_HOOK_SUPPRESSION_MS,
   claudeDir,
   configPath,
   configExists,
@@ -295,6 +321,9 @@ module.exports = {
   loadRuntimeState,
   saveRuntimeState,
   clearRuntimeState,
+  suppressHooks,
+  clearHookSuppression,
+  hooksSuppressed,
   isDisabled,
   setDisabled,
 };

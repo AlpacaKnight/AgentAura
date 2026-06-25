@@ -12,6 +12,7 @@ const {
   runtimeStatePath,
   saveConfig,
   setDisabled,
+  suppressHooks,
 } = require('./config');
 const { discoverDevices } = require('./discovery');
 const { RingLightClient } = require('./deviceClient');
@@ -49,6 +50,7 @@ async function main(argv = process.argv.slice(2)) {
       break;
     case 'status':
     case 'doctor':
+      suppressHooks(undefined, 'manual status command');
       await status(args);
       break;
     case 'hooks':
@@ -56,11 +58,13 @@ async function main(argv = process.argv.slice(2)) {
       break;
     case 'disable':
     case 'off':
+      suppressHooks(undefined, 'manual disable command');
       setDisabled(true);
       console.log(`AgentAura Claude disabled: ${disabledPath()}`);
       break;
     case 'enable':
     case 'on':
+      suppressHooks(undefined, 'manual enable command');
       setDisabled(false);
       console.log('AgentAura Claude enabled');
       break;
@@ -186,6 +190,7 @@ async function testState(args) {
   if (!isAgentState(state)) {
     throw new Error('state must be one of: running, busy, waiting, error, idle, init, offline, upgrade');
   }
+  suppressHooks(undefined, `manual state ${state}`);
   const ok = await new RingLightClient(loadConfig()).sendAgentState(state);
   if (!ok) {
     throw new Error(`Failed to send agent state ${state}. Check config and device reachability.`);
@@ -198,6 +203,7 @@ async function sendCommand(args) {
   if (!raw) {
     throw new Error('command text is required');
   }
+  suppressHooks(undefined, 'manual firmware command');
   const ok = await new RingLightClient(loadConfig()).sendCommand(raw);
   if (!ok) {
     throw new Error(`Failed to send command: ${raw}`);

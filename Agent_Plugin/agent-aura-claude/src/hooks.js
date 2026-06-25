@@ -1,6 +1,6 @@
 'use strict';
 
-const { loadConfig } = require('./config');
+const { clearHookSuppression, hooksSuppressed, loadConfig, suppressHooks } = require('./config');
 const { RingLightClient } = require('./deviceClient');
 const { isAgentState } = require('./types');
 
@@ -53,11 +53,29 @@ async function runClaudeHook(eventArg) {
   try {
     const payload = await readStdinJson();
     const eventName = normalizeClaudeEventName(eventArg || '', payload) || 'Unknown';
+    if (shouldSkipClaudeHook(eventName, payload)) {
+      return;
+    }
     const state = mapClaudeEventToAgentState(eventName, payload);
     await new RingLightClient(loadConfig()).sendAgentState(state);
   } catch {
     // Hook commands must never break Claude Code execution.
   }
+}
+
+function shouldSkipClaudeHook(eventName, payload) {
+  if (payloadContainsAgentAuraCommand(payload)) {
+    suppressHooks(undefined, 'agent-aura slash command');
+    return true;
+  }
+  if (eventName === 'UserPromptSubmit') {
+    clearHookSuppression();
+    return false;
+  }
+  if (hooksSuppressed()) {
+    return true;
+  }
+  return false;
 }
 
 function mapClaudeEventToAgentState(eventName, payload) {
@@ -226,6 +244,14 @@ function mapNotificationToAgentState(payload) {
   return null;
 }
 
+function payloadContainsAgentAuraCommand(payload) {
+  return collectStringValues(payload).some((value) => {
+    const trimmed = value.trim();
+    return trimmed.startsWith('/agent-aura-claude:aura')
+      || trimmed.startsWith('agent-aura-claude:aura');
+  });
+}
+
 function collectStringValues(value, depth = 0) {
   if (value === null || value === undefined || depth > 3) {
     return [];
@@ -267,8 +293,10 @@ module.exports = {
   CLAUDE_HOOK_EVENTS,
   CLAUDE_EVENT_TO_AGENT_STATE,
   runClaudeHook,
+  shouldSkipClaudeHook,
   mapClaudeEventToAgentState,
   normalizeClaudeEventName,
   readStdinJson,
+  payloadContainsAgentAuraCommand,
   waitingSignalKey,
 };
