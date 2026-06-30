@@ -5,21 +5,25 @@ import { AgentState, isAgentState } from './types';
 const STDIN_READ_TIMEOUT_MS = 1000;
 
 export const CODEX_HOOK_EVENTS = [
-    'UserPromptSubmit',
+    'SessionStart',
     'PreToolUse',
-    'PostToolUse',
     'PermissionRequest',
-    'Stop',
+    'PostToolUse',
+    'PreCompact',
+    'PostCompact',
+    'SubagentStart',
+    'SubagentStop',
 ] as const;
 
 export const CODEX_EVENT_TO_AGENT_STATE: Record<string, AgentState> = {
-    UserPromptSubmit: 'running',
-    PreToolUse: 'busy',
-    PostToolUse: 'running',
-    PermissionRequest: 'waiting',
-    Stop: 'idle',
     SessionStart: 'init',
-    SessionEnd: 'offline',
+    PreToolUse: 'busy',
+    PermissionRequest: 'waiting',
+    PostToolUse: 'running',
+    PreCompact: 'busy',
+    PostCompact: 'running',
+    SubagentStart: 'busy',
+    SubagentStop: 'running',
 };
 
 export async function runCodexHook(eventArg?: string): Promise<void> {
@@ -145,15 +149,33 @@ function payloadSignalsError(payload: unknown): boolean {
 function payloadSignalsWaiting(payload: unknown): boolean {
     return inspectPayload(payload, (key, value) => {
         const normalizedKey = key.toLowerCase();
-        if ((normalizedKey.includes('permission') || normalizedKey.includes('approval')) && Boolean(value)) {
+        if (waitingSignalKey(normalizedKey) && Boolean(value)) {
             return true;
         }
         if (typeof value === 'string') {
             const lowered = value.toLowerCase();
-            return lowered === 'pending' || lowered === 'waiting' || lowered === 'approval_required';
+            return lowered === 'pending'
+                || lowered === 'waiting'
+                || lowered === 'approval_required'
+                || lowered === 'permission_prompt'
+                || lowered === 'elicitation_dialog';
         }
         return false;
     });
+}
+
+function waitingSignalKey(normalizedKey: string): boolean {
+    if (!(normalizedKey.includes('permission') || normalizedKey.includes('approval') || normalizedKey.includes('elicitation'))) {
+        return false;
+    }
+    if (normalizedKey === 'permission_mode' || normalizedKey === 'permissionmode') {
+        return false;
+    }
+    return normalizedKey.includes('prompt')
+        || normalizedKey.includes('pending')
+        || normalizedKey.includes('required')
+        || normalizedKey.includes('request')
+        || normalizedKey.includes('dialog');
 }
 
 function inspectPayload(payload: unknown, predicate: (key: string, value: unknown) => boolean, depth = 0): boolean {

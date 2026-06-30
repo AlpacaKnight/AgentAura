@@ -109,11 +109,17 @@ export class RingLightClient {
         if (!found?.ip) {
             return;
         }
-        this.config = saveConfig({
-            transport: 'http',
+        const patch: Partial<AgentAuraConfig> = {
             host: found.ip,
-            port: found.http || 80,
-        });
+        };
+
+        if (this.config.transport === 'udp') {
+            patch.port = found.udp || 8888;
+        } else {
+            patch.port = found.http || 80;
+        }
+
+        this.config = saveConfig(patch);
     }
 
     private httpPost(requestPath: string, body: string): Promise<boolean> {

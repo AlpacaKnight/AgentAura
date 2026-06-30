@@ -1,23 +1,26 @@
 # AgentAura Codex Plugin
 
-将 Codex 的运行状态同步到 AgentAura ESP32 环形灯。插件基于 Codex hook 机制，参考 Codex 宠物的做法，把 `UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`PermissionRequest`、`Stop` 等事件映射为固件文档中定义的 `agent <状态>` 指令。
+将 Codex 的运行状态同步到 AgentAura ESP32 环形灯。插件基于 Codex hook 机制，把当前版本 Codex 实际支持的 hook 事件映射为固件文档中定义的 `agent <状态>` 指令。
 
 ## 状态映射
 
 | Codex hook | AgentAura 状态 | 环形灯表现 |
 | :--- | :--- | :--- |
-| `UserPromptSubmit` | `running` | 绿色呼吸，收到用户请求 |
+| `SessionStart` | `init` | 初始化动画 |
 | `PreToolUse` | `busy` | 黄色跑马，正在调用工具 |
-| `PostToolUse` | `running` | 绿色呼吸，工具结束后继续工作 |
 | `PermissionRequest` | `waiting` | 黄色闪烁，等待审批 |
-| `Stop` | `idle` | 蓝色呼吸，任务完成后自动关灯 |
+| `PostToolUse` | `running` | 绿色呼吸，工具结束后继续工作 |
+| `PreCompact` | `busy` | 压缩上下文前忙碌 |
+| `PostCompact` | `running` | 压缩完成后恢复运行 |
+| `SubagentStart` | `busy` | 子代理开始工作 |
+| `SubagentStop` | `running` | 子代理结束后恢复运行 |
 
-这些状态与固件 [API 文档](../../Arduino_ESP32_RingLight/ESP32_RingLight_Firmware/doc/API.md) 的 `agent running/busy/waiting/error/idle/init/offline/upgrade` 完全一致，无需修改固件。
+这些状态与固件 [API 文档](../../Arduino_ESP32_RingLight/ESP32_RingLight_Firmware/doc/API.md) 的 `agent running/busy/waiting/error/idle/init/offline/upgrade` 一致，无需修改固件。
 
 ## 功能
 
 - 支持 HTTP、UDP、USB 串口三种传输方式。
-- 支持 UDP 广播发现设备，发现后自动保存 HTTP 连接配置。
+- 支持 UDP 广播发现设备，并按当前 transport 补齐 host/port；不会自动把 UDP 配置改成 HTTP。
 - 安装/卸载 Codex hooks 时会合并 `~/.codex/hooks.json`，保留其它插件 hook。
 - 默认开启同步；关闭后 hook 会立即 no-op，不再向环形灯同步任何信号。
 - Hook 命令永远吞掉异常，设备离线不会影响 Codex 主流程。
@@ -35,11 +38,14 @@ npm run compile
 # 创建默认配置文件，便于手动编辑
 node out/index.js config init
 
-# 推荐：自动发现局域网设备并保存配置
+# 推荐：自动发现局域网设备并保存当前 transport 对应的连接信息
 node out/index.js configure --discover
 
 # 或手动配置 HTTP
 node out/index.js configure --transport http --host 192.168.1.100 --port 80
+
+# 或手动配置 UDP
+node out/index.js configure --transport udp --host 192.168.1.100 --port 8888
 
 # 写入 Codex hooks
 node out/index.js install-hooks
@@ -47,7 +53,7 @@ node out/index.js install-hooks
 # 测试灯效
 node out/index.js test busy
 node out/index.js test waiting
-node out/index.js test idle
+node out/index.js test init
 ```
 
 全局安装打包产物后可以直接使用：
@@ -163,7 +169,7 @@ agent-aura-codex uninstall-hooks
 agent-aura-codex disable
 ```
 
-这会创建 `~/.codex/agent-aura-codex.disabled`。之后 Codex hook 仍然存在，但每次触发都会立即跳过，不会发送 `agent running`、`agent busy`、`agent waiting` 或其它信号到环形灯。
+这会创建 `~/.codex/agent-aura-codex.disabled`。之后 Codex hook 仍然存在，但每次触发都会立即跳过，不会发送任何状态到环形灯。
 
 恢复同步：
 
@@ -257,6 +263,7 @@ bash scripts/pack.sh
 # 如果希望直接执行 ./scripts/pack.sh，先补执行权限
 chmod +x scripts/pack.sh
 ./scripts/pack.sh
+```
 
 # Windows PowerShell
 powershell -ExecutionPolicy Bypass -File scripts/pack.ps1
@@ -338,6 +345,7 @@ agent-aura-codex uninstall-hooks
 npm uninstall -g agent-aura-codex
 rm -f ~/.codex/agent-aura-codex.json ~/.codex/agent-aura-codex-state.json ~/.codex/agent-aura-codex.disabled
 ```
+
 
 ## Agent Skill
 

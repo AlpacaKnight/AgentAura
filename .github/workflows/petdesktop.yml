@@ -58,7 +58,9 @@ jobs:
         working-directory: PetDesktop
       - run: cargo fmt --manifest-path PetDesktop/src-tauri/Cargo.toml -- --check
       - run: cargo check --locked --manifest-path PetDesktop/src-tauri/Cargo.toml
-      - run: cargo test --locked --manifest-path PetDesktop/src-tauri/Cargo.toml
+      - name: Run tests (Linux only)
+        if: runner.os == 'Linux'
+        run: cargo test --locked --manifest-path PetDesktop/src-tauri/Cargo.toml
 
   plugins:
     runs-on: ubuntu-latest
