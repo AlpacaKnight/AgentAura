@@ -296,6 +296,15 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [form, setForm] = useState(snapshot.settings);
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
   const patch = (value: Partial<AppSettings>) => setForm(current => ({ ...current, ...value }));
+  const previewScale = (petScale: number) => {
+    patch({ petScale });
+    void api.previewPetScale(petScale);
+  };
+  const generateToken = () => {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    patch({ lanToken: Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('') });
+  };
   return (
     <section className="split-layout">
       <article className="panel settings-form">
@@ -304,7 +313,7 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <Toggle label="始终置顶" checked={form.alwaysOnTop} set={alwaysOnTop => patch({ alwaysOnTop })} />
         <Toggle label="随机闲逛" checked={form.roamEnabled} set={roamEnabled => patch({ roamEnabled })} />
         <Toggle label="点击穿透" checked={form.clickThrough} set={clickThrough => patch({ clickThrough })} />
-        <label>宠物缩放 <output>{Math.round(form.petScale * 100)}%</output><input type="range" min="0.5" max="2" step="0.05" value={form.petScale} onChange={event => patch({ petScale: Number(event.target.value) })} /></label>
+        <label>宠物缩放 <output>{Math.round(form.petScale * 100)}%</output><input type="range" min="0.5" max="2" step="0.05" value={form.petScale} onInput={event => previewScale(Number(event.currentTarget.value))} /></label>
         <label>闲逛间隔（秒）<input type="number" min="10" max="600" value={form.roamIntervalSeconds} onChange={event => patch({ roamIntervalSeconds: Number(event.target.value) })} /></label>
         <label>闲逛速度<input type="number" min="20" max="300" value={form.roamSpeed} onChange={event => patch({ roamSpeed: Number(event.target.value) })} /></label>
       </article>
@@ -312,9 +321,9 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <div className="panel-title"><div><p className="eyebrow">SERVICE</p><h2>服务与启动</h2></div></div>
         <Toggle label="开机启动" checked={form.launchAtStartup} set={launchAtStartup => patch({ launchAtStartup })} />
         <Toggle label="允许局域网访问" checked={form.lanEnabled} set={lanEnabled => patch({ lanEnabled })} />
-        <label>HTTP 地址<input readOnly value={form.lanEnabled ? '0.0.0.0:47831（重启后生效）' : '127.0.0.1:47831'} /></label>
-        {form.lanEnabled && <label>访问令牌<input value={form.lanToken} onChange={event => patch({ lanToken: event.target.value })} /></label>}
-        <p className="hint">局域网模式下，远程客户端必须发送 Authorization: Bearer &lt;token&gt;。</p>
+        <label>HTTP 地址<input readOnly value={form.lanEnabled ? '0.0.0.0:47831' : '127.0.0.1:47831'} /></label>
+        {form.lanEnabled && <label>访问令牌（可选）<div className="input-action-row"><input value={form.lanToken} onChange={event => patch({ lanToken: event.target.value })} /><button type="button" className="secondary" onClick={generateToken}><RefreshCw size={15} />生成令牌</button></div></label>}
+        <p className="hint">访问令牌留空时允许直接连接；设置后，远程客户端必须发送 Authorization: Bearer &lt;token&gt;。</p>
         <div className="form-actions"><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存全部设置</button></div>
       </article>
     </section>

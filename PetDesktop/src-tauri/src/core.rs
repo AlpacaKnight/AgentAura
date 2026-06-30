@@ -8,8 +8,7 @@ use std::{
 use chrono::{SecondsFormat, Utc};
 use parking_lot::{Mutex, RwLock};
 use tauri::{AppHandle, Emitter};
-use tokio::sync::mpsc;
-use uuid::Uuid;
+use tokio::sync::{mpsc, watch};
 
 use crate::{
     hardware::HardwareMessage,
@@ -37,6 +36,7 @@ pub struct AppCore {
     model: Arc<RwLock<RuntimeModel>>,
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     hardware_tx: Arc<Mutex<Option<mpsc::Sender<HardwareMessage>>>>,
+    http_lan_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
     data_dir: Arc<PathBuf>,
 }
 
@@ -67,6 +67,7 @@ impl AppCore {
             })),
             app_handle: Arc::new(RwLock::new(None)),
             hardware_tx: Arc::new(Mutex::new(None)),
+            http_lan_tx: Arc::new(Mutex::new(None)),
             data_dir: Arc::new(data_dir),
         })
     }
@@ -81,6 +82,16 @@ impl AppCore {
 
     pub fn set_hardware_sender(&self, sender: mpsc::Sender<HardwareMessage>) {
         *self.hardware_tx.lock() = Some(sender);
+    }
+
+    pub fn set_http_lan_sender(&self, sender: watch::Sender<bool>) {
+        *self.http_lan_tx.lock() = Some(sender);
+    }
+
+    pub fn reload_http_listener(&self) {
+        if let Some(sender) = self.http_lan_tx.lock().as_ref() {
+            let _ = sender.send(self.settings().lan_enabled);
+        }
     }
 
     pub fn settings(&self) -> AppSettings {
@@ -279,11 +290,13 @@ impl AppCore {
 
     pub fn save_settings(&self, mut settings: AppSettings) -> anyhow::Result<()> {
         settings.normalize();
-        if settings.lan_enabled && settings.lan_token.trim().is_empty() {
-            settings.lan_token = Uuid::new_v4().simple().to_string();
-        }
+        let lan_changed = self.settings().lan_enabled != settings.lan_enabled;
+
         persist_settings(self.data_dir(), &settings)?;
         self.model.write().settings = settings;
+        if lan_changed {
+            self.reload_http_listener();
+        }
         self.log(LogLevel::Info, "settings", "settings saved");
         Ok(())
     }

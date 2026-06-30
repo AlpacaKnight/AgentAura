@@ -121,6 +121,9 @@ input, select { width: 100%; padding: 9px 10px; color: #e9edf5; border: 1px soli
 input:focus, select:focus { border-color: #7569ff; box-shadow: 0 0 0 3px #7569ff18; }
 input[type="range"] { padding: 0; accent-color: #7569ff; }
 .form-actions { flex-wrap: wrap; margin-top: 18px; }
+.input-action-row { display: flex; align-items: center; gap: 8px; }
+.input-action-row input { flex: 1; min-width: 0; }
+.input-action-row button { flex: 0 0 auto; white-space: nowrap; }
 .device-list { display: grid; gap: 8px; }
 .device-list button { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #283349; border-radius: 9px; background: #0d131d; cursor: pointer; text-align: left; }
 .device-list button:hover { border-color: #665ce0; }

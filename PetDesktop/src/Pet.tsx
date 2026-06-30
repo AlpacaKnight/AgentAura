@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { currentMonitor, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
-import { api, isTauri, onSnapshot } from './api';
+import { api, isTauri, onPetScalePreview, onSnapshot } from './api';
 import type { AnimationSpec, AppSnapshot } from './types';
 
 const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
@@ -32,6 +32,7 @@ export default function Pet() {
   const [frame, setFrame] = useState(0);
   const [moving, setMoving] = useState<'running-left' | 'running-right'>();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [previewScale, setPreviewScale] = useState<number>();
   const roamTimer = useRef<number | undefined>(undefined);
 
   const refresh = useCallback(async () => {
@@ -50,9 +51,15 @@ export default function Pet() {
     return () => stop?.();
   }, [refresh]);
 
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    void onPetScalePreview(setPreviewScale).then(unlisten => { stop = unlisten; });
+    return () => stop?.();
+  }, []);
+
   const animationName = moving ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
   const animation = snapshot?.selectedPet?.animations[animationName] ?? DEFAULT_ANIMATIONS[animationName] ?? DEFAULT_ANIMATIONS.idle;
-  const scale = snapshot?.settings.petScale ?? 1;
+  const scale = previewScale ?? snapshot?.settings.petScale ?? 1;
 
   useEffect(() => {
     setFrame(0);

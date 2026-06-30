@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AgentState,
   AppSettings,
@@ -56,6 +56,7 @@ export const api = {
   setAgentState: (state: AgentState) => call<void>('set_manual_state', { state }),
   setLockedAgent: (instanceId?: string) => call<void>('set_locked_agent', { instanceId: instanceId ?? null }),
   setPaused: (paused: boolean) => call<void>('set_paused', { paused }),
+  previewPetScale: (petScale: number) => isTauri() ? emitTo('pet', 'pet-scale-preview', petScale) : Promise.resolve(),
   saveSettings: (settings: AppSettings) => call<AppSnapshot>('save_settings', { settings }),
   installPet: (source: string, replace = false) => call<AppSnapshot>('install_pet', { source, replace }),
   deletePet: (petId: string) => call<AppSnapshot>('delete_pet', { petId }),
@@ -71,4 +72,9 @@ export const api = {
 export async function onSnapshot(callback: (snapshot: AppSnapshot) => void): Promise<UnlistenFn> {
   if (!isTauri()) return () => undefined;
   return listen<AppSnapshot>('snapshot-changed', event => callback(event.payload));
+}
+
+export async function onPetScalePreview(callback: (scale: number) => void): Promise<UnlistenFn> {
+  if (!isTauri()) return () => undefined;
+  return listen<number>('pet-scale-preview', event => callback(event.payload));
 }

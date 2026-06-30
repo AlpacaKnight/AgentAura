@@ -304,12 +304,18 @@ fn clamp_to_monitor(window: &WebviewWindow) -> Result<(), String> {
 
 fn apply_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
     let manager = app.autolaunch();
+    let current = manager
+        .is_enabled()
+        .map_err(|error| format!("cannot read autostart state: {error}"))?;
+    if current == enabled {
+        return Ok(());
+    }
     if enabled {
         manager.enable()
     } else {
         manager.disable()
     }
-    .map_err(|error| error.to_string())
+    .map_err(|error| format!("cannot update autostart state: {error}"))
 }
 
 fn position_path(data_dir: &Path) -> PathBuf {

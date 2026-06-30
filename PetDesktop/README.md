@@ -143,7 +143,7 @@ npm run tauri -- build
 - 心跳：`POST /api/v1/agents/{instanceId}/heartbeat`
 - 状态：`POST /api/v1/agents/{instanceId}/state`
 
-开启局域网模式后需要重启应用，HTTP 请求必须携带 `Authorization: Bearer <token>`；UDP 远程命令格式为 `auth <token> <command>`。局域网发现命令可匿名调用，但不能匿名控制。
+开启局域网模式后需要重启应用。访问令牌可选：留空时允许局域网客户端直接连接；设置令牌后，HTTP 请求必须携带 `Authorization: Bearer <token>`，UDP 远程命令格式为 `auth <token> <command>`。局域网发现命令始终可匿名调用。
 
 ## 插件目标选择
 

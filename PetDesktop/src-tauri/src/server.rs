@@ -13,7 +13,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::net::{TcpListener, UdpSocket};
+use tokio::{
+    net::{TcpListener, UdpSocket},
+    sync::watch,
+};
 
 use crate::{
     core::{AppCore, RegisterAgent},
@@ -67,9 +70,11 @@ struct OkResponse {
 }
 
 pub fn start(core: AppCore) {
+    let (http_lan_tx, http_lan_rx) = watch::channel(core.settings().lan_enabled);
+    core.set_http_lan_sender(http_lan_tx);
     let http_core = core.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = serve_http(http_core.clone()).await {
+        if let Err(error) = serve_http(http_core.clone(), http_lan_rx).await {
             http_core.log(LogLevel::Error, "http", error);
         }
     });
@@ -82,42 +87,53 @@ pub fn start(core: AppCore) {
     });
 }
 
-async fn serve_http(core: AppCore) -> Result<(), String> {
-    let router = Router::new()
-        .route("/health", get(health))
-        .route("/api/state", get(api_state))
-        .route("/api/agent", post(api_agent))
-        .route("/api/cmd", post(api_command))
-        .route("/api/v1/agents/register", post(register_agent))
-        .route("/api/v1/agents", get(list_agents))
-        .route("/api/v1/agents/selection", put(select_agent))
-        .route("/api/v1/agents/{instance_id}/heartbeat", post(heartbeat))
-        .route("/api/v1/agents/{instance_id}/state", post(v1_state))
-        .route("/api/v1/agents/{instance_id}", delete(disconnect_agent))
-        .with_state(core.clone());
+async fn serve_http(core: AppCore, mut http_lan_rx: watch::Receiver<bool>) -> Result<(), String> {
+    loop {
+        let lan_enabled = *http_lan_rx.borrow_and_update();
+        let router = Router::new()
+            .route("/health", get(health))
+            .route("/api/state", get(api_state))
+            .route("/api/agent", post(api_agent))
+            .route("/api/cmd", post(api_command))
+            .route("/api/v1/agents/register", post(register_agent))
+            .route("/api/v1/agents", get(list_agents))
+            .route("/api/v1/agents/selection", put(select_agent))
+            .route("/api/v1/agents/{instance_id}/heartbeat", post(heartbeat))
+            .route("/api/v1/agents/{instance_id}/state", post(v1_state))
+            .route("/api/v1/agents/{instance_id}", delete(disconnect_agent))
+            .with_state(core.clone());
 
-    let ip = if core.settings().lan_enabled {
-        IpAddr::from([0, 0, 0, 0])
-    } else {
-        IpAddr::from([127, 0, 0, 1])
-    };
-    let address = SocketAddr::new(ip, HTTP_PORT);
-    let listener = TcpListener::bind(address)
-        .await
-        .map_err(|error| format!("cannot listen on http://{address}: {error}"))?;
-    core.log(
-        LogLevel::Info,
-        "http",
-        format!("listening on http://{address}"),
-    );
-    axum::serve(
-        listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .map_err(|error| format!("HTTP server stopped: {error}"))
+        let ip = if lan_enabled {
+            IpAddr::from([0, 0, 0, 0])
+        } else {
+            IpAddr::from([127, 0, 0, 1])
+        };
+        let address = SocketAddr::new(ip, HTTP_PORT);
+        let listener = TcpListener::bind(address)
+            .await
+            .map_err(|error| format!("cannot listen on http://{address}: {error}"))?;
+        core.log(
+            LogLevel::Info,
+            "http",
+            format!("listening on http://{address}"),
+        );
+
+        tokio::select! {
+            result = axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            ) => {
+                return result.map_err(|error| format!("HTTP server stopped: {error}"));
+            }
+            changed = http_lan_rx.changed() => {
+                if changed.is_err() {
+                    return Ok(());
+                }
+                core.log(LogLevel::Info, "http", "reloading listener after LAN setting changed");
+            }
+        }
+    }
 }
-
 async fn health(State(core): State<AppCore>) -> Json<Value> {
     Json(json!({
         "ok": true,
@@ -350,7 +366,12 @@ async fn udp_command(core: &AppCore, remote: SocketAddr, raw: &str) -> String {
         raw.to_ascii_lowercase().as_str(),
         "discover" | "ping" | "who"
     );
+    let settings = core.settings();
     let command = if remote.ip().is_loopback() || is_discovery {
+        raw
+    } else if !settings.lan_enabled {
+        return "ERR unauthorized".to_string();
+    } else if settings.lan_token.trim().is_empty() {
         raw
     } else {
         let Some(rest) = raw.strip_prefix("auth ") else {
@@ -359,7 +380,7 @@ async fn udp_command(core: &AppCore, remote: SocketAddr, raw: &str) -> String {
         let Some((token, command)) = rest.split_once(' ') else {
             return "ERR unauthorized".to_string();
         };
-        if !core.settings().lan_enabled || token != core.settings().lan_token {
+        if token != settings.lan_token {
             return "ERR unauthorized".to_string();
         }
         command
@@ -390,10 +411,10 @@ async fn udp_command(core: &AppCore, remote: SocketAddr, raw: &str) -> String {
     }
 }
 
-fn discovery_response(core: &AppCore, _remote: SocketAddr) -> Value {
-    // Legacy plugins persist the reported IP and then switch to HTTP, so we
-    // advertise the loopback listener rather than the UDP source interface.
-    let ip = "127.0.0.1";
+fn discovery_response(core: &AppCore, remote: SocketAddr) -> Value {
+    // Remote clients persist this address and then switch to HTTP. Advertising
+    // loopback would make a Docker client on another machine connect to itself.
+    let ip = advertised_ip(remote);
     json!({
         "id": "petdesktop-local",
         "mac": "petdesktop-local",
@@ -406,6 +427,20 @@ fn discovery_response(core: &AppCore, _remote: SocketAddr) -> Value {
         "effect": core.snapshot().effective_state,
         "caps": ["legacy-http", "legacy-udp", "agent-v1", "local-desktop"]
     })
+}
+
+fn advertised_ip(remote: SocketAddr) -> IpAddr {
+    if remote.ip().is_loopback() {
+        return IpAddr::from([127, 0, 0, 1]);
+    }
+
+    std::net::UdpSocket::bind("0.0.0.0:0")
+        .and_then(|socket| {
+            socket.connect(remote)?;
+            socket.local_addr()
+        })
+        .map(|address| address.ip())
+        .unwrap_or_else(|_| IpAddr::from([127, 0, 0, 1]))
 }
 
 fn authorize(core: &AppCore, headers: &HeaderMap, remote: SocketAddr) -> ApiResult<()> {
@@ -431,12 +466,14 @@ fn authorize(core: &AppCore, headers: &HeaderMap, remote: SocketAddr) -> ApiResu
             "LAN access is disabled".into(),
         ));
     }
-    let expected = format!("Bearer {}", settings.lan_token);
-    if header(headers, "authorization").as_deref() != Some(expected.as_str()) {
-        return Err(ApiError(
-            StatusCode::UNAUTHORIZED,
-            "missing or invalid bearer token".into(),
-        ));
+    if !settings.lan_token.trim().is_empty() {
+        let expected = format!("Bearer {}", settings.lan_token);
+        if header(headers, "authorization").as_deref() != Some(expected.as_str()) {
+            return Err(ApiError(
+                StatusCode::UNAUTHORIZED,
+                "missing or invalid bearer token".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -513,7 +550,7 @@ mod tests {
     fn discovery_response_exposes_stable_desktop_identity() {
         let dir = tempdir().unwrap();
         let core = AppCore::new(dir.path().to_path_buf()).unwrap();
-        let response = discovery_response(&core, SocketAddr::from(([192, 168, 1, 8], 45678)));
+        let response = discovery_response(&core, SocketAddr::from(([127, 0, 0, 1], 45678)));
         assert_eq!(response["device"], "PetDesktop");
         assert_eq!(response["mac"], "petdesktop-local");
         assert_eq!(response["ip"], "127.0.0.1");
@@ -522,5 +559,36 @@ mod tests {
         assert!(response["caps"]
             .as_array()
             .is_some_and(|caps| caps.iter().any(|value| value == "agent-v1")));
+    }
+
+    #[test]
+    fn lan_without_token_allows_remote_requests() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(dir.path().to_path_buf()).unwrap();
+        let mut settings = core.settings();
+        settings.lan_enabled = true;
+        settings.lan_token.clear();
+        core.save_settings(settings).unwrap();
+
+        let remote = SocketAddr::from(([192, 168, 1, 8], 45678));
+        assert!(authorize(&core, &HeaderMap::new(), remote).is_ok());
+    }
+
+    #[test]
+    fn configured_lan_token_is_still_required() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(dir.path().to_path_buf()).unwrap();
+        let mut settings = core.settings();
+        settings.lan_enabled = true;
+        settings.lan_token = "secret".into();
+        core.save_settings(settings).unwrap();
+
+        let remote = SocketAddr::from(([192, 168, 1, 8], 45678));
+        let error = authorize(&core, &HeaderMap::new(), remote).unwrap_err();
+        assert_eq!(error.0, StatusCode::UNAUTHORIZED);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer secret".parse().unwrap());
+        assert!(authorize(&core, &headers, remote).is_ok());
     }
 }
