@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PetDesktop 跨平台开发脚本 (Windows)
 .DESCRIPTION
