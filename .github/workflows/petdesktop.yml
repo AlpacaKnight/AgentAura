@@ -1,0 +1,77 @@
+name: PetDesktop
+
+on:
+  push:
+    paths:
+      - "PetDesktop/**"
+      - "Agent_Plugin/**"
+      - ".github/workflows/petdesktop.yml"
+  pull_request:
+    paths:
+      - "PetDesktop/**"
+      - "Agent_Plugin/**"
+      - ".github/workflows/petdesktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PetDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: PetDesktop/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: PetDesktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+        working-directory: PetDesktop
+      - run: cargo fmt --manifest-path PetDesktop/src-tauri/Cargo.toml -- --check
+      - run: cargo check --locked --manifest-path PetDesktop/src-tauri/Cargo.toml
+      - run: cargo test --locked --manifest-path PetDesktop/src-tauri/Cargo.toml
+
+  plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci && npm test
+        working-directory: Agent_Plugin/agent-aura-codex
+      - run: npm ci && npm test
+        working-directory: Agent_Plugin/agent-aura-claude
+      - run: npm ci && npm run compile
+        working-directory: Agent_Plugin/agent-aura-copilot
+      - run: python -m py_compile plugin.py src/client.py src/mapper.py src/router.py
+        working-directory: Agent_Plugin/qwenpaw-plugin

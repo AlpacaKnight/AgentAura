@@ -29,6 +29,12 @@
 
 ## 子模块实现概述
 
+- `PetDesktop`
+  - 基于 Tauri 2、React 和 Rust 的 Windows/macOS/Linux 桌面宠物应用。
+  - 接收多个 Agent 插件状态，按优先级仲裁后驱动 Codex 宠物 spritesheet 动画。
+  - 提供 Agent 管理、宠物安装、透明桌宠、系统托盘，以及 HTTP/UDP/串口 AgentAura 硬件桥接。
+  - 默认在本机提供固件兼容 API；四个现有插件在没有显式硬件目标时会优先连接 PetDesktop。
+
 - `Agent_Plugin/agent-aura-copilot`
   - 监听 GitHub Copilot Chat 的 transcript 和 VS Code 终端事件。
   - 解析 Copilot 会话生命周期（用户消息、推理开始、工具执行、审批/确认、回复结束），并将其映射为 `running` / `busy` / `waiting` / `idle` / `error` 等状态。
@@ -62,6 +68,7 @@ AgentAura/
 ├── main.py                              # Python 入口（预留）
 ├── pyproject.toml                       # uv 依赖管理
 ├── README.md                            # 本文件
+├── PetDesktop/                          # 三平台桌面宠物与硬件桥接
 ├── Agent_Plugin/                        # IDE 插件集合
 │   ├── agent-aura-copilot/              # Copilot VS Code 插件
 │   ├── agent-aura-claude/               # Claude Code marketplace 插件

@@ -1,19 +1,102 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Operating-system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
 
-# Virtual environments
-.venv
-
-# Arduino-generated files
-build/
-.pio/
+# Editors and local workspace state
+.idea/
 .vscode/
+*.code-workspace
+*.swp
+*.swo
+*~
 
-# build
-build/
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+.direnv/
+.venv/
+venv/
+env/
+
+# Python caches, packaging, and test output
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+wheels/
+
+# Node.js dependencies, caches, and reports
+**/node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+.vite/
+.turbo/
+
+# Rust / Tauri generated files
+**/target/
+**/src-tauri/gen/
+
+# General build output
+**/build/
+**/dist/
+**/out/
+**/.cache/
+**/.tmp/
+tmp/
+temp/
+
+# PlatformIO / embedded build output
+**/.pio/
+compile_commands.json
+*.elf
+*.hex
+*.bin
+*.map
+
+# Logs, crash reports, and PID files
+*.log
+*.log.*
+*.pid
+*.pid.lock
+*.stackdump
+crash-reports/
+
+# Packaged release artifacts
 *.zip
+*.tgz
+*.tar.gz
+*.vsix
+*.AppImage
+*.appimage
+*.deb
+*.rpm
+*.dmg
+*.msi
+*.msix
+*.appx
+*.snap
+
+# Local test/runtime artifacts
+.vscode-test/
+playwright-report/
+test-results/
