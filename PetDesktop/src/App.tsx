@@ -294,7 +294,9 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
 
 function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [form, setForm] = useState(snapshot.settings);
+  const [lanIp, setLanIp] = useState('127.0.0.1');
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
+  useEffect(() => { void api.lanIp().then(ip => ip && setLanIp(ip)); }, []);
   const patch = (value: Partial<AppSettings>) => setForm(current => ({ ...current, ...value }));
   const previewScale = (petScale: number) => {
     patch({ petScale });
@@ -321,7 +323,7 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <div className="panel-title"><div><p className="eyebrow">SERVICE</p><h2>服务与启动</h2></div></div>
         <Toggle label="开机启动" checked={form.launchAtStartup} set={launchAtStartup => patch({ launchAtStartup })} />
         <Toggle label="允许局域网访问" checked={form.lanEnabled} set={lanEnabled => patch({ lanEnabled })} />
-        <label>HTTP 地址<input readOnly value={form.lanEnabled ? '0.0.0.0:47831' : '127.0.0.1:47831'} /></label>
+        <label>HTTP 地址<input readOnly value={form.lanEnabled ? `${lanIp}:47831` : '127.0.0.1:47831'} /></label>
         {form.lanEnabled && <label>访问令牌（可选）<div className="input-action-row"><input value={form.lanToken} onChange={event => patch({ lanToken: event.target.value })} /><button type="button" className="secondary" onClick={generateToken}><RefreshCw size={15} />生成令牌</button></div></label>}
         <p className="hint">访问令牌留空时允许直接连接；设置后，远程客户端必须发送 Authorization: Bearer &lt;token&gt;。</p>
         <div className="form-actions"><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存全部设置</button></div>

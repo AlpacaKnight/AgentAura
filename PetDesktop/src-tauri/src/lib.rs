@@ -6,6 +6,7 @@ mod server;
 
 use std::{
     fs,
+    net::UdpSocket,
     path::{Path, PathBuf},
 };
 
@@ -22,6 +23,17 @@ use tauri_plugin_autostart::ManagerExt;
 struct StoredPosition {
     x: i32,
     y: i32,
+}
+
+#[tauri::command]
+fn get_lan_ip() -> String {
+    UdpSocket::bind("0.0.0.0:0")
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80")?;
+            socket.local_addr()
+        })
+        .map(|address| address.ip().to_string())
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
 #[tauri::command]
@@ -192,6 +204,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            get_lan_ip,
             get_snapshot,
             set_manual_state,
             set_locked_agent,

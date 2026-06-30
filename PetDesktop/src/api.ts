@@ -52,6 +52,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 }
 
 export const api = {
+  lanIp: () => call<string>('get_lan_ip'),
   snapshot: () => call<AppSnapshot>('get_snapshot'),
   setAgentState: (state: AgentState) => call<void>('set_manual_state', { state }),
   setLockedAgent: (instanceId?: string) => call<void>('set_locked_agent', { instanceId: instanceId ?? null }),
