@@ -146,6 +146,7 @@ input[type="range"] { padding: 0; accent-color: #7569ff; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+html:has(.pet-window),
 body:has(.pet-window) { overflow: hidden; background: transparent; }
 .pet-window { position: relative; display: grid; place-items: end center; width: 100vw; height: 100vh; overflow: hidden; user-select: none; cursor: grab; }
 .pet-window:active { cursor: grabbing; }
