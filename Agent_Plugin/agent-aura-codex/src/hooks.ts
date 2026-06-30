@@ -1,8 +1,12 @@
+import * as childProcess from 'child_process';
+import * as crypto from 'crypto';
+import * as path from 'path';
+import { isDisabled, loadConfig, loadRuntimeState, saveRuntimeState } from './config';
 import { RingLightClient } from './deviceClient';
-import { loadConfig } from './config';
-import { AgentState, isAgentState } from './types';
+import { AgentAuraConfig, AgentState, isAgentState } from './types';
 
 const STDIN_READ_TIMEOUT_MS = 1000;
+const IDLE_FALLBACK_ARMING_EVENTS = new Set(['SessionStart', 'PostToolUse', 'PostCompact', 'SubagentStop']);
 
 export const CODEX_HOOK_EVENTS = [
     'SessionStart',
@@ -31,9 +35,56 @@ export async function runCodexHook(eventArg?: string): Promise<void> {
         const payload = await readStdinJson();
         const eventName = normalizeCodexEventName(eventArg || '', payload) || 'Unknown';
         const state = mapCodexEventToAgentState(eventName, payload);
-        await new RingLightClient(loadConfig()).sendAgentState(state);
+        const config = loadConfig();
+        const ok = await new RingLightClient(config).sendAgentState(state);
+        if (ok) {
+            updateIdleFallback(eventName, state, config);
+        } else {
+            clearIdleFallback();
+        }
     } catch {
         // Hook commands must never break Codex execution.
+    }
+}
+
+export async function runIdleFallback(token: string, delayMs: number): Promise<void> {
+    try {
+        const waitMs = Math.max(0, Math.round(delayMs));
+        if (waitMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+
+        const config = loadConfig();
+        if (!config.enabled || isDisabled() || config.idleFallbackMs <= 0) {
+            return;
+        }
+
+        const runtime = loadRuntimeState();
+        if (runtime.idleFallbackToken !== token) {
+            return;
+        }
+        if (runtime.idleFallbackDueAt && runtime.idleFallbackDueAt > Date.now()) {
+            return;
+        }
+        if (runtime.lastState === 'busy' || runtime.lastState === 'waiting') {
+            return;
+        }
+
+        const ok = await new RingLightClient(config).sendAgentState('idle');
+        if (!ok) {
+            return;
+        }
+
+        const latest = loadRuntimeState();
+        if (latest.idleFallbackToken === token) {
+            saveRuntimeState({
+                ...latest,
+                idleFallbackToken: undefined,
+                idleFallbackDueAt: undefined,
+            });
+        }
+    } catch {
+        // Idle fallback must never break Codex execution.
     }
 }
 
@@ -71,6 +122,55 @@ export function mapCodexEventToAgentState(eventName: string, payload?: unknown):
         return 'idle';
     }
     return 'running';
+}
+
+export function shouldArmIdleFallback(eventName: string, state: AgentState): boolean {
+    if (state !== 'running' && state !== 'init') {
+        return false;
+    }
+    return IDLE_FALLBACK_ARMING_EVENTS.has(eventName.trim());
+}
+
+function updateIdleFallback(eventName: string, state: AgentState, config: AgentAuraConfig): void {
+    const runtime = loadRuntimeState();
+
+    if (config.idleFallbackMs <= 0 || !shouldArmIdleFallback(eventName, state)) {
+        if (runtime.idleFallbackToken || runtime.idleFallbackDueAt) {
+            saveRuntimeState({
+                ...runtime,
+                idleFallbackToken: undefined,
+                idleFallbackDueAt: undefined,
+            });
+        }
+        return;
+    }
+
+    const token = crypto.randomUUID();
+    const dueAt = Date.now() + config.idleFallbackMs;
+    saveRuntimeState({
+        ...runtime,
+        idleFallbackToken: token,
+        idleFallbackDueAt: dueAt,
+    });
+
+    const entry = path.resolve(__dirname, 'index.js');
+    const child = childProcess.spawn(process.execPath || 'node', [entry, 'idle-fallback', token, String(config.idleFallbackMs)], {
+        detached: true,
+        stdio: 'ignore',
+    });
+    child.unref();
+}
+
+function clearIdleFallback(): void {
+    const runtime = loadRuntimeState();
+    if (!runtime.idleFallbackToken && !runtime.idleFallbackDueAt) {
+        return;
+    }
+    saveRuntimeState({
+        ...runtime,
+        idleFallbackToken: undefined,
+        idleFallbackDueAt: undefined,
+    });
 }
 
 function normalizeCodexEventName(eventArg: string, payload?: unknown): string {

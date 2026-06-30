@@ -37,6 +37,7 @@ const DEFAULT_CONFIG: AgentAuraConfig = {
     debounceMs: 500,
     cooldownMs: 3000,
     timeoutMs: 650,
+    idleFallbackMs: 5000,
     autoDiscover: true,
 };
 
@@ -124,6 +125,7 @@ function normalizeConfig(input: Partial<AgentAuraConfig>): AgentAuraConfig {
         debounceMs: normalizeInt(input.debounceMs, DEFAULT_CONFIG.debounceMs, 0, 60000),
         cooldownMs: normalizeInt(input.cooldownMs, DEFAULT_CONFIG.cooldownMs, 0, 60000),
         timeoutMs: normalizeInt(input.timeoutMs, DEFAULT_CONFIG.timeoutMs, 100, 10000),
+        idleFallbackMs: normalizeInt(input.idleFallbackMs, DEFAULT_CONFIG.idleFallbackMs, 0, 600000),
         autoDiscover: input.autoDiscover !== false,
     };
 }
@@ -157,6 +159,9 @@ function applyEnvironmentOverrides(config: AgentAuraConfig): void {
 
     const timeoutMs = readEnv('AGENTAURA_CODEX_TIMEOUT_MS', 'AGENTAURA_TIMEOUT_MS');
     if (timeoutMs !== undefined) { config.timeoutMs = Number(timeoutMs); }
+
+    const idleFallbackMs = readEnv('AGENTAURA_CODEX_IDLE_FALLBACK_MS', 'AGENTAURA_IDLE_FALLBACK_MS');
+    if (idleFallbackMs !== undefined) { config.idleFallbackMs = Number(idleFallbackMs); }
 
     const autoDiscover = readEnv('AGENTAURA_CODEX_AUTO_DISCOVER', 'AGENTAURA_AUTO_DISCOVER');
     if (autoDiscover !== undefined) { config.autoDiscover = parseBoolean(autoDiscover); }
@@ -206,5 +211,6 @@ function readJsonFile<T>(filePath: string): T | null {
 
 function writeJsonFile(filePath: string, value: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}
+`, 'utf8');
 }

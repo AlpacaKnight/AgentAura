@@ -25,6 +25,7 @@ export interface AgentAuraConfig {
     debounceMs: number;
     cooldownMs: number;
     timeoutMs: number;
+    idleFallbackMs: number;
     autoDiscover: boolean;
 }
 
@@ -33,6 +34,8 @@ export interface RuntimeState {
     lastSentAt?: number;
     unreachableUntil?: number;
     lastError?: string;
+    idleFallbackToken?: string;
+    idleFallbackDueAt?: number;
 }
 
 export interface DiscoveredDevice {

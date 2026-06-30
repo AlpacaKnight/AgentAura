@@ -4,7 +4,7 @@ import { clearRuntimeState, codexHooksPath, configPath, disabledPath, initConfig
 import { discoverDevices } from './discovery';
 import { RingLightClient } from './deviceClient';
 import { installCodexHooks, printCodexHooks, uninstallCodexHooks } from './installHooks';
-import { CODEX_EVENT_TO_AGENT_STATE, CODEX_HOOK_EVENTS, runCodexHook } from './hooks';
+import { CODEX_EVENT_TO_AGENT_STATE, CODEX_HOOK_EVENTS, runCodexHook, runIdleFallback } from './hooks';
 import { AgentAuraConfig, AgentState, TransportName, isAgentState, isTransportName } from './types';
 
 async function main(): Promise<void> {
@@ -12,6 +12,10 @@ async function main(): Promise<void> {
 
     if (command === 'hook') {
         await runCodexHook(args[0]);
+        return;
+    }
+    if (command === 'idle-fallback') {
+        await idleFallbackCommand(args);
         return;
     }
 
@@ -121,6 +125,7 @@ async function configure(args: string[]): Promise<void> {
     if (flags.debounceMs !== undefined) { patch.debounceMs = parseNumberFlag(flags.debounceMs, '--debounce-ms'); }
     if (flags.cooldownMs !== undefined) { patch.cooldownMs = parseNumberFlag(flags.cooldownMs, '--cooldown-ms'); }
     if (flags.timeoutMs !== undefined) { patch.timeoutMs = parseNumberFlag(flags.timeoutMs, '--timeout-ms'); }
+    if (flags.idleFallbackMs !== undefined) { patch.idleFallbackMs = parseNumberFlag(flags.idleFallbackMs, '--idle-fallback-ms'); }
     if (flags.autoDiscover !== undefined) { patch.autoDiscover = parseBoolean(flags.autoDiscover); }
 
     if (flags.discover !== undefined) {
@@ -129,9 +134,9 @@ async function configure(args: string[]): Promise<void> {
         if (!first?.ip) {
             throw new Error('No AgentAura ring light found via UDP discovery');
         }
-        patch.transport = 'http';
         patch.host = first.ip;
-        patch.port = first.http || 80;
+        const transport = patch.transport || loadConfig().transport;
+        patch.port = transport === 'udp' ? (first.udp || 8888) : (first.http || 80);
     }
 
     const config = saveConfig(patch);
@@ -148,7 +153,11 @@ async function discover(args: string[]): Promise<void> {
         if (!first?.ip) {
             throw new Error('No device found to save');
         }
-        const config = saveConfig({ transport: 'http', host: first.ip, port: first.http || 80 });
+        const current = loadConfig();
+        const config = saveConfig({
+            host: first.ip,
+            port: current.transport === 'udp' ? (first.udp || 8888) : (first.http || 80),
+        });
         printJson({ devices, saved: config });
         return;
     }
@@ -198,6 +207,15 @@ async function status(args: string[]): Promise<void> {
         result.device = await client.health();
     }
     printJson(result);
+}
+
+async function idleFallbackCommand(args: string[]): Promise<void> {
+    const token = (args[0] || '').trim();
+    const delayMs = parseNumberFlag(args[1] || '0', 'idle-fallback delay');
+    if (!token) {
+        throw new Error('idle-fallback token is required');
+    }
+    await runIdleFallback(token, delayMs);
 }
 
 function hooksCommand(args: string[]): void {
@@ -302,6 +320,7 @@ Environment overrides:
   AGENTAURA_CODEX_SERIAL_PORT=/dev/ttyACM0
   AGENTAURA_CODEX_BAUD=115200
   AGENTAURA_CODEX_ENABLED=true|false
+  AGENTAURA_CODEX_IDLE_FALLBACK_MS=5000
 `);
 }
 

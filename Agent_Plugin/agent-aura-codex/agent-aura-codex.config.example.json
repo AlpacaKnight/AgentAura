@@ -8,5 +8,6 @@
   "debounceMs": 500,
   "cooldownMs": 3000,
   "timeoutMs": 650,
+  "idleFallbackMs": 5000,
   "autoDiscover": true
 }

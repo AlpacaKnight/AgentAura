@@ -24,7 +24,7 @@
 - 安装/卸载 Codex hooks 时会合并 `~/.codex/hooks.json`，保留其它插件 hook。
 - 默认开启同步；关闭后 hook 会立即 no-op，不再向环形灯同步任何信号。
 - Hook 命令永远吞掉异常，设备离线不会影响 Codex 主流程。
-- 内置状态去抖和离线冷却，避免频繁重启灯效或阻塞命令。
+- 内置状态去抖、离线冷却和空闲超时回落，避免频繁重启灯效或长时间停留在运行态。
 
 ## 安装与配置
 
@@ -54,6 +54,9 @@ node out/index.js install-hooks
 node out/index.js test busy
 node out/index.js test waiting
 node out/index.js test init
+
+# 可选：调整空闲回落时间（毫秒），0 表示禁用
+node out/index.js config set --idle-fallback-ms 5000
 ```
 
 全局安装打包产物后可以直接使用：
@@ -225,6 +228,7 @@ agent-aura-codex config init --force
     "debounceMs": 500,
     "cooldownMs": 3000,
     "timeoutMs": 650,
+    "idleFallbackMs": 5000,
     "autoDiscover": true
 }
 ```
@@ -249,6 +253,7 @@ AGENTAURA_CODEX_ENABLED=true
 AGENTAURA_CODEX_DEBOUNCE_MS=500
 AGENTAURA_CODEX_COOLDOWN_MS=3000
 AGENTAURA_CODEX_TIMEOUT_MS=650
+AGENTAURA_CODEX_IDLE_FALLBACK_MS=5000
 AGENTAURA_CODEX_AUTO_DISCOVER=true
 ```
 

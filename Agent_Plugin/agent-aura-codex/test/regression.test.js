@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { loadConfig, saveConfig } = require('../out/config');
-const { mapCodexEventToAgentState } = require('../out/hooks');
+const { mapCodexEventToAgentState, shouldArmIdleFallback } = require('../out/hooks');
 const { installCodexHooks } = require('../out/installHooks');
 
 const ENV_KEYS = [
@@ -17,6 +17,7 @@ const ENV_KEYS = [
   'AGENTAURA_CODEX_AUTO_DISCOVER',
   'AGENTAURA_CODEX_TRANSPORT',
   'AGENTAURA_CODEX_ENABLED',
+  'AGENTAURA_CODEX_IDLE_FALLBACK_MS',
 ];
 
 function withIsolatedEnv(fn) {
@@ -53,21 +54,25 @@ test('saveConfig does not persist temporary environment overrides', () => {
     process.env.AGENTAURA_CODEX_HOST = 'env-host';
     process.env.AGENTAURA_CODEX_PORT = '1234';
     process.env.AGENTAURA_CODEX_AUTO_DISCOVER = 'false';
+    process.env.AGENTAURA_CODEX_IDLE_FALLBACK_MS = '9000';
 
     const saved = saveConfig({ transport: 'http', host: 'file-host' });
     assert.equal(saved.host, 'file-host');
     assert.equal(saved.port, 80);
     assert.equal(saved.autoDiscover, true);
+    assert.equal(saved.idleFallbackMs, 5000);
 
     const persisted = JSON.parse(fs.readFileSync(path.join(codexHome, 'agent-aura-codex.json'), 'utf8'));
     assert.equal(persisted.host, 'file-host');
     assert.equal(persisted.port, 80);
     assert.equal(persisted.autoDiscover, true);
+    assert.equal(persisted.idleFallbackMs, 5000);
 
     const loaded = loadConfig();
     assert.equal(loaded.host, 'env-host');
     assert.equal(loaded.port, 1234);
     assert.equal(loaded.autoDiscover, false);
+    assert.equal(loaded.idleFallbackMs, 9000);
   }));
 });
 
@@ -167,6 +172,16 @@ test('Codex supported hook events map to stable agent states', () => {
   assert.equal(mapCodexEventToAgentState('PostCompact'), 'running');
   assert.equal(mapCodexEventToAgentState('SubagentStart'), 'busy');
   assert.equal(mapCodexEventToAgentState('SubagentStop'), 'running');
+});
+
+test('idle fallback arms only after recoverable running states', () => {
+  assert.equal(shouldArmIdleFallback('SessionStart', 'init'), true);
+  assert.equal(shouldArmIdleFallback('PostToolUse', 'running'), true);
+  assert.equal(shouldArmIdleFallback('PostCompact', 'running'), true);
+  assert.equal(shouldArmIdleFallback('SubagentStop', 'running'), true);
+  assert.equal(shouldArmIdleFallback('PreToolUse', 'busy'), false);
+  assert.equal(shouldArmIdleFallback('PermissionRequest', 'waiting'), false);
+  assert.equal(shouldArmIdleFallback('UnknownEvent', 'running'), false);
 });
 
 test('Codex permission mode metadata alone does not force waiting state', () => {
