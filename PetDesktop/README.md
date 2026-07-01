@@ -69,7 +69,7 @@ xcode-select --install
 ```bash
 ./scripts/dev.sh          # 启动开发服务器
 ./scripts/dev.sh dev      # 同上
-./scripts/dev.sh build    # 编译生产版本
+./scripts/dev.sh build    # 使用 Tauri 打包安装包
 ./scripts/dev.sh test     # 运行前后端测试
 ./scripts/dev.sh clean    # 清理编译缓存
 ```
@@ -79,7 +79,7 @@ xcode-select --install
 ```powershell
 .\scripts\dev.ps1           # 启动开发服务器
 .\scripts\dev.ps1 dev       # 同上
-.\scripts\dev.ps1 build     # 编译生产版本
+.\scripts\dev.ps1 build     # 使用 Tauri 打包安装包
 .\scripts\dev.ps1 test      # 运行前后端测试
 .\scripts\dev.ps1 clean     # 清理编译缓存
 ```

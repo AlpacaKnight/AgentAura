@@ -95,10 +95,9 @@ run_dev() {
 }
 
 run_build() {
-    echo "📦 编译生产版本 ($PLATFORM_LABEL)..."
-    npm run build
-    cd src-tauri && cargo build --release && cd ..
-    echo "✅ 编译完成"
+    echo "📦 生成安装包 ($PLATFORM_LABEL)..."
+    npm run tauri -- build
+    echo "✅ 打包完成: src-tauri/target/release/bundle/"
 }
 
 run_test() {
@@ -125,7 +124,7 @@ PetDesktop 开发脚本 ($PLATFORM_LABEL)
 
 命令:
   dev     启动开发服务器 (默认)
-  build   编译生产版本
+  build   使用 Tauri 打包安装包
   test    运行前后端测试
   clean   清理编译缓存
 

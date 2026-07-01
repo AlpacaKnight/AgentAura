@@ -50,10 +50,9 @@ switch ($Action) {
         npm run tauri -- dev
     }
     "build" {
-        Write-Host "📦 编译生产版本 ($PlatformLabel)..." -ForegroundColor Green
-        npm run build
-        Set-Location src-tauri; cargo build --release; Set-Location ..
-        Write-Host "✅ 编译完成: src-tauri\target\release\agentaura-pet-desktop.exe" -ForegroundColor Green
+        Write-Host "📦 生成安装包 ($PlatformLabel)..." -ForegroundColor Green
+        npm run tauri -- build
+        Write-Host "✅ 打包完成: src-tauri\target\release\bundle" -ForegroundColor Green
     }
     "test" {
         Write-Host "🧪 运行测试 ($PlatformLabel)..." -ForegroundColor Green
