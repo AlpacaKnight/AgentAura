@@ -2,6 +2,10 @@
 
 PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 Codex、Claude Code、GitHub Copilot、QwenPaw 的状态，在透明置顶窗口播放 Codex 宠物动画，并可将仲裁后的状态同步到 ESP32 环形灯。
 
+## 接口文档
+
+- 接口文档入口：[API.md](API.md)
+
 ## 功能
 
 - Tauri 2 + React 桌面应用，目标平台为 Windows、macOS、Linux。
@@ -11,6 +15,16 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 - 系统托盘、Agent 管理、宠物管理、硬件配置、运行日志。
 - HTTP/UDP 固件兼容接口和 Agent 注册/心跳扩展接口。
 - HTTP、UDP、USB 串口硬件桥接。
+
+## 当前状态
+
+当前代码已覆盖透明桌宠、管理页、托盘、宠物安装、Agent 仲裁、本地 HTTP/UDP 接口和硬件桥接等主功能。状态优先级为 `error > waiting > upgrade > busy > running > init > idle > offline`；锁定来源在线时优先于自动仲裁，来源超过 30 秒未刷新后会离线并解除锁定，且只有最终状态改变时才向硬件发送新状态。
+
+## 发布状态
+
+当前主功能已经完成，Linux 打包问题已解决，桌宠窗口、托盘、开机启动、多显示器约束、硬件桥接和安装包流程已完成人工确认。
+
+CI 目前覆盖前端测试、`cargo check`、Linux `cargo test` 和插件回归；如果后续需要进一步收紧发布流程，可以再补三平台安装包产物校验。
 
 ## 前置依赖
 
