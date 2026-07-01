@@ -64,19 +64,26 @@ class _HttpTransport(_Transport):
 
     name = "http"
 
-    def __init__(self, host: str, port: int = 80) -> None:
+    def __init__(self, host: str, port: int = 80, auth_token: str = "") -> None:
         self._host = host
         self._port = port
+        self._auth_token = auth_token
 
     def _base_url(self) -> str:
         return f"http://{self._host}:{self._port}"
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Return ``Authorization: Bearer <token>`` when token is set."""
+        if self._auth_token:
+            return {"Authorization": f"Bearer {self._auth_token}"}
+        return {}
 
     def send_command(self, command: str) -> bool:
         try:
             resp = httpx.post(
                 f"{self._base_url()}/api/cmd",
                 content=command,
-                headers={"Content-Type": "text/plain"},
+                headers={"Content-Type": "text/plain", **self._auth_headers()},
                 trust_env=False,
                 timeout=0.35,
             )
@@ -105,6 +112,7 @@ class _HttpTransport(_Transport):
         try:
             resp = httpx.get(
                 f"{self._base_url()}/api/state",
+                headers=self._auth_headers(),
                 trust_env=False,
                 timeout=1.0,
             )
@@ -315,13 +323,14 @@ def _build_transport(
     port: int | None,
     serial_port: str,
     baud: int | None,
+    auth_token: str = "",
 ) -> _Transport | None:
     """Factory: construct the transport for the active mode."""
     transport = (transport or "").strip().lower()
     if transport == "http":
         if not host:
             return None
-        return _HttpTransport(host, port or 80)
+        return _HttpTransport(host, port or 80, auth_token=auth_token)
     if transport == "udp":
         if not host:
             return None
@@ -360,6 +369,7 @@ class RingLightClient:
         self._port: int | None = None
         self._serial_port: str = ""
         self._baud: int | None = None
+        self._auth_token: str = ""
         self._transport: _Transport | None = None
         self._unreachable_until: float = 0.0
         self._last_state: str = ""
@@ -377,11 +387,12 @@ class RingLightClient:
         serial_port: str | None = None,
         baud: int | None = None,
         debounce_ms: int | None = None,
+        auth_token: str | None = None,
     ) -> None:
         """Update connection parameters and (re)build the active transport.
 
         Any field left as ``None`` is preserved; pass an empty string to
-        clear ``host`` / ``serial_port``.
+        clear ``host`` / ``serial_port`` / ``auth_token``.
         """
         with _CONFIG_LOCK:
             changed = False
@@ -404,6 +415,9 @@ class RingLightClient:
                 changed = True
             if debounce_ms is not None and debounce_ms != self._debounce_ms:
                 self._debounce_ms = max(0, int(debounce_ms))
+            if auth_token is not None and auth_token != self._auth_token:
+                self._auth_token = auth_token
+                changed = True
 
             if changed:
                 # Close the old serial connection (if any) before swapping.
@@ -416,6 +430,7 @@ class RingLightClient:
                     port=self._port,
                     serial_port=self._serial_port,
                     baud=self._baud,
+                    auth_token=self._auth_token,
                 )
                 # New target: clear prior unreachable flag + debounce cache.
                 self._unreachable_until = 0.0
@@ -445,6 +460,10 @@ class RingLightClient:
     @property
     def baud(self) -> int | None:
         return self._baud
+
+    @property
+    def auth_token(self) -> str:
+        return self._auth_token
 
     @property
     def debounce_ms(self) -> int:
@@ -490,12 +509,14 @@ class RingLightClient:
             return {
                 "configured": False,
                 "transport": self._transport_name,
+                "auth_token": self._auth_token,
                 "reachable": False,
             }
         state = self.health()
         return {
             "configured": True,
             "transport": self._transport_name,
+            "auth_token": self._auth_token,
             **self._transport.describe(),
             "reachable": state is not None,
             "device_state": state,
@@ -561,6 +582,7 @@ def _apply_env_config() -> None:
     serial_port = os.environ.get("AGENTAURA_SERIAL_PORT", "").strip() or None
     baud_raw = os.environ.get("AGENTAURA_BAUD", "").strip()
     debounce_raw = os.environ.get("AGENTAURA_DEBOUNCE_MS", "").strip()
+    auth_token = os.environ.get("AGENTAURA_AUTH_TOKEN", "").strip() or None
     port = int(port_raw) if port_raw.isdigit() else None
     baud = int(baud_raw) if baud_raw.isdigit() else None
     debounce = int(debounce_raw) if debounce_raw.isdigit() else None
@@ -571,6 +593,7 @@ def _apply_env_config() -> None:
         or serial_port
         or baud is not None
         or debounce is not None
+        or auth_token
     ):
         client.configure(
             transport=transport,
@@ -579,6 +602,7 @@ def _apply_env_config() -> None:
             serial_port=serial_port,
             baud=baud,
             debounce_ms=debounce,
+            auth_token=auth_token,
         )
 
 

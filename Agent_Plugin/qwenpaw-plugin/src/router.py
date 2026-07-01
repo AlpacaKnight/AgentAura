@@ -55,6 +55,7 @@ class ConfigRequest(BaseModel):
     baud: int | None = None
     debounce_ms: int | None = None
     auto_discover: bool | None = None
+    auth_token: str | None = None
 
     @field_validator("transport")
     @classmethod
@@ -196,6 +197,7 @@ def build_router() -> APIRouter:
             serial_port=payload.serial_port,
             baud=payload.baud,
             debounce_ms=payload.debounce_ms,
+            auth_token=payload.auth_token,
         )
         return {
             "ok": True,
@@ -205,6 +207,7 @@ def build_router() -> APIRouter:
             "serial_port": client.serial_port,
             "baud": client.baud,
             "debounce_ms": client.debounce_ms,
+            "auth_token": client.auth_token,
             "auto_discover": payload.auto_discover,
             "configured": client.is_configured,
         }

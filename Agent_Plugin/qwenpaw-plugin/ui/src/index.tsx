@@ -94,6 +94,7 @@ interface ClientStatus {
   port?: number;
   serial_port?: string;
   baud?: number;
+  auth_token?: string;
   reachable: boolean;
   device_state?: any;
 }
@@ -172,6 +173,7 @@ function RingLightConfigPage() {
         port: client.port ?? DEFAULT_PORT[t],
         serial_port: client.serial_port || "",
         baud: client.baud ?? 115200,
+        auth_token: client.auth_token || "",
         auto_discover: true,
         debounce_ms: 500,
       });
@@ -240,6 +242,7 @@ function RingLightConfigPage() {
         serial_port: values.serial_port || "",
         baud: values.baud ?? null,
         debounce_ms: values.debounce_ms ?? 500,
+        auth_token: values.auth_token || "",
         auto_discover: !!values.auto_discover,
       });
       message.success("配置已保存");
@@ -519,6 +522,20 @@ function RingLightConfigPage() {
                 min: 0,
                 max: 60000,
                 style: { width: "100%" },
+              }),
+            ),
+
+            React.createElement(
+              Form.Item,
+              {
+                name: "auth_token",
+                label: "Auth Token",
+                tooltip:
+                  "HTTP 请求的 Bearer Token。设备无认证时留空。",
+              },
+              React.createElement(Input.Password, {
+                placeholder: "留空表示不使用认证",
+                visibilityToggle: true,
               }),
             ),
 

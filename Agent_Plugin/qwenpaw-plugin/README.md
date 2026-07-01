@@ -127,6 +127,7 @@ AGENTAURA_PORT=80                  # http 默认 80，udp 默认 8888
 AGENTAURA_SERIAL_PORT=COM3         # serial 模式
 AGENTAURA_BAUD=115200              # serial 波特率
 AGENTAURA_DEBOUNCE_MS=500
+AGENTAURA_AUTH_TOKEN=my-secret     # HTTP Bearer Token（可选）
 ```
 
 ### 3. HTTP API
@@ -139,6 +140,7 @@ curl -X POST http://localhost:8000/api/agentaura/connection-config \
     "host": "192.168.1.100",
     "port": 80,
     "debounce_ms": 500,
+    "auth_token": "my-secret",
     "auto_discover": true
   }'
 ```

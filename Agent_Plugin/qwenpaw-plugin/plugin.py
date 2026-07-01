@@ -103,6 +103,7 @@ class AgentAuraPlugin:
             ("serial_port", str),
             ("baud", int),
             ("debounce_ms", int),
+            ("auth_token", str),
         ):
             val = cfg.get(key)
             if val is not None and val != "":

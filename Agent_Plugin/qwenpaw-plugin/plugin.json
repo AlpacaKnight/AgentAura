@@ -1,7 +1,7 @@
 {
   "id": "agentaura",
   "name": "AgentAura",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Sync QwenPaw agent lifecycle events to ESP32 Ring Light hardware.",
   "description_i18n": {
     "zh-CN": "将 QwenPaw 智能体生命周期事件实时同步到 ESP32 环形灯硬件。",
@@ -58,6 +58,12 @@
       "type": "integer",
       "title": "State debounce (ms) - skip repeated identical states within this window",
       "default": 500
+    },
+    "auth_token": {
+      "type": "string",
+      "title": "Auth Token",
+      "description": "Bearer token sent in the Authorization header for HTTP requests. Leave empty for devices without authentication.",
+      "default": ""
     }
   },
   "meta": {
