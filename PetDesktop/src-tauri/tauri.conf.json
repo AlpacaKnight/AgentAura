@@ -46,6 +46,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    },
     "category": "DeveloperTool",
     "shortDescription": "Agent status desktop pet and AgentAura hardware bridge",
     "longDescription": "Displays AI agent states as a desktop pet and synchronizes them to AgentAura hardware.",

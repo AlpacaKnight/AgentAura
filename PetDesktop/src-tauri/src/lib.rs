@@ -85,7 +85,8 @@ async fn install_pet(
     let source = PathBuf::from(source);
     let install_core = core.clone();
     let pet = tauri::async_runtime::spawn_blocking(move || {
-        pets::install_pet(install_core.data_dir(), &source, replace)
+        let data_dir = install_core.data_dir()?;
+        pets::install_pet(&data_dir, &source, replace)
     })
     .await
     .map_err(|error| format!("pet installer failed: {error}"))?
@@ -102,7 +103,8 @@ fn delete_pet(core: State<'_, AppCore>, pet_id: String) -> Result<AppSnapshot, S
         core.select_pet("builtin-aura")
             .map_err(|error| error.to_string())?;
     }
-    pets::delete_pet(core.data_dir(), &pet_id).map_err(|error| error.to_string())?;
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    pets::delete_pet(&data_dir, &pet_id).map_err(|error| error.to_string())?;
     core.log(LogLevel::Info, "pets", format!("deleted {pet_id}"));
     Ok(core.snapshot())
 }
@@ -116,7 +118,8 @@ fn select_pet(core: State<'_, AppCore>, pet_id: String) -> Result<AppSnapshot, S
 
 #[tauri::command]
 fn read_selected_pet_asset(core: State<'_, AppCore>) -> Result<String, String> {
-    pets::read_pet_asset(core.data_dir(), &core.settings().selected_pet_id)
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    pets::read_pet_asset(&data_dir, &core.settings().selected_pet_id)
         .map_err(|error| error.to_string())
 }
 
@@ -164,16 +167,17 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = show_window(app, "main");
         }))
+        .manage(AppCore::new_uninit())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
-            let core = AppCore::new(data_dir)?;
+            let core = app.state::<AppCore>().inner().clone();
+            core.init(data_dir)?;
             core.set_app_handle(app.handle().clone());
             let sender = hardware::start_worker(core.clone());
             core.set_hardware_sender(sender);
-            app.manage(core.clone());
 
             create_tray(app)?;
-            restore_pet_position(app.handle(), core.data_dir());
+            restore_pet_position(app.handle(), &core.data_dir()?);
             apply_window_settings(app.handle(), &core.settings()).map_err(anyhow::Error::msg)?;
             server::start(core.clone());
             core.log(LogLevel::Info, "app", "PetDesktop started");
@@ -300,13 +304,20 @@ fn clamp_to_monitor(window: &WebviewWindow) -> Result<(), String> {
     let size = window.outer_size().map_err(|error| error.to_string())?;
     let origin = monitor.position();
     let bounds = monitor.size();
-    let x = position
+    // i32::clamp panics when the window is larger than the monitor (min > max).
+    // This can occur briefly during display/RDP changes and used to abort release builds.
+    let max_x = origin
         .x
-        .clamp(origin.x, origin.x + bounds.width as i32 - size.width as i32);
-    let y = position.y.clamp(
-        origin.y,
-        origin.y + bounds.height as i32 - size.height as i32,
-    );
+        .saturating_add(bounds.width as i32)
+        .saturating_sub(size.width as i32)
+        .max(origin.x);
+    let max_y = origin
+        .y
+        .saturating_add(bounds.height as i32)
+        .saturating_sub(size.height as i32)
+        .max(origin.y);
+    let x = position.x.clamp(origin.x, max_x);
+    let y = position.y.clamp(origin.y, max_y);
     if x != position.x || y != position.y {
         window
             .set_position(Position::Physical(PhysicalPosition::new(x, y)))

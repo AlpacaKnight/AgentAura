@@ -6,6 +6,7 @@ use std::{
 };
 
 use chrono::{SecondsFormat, Utc};
+
 use parking_lot::{Mutex, RwLock};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, watch};
@@ -37,7 +38,7 @@ pub struct AppCore {
     app_handle: Arc<RwLock<Option<AppHandle>>>,
     hardware_tx: Arc<Mutex<Option<mpsc::Sender<HardwareMessage>>>>,
     http_lan_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
-    data_dir: Arc<PathBuf>,
+    data_dir: Arc<RwLock<Option<PathBuf>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,12 +52,11 @@ pub struct RegisterAgent {
 }
 
 impl AppCore {
-    pub fn new(data_dir: PathBuf) -> anyhow::Result<Self> {
-        fs::create_dir_all(data_dir.join("pets"))?;
-        let settings = load_settings(&data_dir).unwrap_or_default();
-        Ok(Self {
+    /// Create an uninitialized core (state is registered before setup).
+    pub fn new_uninit() -> Self {
+        Self {
             model: Arc::new(RwLock::new(RuntimeModel {
-                settings,
+                settings: AppSettings::default(),
                 agents: HashMap::new(),
                 effective_state: AgentState::Idle,
                 effective_agent_id: None,
@@ -68,12 +68,32 @@ impl AppCore {
             app_handle: Arc::new(RwLock::new(None)),
             hardware_tx: Arc::new(Mutex::new(None)),
             http_lan_tx: Arc::new(Mutex::new(None)),
-            data_dir: Arc::new(data_dir),
-        })
+            data_dir: Arc::new(RwLock::new(None)),
+        }
     }
 
-    pub fn data_dir(&self) -> &Path {
-        self.data_dir.as_path()
+    /// Create and immediately initialize with a data directory (for tests).
+    #[allow(dead_code)]
+    pub fn new(data_dir: PathBuf) -> anyhow::Result<Self> {
+        let core = Self::new_uninit();
+        core.init(data_dir)?;
+        Ok(core)
+    }
+
+    /// Initialize with the real data directory (called inside setup).
+    pub fn init(&self, data_dir: PathBuf) -> anyhow::Result<()> {
+        fs::create_dir_all(data_dir.join("pets"))?;
+        let settings = load_settings(&data_dir).unwrap_or_default();
+        self.model.write().settings = settings;
+        *self.data_dir.write() = Some(data_dir);
+        Ok(())
+    }
+
+    pub fn data_dir(&self) -> anyhow::Result<PathBuf> {
+        self.data_dir
+            .read()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("AppCore is still initializing"))
     }
 
     pub fn set_app_handle(&self, app_handle: AppHandle) {
@@ -99,7 +119,10 @@ impl AppCore {
     }
 
     pub fn snapshot(&self) -> AppSnapshot {
-        let mut pets = pets::scan_pets(self.data_dir()).unwrap_or_else(|_| vec![built_in_pet()]);
+        let mut pets = self
+            .data_dir()
+            .and_then(|data_dir| pets::scan_pets(&data_dir))
+            .unwrap_or_else(|_| vec![built_in_pet()]);
         if pets.is_empty() {
             pets.push(built_in_pet());
         }
@@ -292,7 +315,7 @@ impl AppCore {
         settings.normalize();
         let lan_changed = self.settings().lan_enabled != settings.lan_enabled;
 
-        persist_settings(self.data_dir(), &settings)?;
+        persist_settings(&self.data_dir()?, &settings)?;
         self.model.write().settings = settings;
         if lan_changed {
             self.reload_http_listener();
@@ -302,7 +325,7 @@ impl AppCore {
     }
 
     pub fn select_pet(&self, pet_id: &str) -> anyhow::Result<()> {
-        let pets = pets::scan_pets(self.data_dir())?;
+        let pets = pets::scan_pets(&self.data_dir()?)?;
         if !pets.iter().any(|pet| pet.id == pet_id) {
             anyhow::bail!("pet not found: {pet_id}");
         }
