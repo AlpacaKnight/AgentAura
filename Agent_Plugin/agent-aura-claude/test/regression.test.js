@@ -6,9 +6,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { hooksSuppressed, loadConfig, loadRuntimeState, runtimeStatePath, saveConfig, suppressHooks } = require('../src/config');
-const { parseDeviceState } = require('../src/deviceClient');
-const { mapClaudeEventToAgentState, payloadContainsAgentAuraCommand, shouldSkipClaudeHook } = require('../src/hooks');
+const { hooksSuppressed, loadConfig, loadRuntimeState, runtimeStatePath, saveConfig, suppressHooks } = require('../out/config');
+const { parseDeviceState } = require('../out/deviceClient');
+const { mapClaudeEventToAgentState, payloadContainsAgentAuraCommand, shouldSkipClaudeHook } = require('../out/hooks');
 
 const ENV_KEYS = [
   'CLAUDE_HOME',

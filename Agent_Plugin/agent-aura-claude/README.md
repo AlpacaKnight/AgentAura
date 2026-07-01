@@ -38,31 +38,79 @@
 | `bin/aura-dispatch.sh` | slash 命令到 CLI 的分发脚本 |
 | `src/` | 配置、发现、设备传输、hook 状态映射和 CLI 实现 |
 | `test/regression.test.js` | Node.js 内置测试 runner 的回归测试 |
+| `scripts/build.sh` | Linux、macOS、Git Bash 和 WSL 构建、测试及可选打包脚本 |
+| `scripts/build.ps1` | Windows PowerShell 构建、测试及可选打包脚本 |
+
+## 多平台构建与打包
+
+要求 Node.js 18 或更高版本及 npm。两个平台脚本默认安装依赖、编译 TypeScript并运行回归测试；添加打包参数后，还会在 `dist/` 下生成 npm 安装包和通用 ZIP 包。
+
+Linux、macOS、Git Bash 或 WSL：
+
+```bash
+bash scripts/build.sh --pack
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Pack
+```
+
+可将输出目录作为参数传入：
+
+```bash
+bash scripts/build.sh --pack --out-dir /tmp/agentaura-release
+```
+
+```powershell
+.\scripts\build.ps1 -Pack -OutDir C:\temp\agentaura-release
+```
+
+输出文件：
+
+- `agent-aura-claude-<version>.tgz`：使用 `npm install -g <文件>` 安装。
+- `agent-aura-claude-<version>.zip`：用于归档或手动分发完整插件目录。
+
+只需本地编译和测试、不生成安装包时，可运行 `bash scripts/build.sh` 或 `.\scripts\build.ps1`。
 
 ## 安装
 
-通过 marketplace 安装。仓库在 [Agent_Plugin/.claude-plugin/marketplace.json](../.claude-plugin/marketplace.json) 提供 marketplace 清单，在 Claude Code 中执行：
+`out/` 不提交到 Git，因此必须先在本地克隆仓库并运行构建脚本，再从本地 marketplace 安装。不能直接使用 `/plugin marketplace add <user>/<repo>` 跳过构建。
+
+Linux、macOS、Git Bash 或 WSL：
+
+```bash
+cd AgentAura/Agent_Plugin/agent-aura-claude
+bash scripts/build.sh
+```
+
+Windows PowerShell：
+
+```powershell
+Set-Location AgentAura\Agent_Plugin\agent-aura-claude
+.\scripts\build.ps1
+```
+
+需要清理旧产物后重新构建时，分别使用 `bash scripts/build.sh --clean` 或 `.\scripts\build.ps1 -Clean`。
+
+构建成功并确认生成 `out/index.js` 后，在 Claude Code 中执行：
 
 ```text
-/plugin marketplace add /home/xuyd2/Git/open/AgentAura/Agent_Plugin
+/plugin marketplace add <本地仓库绝对路径>/AgentAura/Agent_Plugin
+/plugin install agent-aura-claude@agentaura
+/reload-plugins
+```
+
+修改源码后，应先重新运行构建脚本，再更新或重装插件：
+
+```text
+/plugin uninstall agent-aura-claude@agentaura
+/plugin marketplace update agentaura
 /plugin install agent-aura-claude@agentaura
 ```
 
-推送到 GitHub 后，可用 `/plugin marketplace add <user>/<repo>` 安装。安装后运行 `/reload-plugins` 或重启会话使 hooks 生效。
-
-> `serialport` 是原生模块，随插件依赖一起安装，需本机具备 Node 编译工具链。
-
-本地修改后重新打包安装：
-
-```bash
-cd /home/xuyd2/Git/open/AgentAura/Agent_Plugin/agent-aura-claude
-npm install
-npm run build
-cd /home/xuyd2/Git/open/AgentAura/Agent_Plugin
-claude plugin uninstall agent-aura-claude@agentaura
-claude plugin marketplace update agentaura
-claude plugin install agent-aura-claude@agentaura --config enabled=true --config transport=serial --config serial_port=/dev/ttyACM0 --config baud=115200
-```
+> `serialport` 是原生模块，构建脚本安装依赖时需要本机具备 Node.js 18+、npm 及相应原生模块编译工具链。
 
 ## 配置
 

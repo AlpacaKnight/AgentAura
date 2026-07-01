@@ -1,7 +1,7 @@
 'use strict';
 
-const path = require('node:path');
-const {
+import * as path from 'node:path';
+import {
   clearRuntimeState,
   configPath,
   disabledPath,
@@ -13,13 +13,19 @@ const {
   saveConfig,
   setDisabled,
   suppressHooks,
-} = require('./config');
-const { discoverDevices } = require('./discovery');
-const { RingLightClient } = require('./deviceClient');
-const { CLAUDE_EVENT_TO_AGENT_STATE, CLAUDE_HOOK_EVENTS, runClaudeHook } = require('./hooks');
-const { isAgentState, isTransportName } = require('./types');
+  type Config,
+} from './config';
+import { discoverDevices } from './discovery';
+import { RingLightClient } from './deviceClient';
+import { CLAUDE_EVENT_TO_AGENT_STATE, CLAUDE_HOOK_EVENTS, runClaudeHook } from './hooks';
+import { isAgentState, isTransportName, type AgentState, type Transport } from './types';
 
-async function main(argv = process.argv.slice(2)) {
+interface ParsedArgs {
+  flags: Record<string, string>;
+  positional: string[];
+}
+
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const [command = 'help', ...args] = argv;
 
   if (command === 'hook') {
@@ -84,7 +90,7 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-async function configCommand(args) {
+async function configCommand(args: string[]): Promise<void> {
   const [subcommand = 'get', ...rest] = args;
   if (subcommand === 'get') {
     printJson({ path: configPath(), config: loadConfig() });
@@ -107,9 +113,9 @@ async function configCommand(args) {
   throw new Error('Usage: agent-aura-claude config get|path|init|set ...');
 }
 
-async function configure(args) {
+async function configure(args: string[]): Promise<void> {
   const { flags } = parseArgs(args);
-  const patch = {};
+  const patch: Partial<Config> = {};
 
   if (flags.enabled !== undefined) {
     patch.enabled = parseBoolean(flags.enabled);
@@ -119,7 +125,7 @@ async function configure(args) {
     if (!isTransportName(value)) {
       throw new Error('--transport must be http, udp, or serial');
     }
-    patch.transport = value;
+    patch.transport = value as Transport;
     if (value === 'http' && flags.port === undefined) {
       patch.port = 80;
     }
@@ -163,14 +169,14 @@ async function configure(args) {
     }
     patch.transport = 'http';
     patch.host = first.ip;
-    patch.port = first.http || 80;
+    patch.port = (first.http as number) || 80;
   }
 
   const config = saveConfig(patch);
   printJson({ path: configPath(), config });
 }
 
-async function discover(args) {
+async function discover(args: string[]): Promise<void> {
   const { flags } = parseArgs(args);
   const timeout = flags.timeout ? parseNumberFlag(flags.timeout, '--timeout') : 2500;
   const devices = await discoverDevices(timeout);
@@ -180,7 +186,7 @@ async function discover(args) {
     if (!first?.ip) {
       throw new Error('No device found to save');
     }
-    const config = saveConfig({ transport: 'http', host: first.ip, port: first.http || 80 });
+    const config = saveConfig({ transport: 'http', host: first.ip, port: (first.http as number) || 80 });
     printJson({ devices, saved: config });
     return;
   }
@@ -188,7 +194,7 @@ async function discover(args) {
   printJson({ devices });
 }
 
-async function testState(args) {
+async function testState(args: string[]): Promise<void> {
   const state = (args[0] || '').trim().toLowerCase();
   if (!isAgentState(state)) {
     throw new Error('state must be one of: running, busy, waiting, error, idle, init, offline, upgrade');
@@ -201,7 +207,7 @@ async function testState(args) {
   console.log(`Sent agent ${state}`);
 }
 
-async function sendCommand(args) {
+async function sendCommand(args: string[]): Promise<void> {
   const raw = args.join(' ').trim();
   if (!raw) {
     throw new Error('command text is required');
@@ -214,11 +220,11 @@ async function sendCommand(args) {
   console.log(`Sent: ${raw}`);
 }
 
-async function status(args) {
+async function status(args: string[]): Promise<void> {
   const { flags } = parseArgs(args);
   const config = loadConfig();
   const client = new RingLightClient(config);
-  const result = {
+  const result: Record<string, unknown> = {
     disabled: isDisabled(),
     disabledPath: disabledPath(),
     configPath: configPath(),
@@ -236,7 +242,7 @@ async function status(args) {
   printJson(result);
 }
 
-function hooksCommand() {
+function hooksCommand(): void {
   printJson({
     path: path.resolve(__dirname, '..', 'hooks', 'hooks.json'),
     events: CLAUDE_HOOK_EVENTS,
@@ -244,9 +250,9 @@ function hooksCommand() {
   });
 }
 
-function parseArgs(args) {
-  const flags = {};
-  const positional = [];
+export function parseArgs(args: string[]): ParsedArgs {
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (!arg.startsWith('--')) {
@@ -271,18 +277,18 @@ function parseArgs(args) {
   return { flags, positional };
 }
 
-function toCamel(key) {
-  return key.replace(/-([a-z])/g, (_, character) => character.toUpperCase());
+function toCamel(key: string): string {
+  return key.replace(/-([a-z])/g, (_: string, character: string) => character.toUpperCase());
 }
 
-function parseBoolean(value) {
+export function parseBoolean(value: string | undefined): boolean {
   if (value === undefined) {
     return true;
   }
   return !['0', 'false', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
-function parseNumberFlag(value, label) {
+function parseNumberFlag(value: string, label: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     throw new Error(`${label} must be a number`);
@@ -290,11 +296,11 @@ function parseNumberFlag(value, label) {
   return Math.round(parsed);
 }
 
-function printJson(value) {
+function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
-function printHelp() {
+function printHelp(): void {
   console.log(`AgentAura Claude Ring Light
 
 Usage:
@@ -336,8 +342,8 @@ Set auth token:
 `);
 }
 
-function runCli() {
-  main().catch((error) => {
+export function runCli(): void {
+  main().catch((error: Error) => {
     console.error(error.message || String(error));
     process.exitCode = 1;
   });
@@ -346,10 +352,3 @@ function runCli() {
 if (require.main === module) {
   runCli();
 }
-
-module.exports = {
-  main,
-  runCli,
-  parseArgs,
-  parseBoolean,
-};

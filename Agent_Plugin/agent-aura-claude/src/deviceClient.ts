@@ -1,23 +1,40 @@
 'use strict';
 
-const dgram = require('node:dgram');
-const http = require('node:http');
-const { isDisabled, loadRuntimeState, saveConfig, saveRuntimeState } = require('./config');
-const { discoverFirst } = require('./discovery');
+import * as dgram from 'node:dgram';
+import * as http from 'node:http';
+import { isDisabled, loadRuntimeState, saveConfig, saveRuntimeState, type Config, type RuntimeState } from './config';
+import { discoverFirst, type DiscoveredDevice } from './discovery';
 
-class RingLightClient {
-  constructor(config) {
+export interface DeviceState {
+  reachable: boolean;
+  raw?: string;
+  [key: string]: unknown;
+}
+
+export interface DeviceDescriptor {
+  transport: string;
+  host: string;
+  port: number;
+  serialPort: string;
+  baud: number;
+  configured: boolean;
+}
+
+export class RingLightClient {
+  config: Config;
+
+  constructor(config: Config) {
     this.config = config;
   }
 
-  get isConfigured() {
+  get isConfigured(): boolean {
     if (this.config.transport === 'serial') {
       return this.config.serialPort.length > 0;
     }
     return this.config.host.length > 0;
   }
 
-  async sendAgentState(state) {
+  async sendAgentState(state: string): Promise<boolean> {
     if (!this.config.enabled || isDisabled()) {
       return true;
     }
@@ -29,10 +46,10 @@ class RingLightClient {
 
     const now = Date.now();
     const runtime = loadRuntimeState();
-    if (runtime.unreachableUntil && runtime.unreachableUntil > now) {
+    if (runtime.unreachableUntil && (runtime.unreachableUntil as number) > now) {
       return false;
     }
-    if (runtime.lastState === state && runtime.lastSentAt && now - runtime.lastSentAt < this.config.debounceMs) {
+    if (runtime.lastState === state && runtime.lastSentAt && now - (runtime.lastSentAt as number) < this.config.debounceMs) {
       return true;
     }
 
@@ -59,7 +76,7 @@ class RingLightClient {
     return ok;
   }
 
-  async sendCommand(command) {
+  async sendCommand(command: string): Promise<boolean> {
     if (!this.config.enabled || isDisabled()) {
       return true;
     }
@@ -86,7 +103,7 @@ class RingLightClient {
     }
   }
 
-  async health() {
+  async health(): Promise<DeviceState | null> {
     await this.maybeAutoDiscover();
     if (!this.isConfigured) {
       return null;
@@ -107,7 +124,7 @@ class RingLightClient {
     }
   }
 
-  describe() {
+  describe(): DeviceDescriptor {
     return {
       transport: this.config.transport,
       host: this.config.host,
@@ -118,14 +135,14 @@ class RingLightClient {
     };
   }
 
-  async maybeAutoDiscover() {
+  async maybeAutoDiscover(): Promise<void> {
     if (this.isConfigured || !this.config.autoDiscover || this.config.transport === 'serial') {
       return;
     }
 
     const now = Date.now();
     const runtime = loadRuntimeState();
-    if (runtime.discoveryRetryAfter && runtime.discoveryRetryAfter > now) {
+    if (runtime.discoveryRetryAfter && (runtime.discoveryRetryAfter as number) > now) {
       return;
     }
 
@@ -142,7 +159,7 @@ class RingLightClient {
     this.config = saveConfig({
       transport: 'http',
       host: found.ip,
-      port: found.http || 80,
+      port: (found.http as number) || 80,
     });
     saveRuntimeState({
       ...runtime,
@@ -151,9 +168,9 @@ class RingLightClient {
     });
   }
 
-  httpPost(requestPath, body) {
+  httpPost(requestPath: string, body: string): Promise<boolean> {
     return new Promise((resolve) => {
-      const headers = {
+      const headers: Record<string, string | number> = {
         'Content-Type': 'text/plain',
         'Content-Length': Buffer.byteLength(body),
       };
@@ -169,7 +186,7 @@ class RingLightClient {
         headers,
       }, (res) => {
         let data = '';
-        res.on('data', (chunk) => {
+        res.on('data', (chunk: Buffer) => {
           data += chunk.toString();
         });
         res.on('end', () => {
@@ -193,9 +210,9 @@ class RingLightClient {
     });
   }
 
-  httpGetJson(requestPath) {
+  httpGetJson(requestPath: string): Promise<DeviceState | null> {
     return new Promise((resolve) => {
-      const headers = {};
+      const headers: Record<string, string> = {};
       if (this.config.authToken) {
         headers.authorization = `Bearer ${this.config.authToken}`;
       }
@@ -207,7 +224,7 @@ class RingLightClient {
         headers,
       }, (res) => {
         let data = '';
-        res.on('data', (chunk) => {
+        res.on('data', (chunk: Buffer) => {
           data += chunk.toString();
         });
         res.on('end', () => resolve(parseDeviceState(data)));
@@ -220,12 +237,12 @@ class RingLightClient {
     });
   }
 
-  udpExchange(command, timeoutMs) {
+  udpExchange(command: string, timeoutMs: number): Promise<string | null> {
     return new Promise((resolve) => {
       const socket = dgram.createSocket('udp4');
       let settled = false;
 
-      const finish = (value) => {
+      const finish = (value: string | null) => {
         if (settled) {
           return;
         }
@@ -243,8 +260,8 @@ class RingLightClient {
       timer.unref?.();
 
       socket.on('error', () => finish(null));
-      socket.on('message', (message) => finish(message.toString('utf8').trim()));
-      socket.send(Buffer.from(`${command}\n`, 'utf8'), this.portFor('udp'), this.config.host, (error) => {
+      socket.on('message', (message: Buffer) => finish(message.toString('utf8').trim()));
+      socket.send(Buffer.from(`${command}\n`, 'utf8'), this.portFor('udp'), this.config.host, (error?: Error | null) => {
         if (error) {
           finish(null);
         }
@@ -252,9 +269,9 @@ class RingLightClient {
     });
   }
 
-  serialExchange(command, waitForJson) {
+  serialExchange(command: string, waitForJson: boolean): Promise<string | null> {
     return new Promise((resolve) => {
-      let SerialPortConstructor;
+      let SerialPortConstructor: any;
       try {
         const serialModule = require('serialport');
         SerialPortConstructor = serialModule.SerialPort || serialModule;
@@ -271,7 +288,7 @@ class RingLightClient {
       let settled = false;
       let buffer = '';
 
-      const finish = (value) => {
+      const finish = (value: string | null) => {
         if (settled) {
           return;
         }
@@ -290,7 +307,7 @@ class RingLightClient {
         resolve(value);
       };
 
-      const onData = (data) => {
+      const onData = (data: Buffer) => {
         buffer += data.toString('utf8');
         if (waitForJson) {
           const json = extractJsonObject(buffer);
@@ -309,12 +326,12 @@ class RingLightClient {
 
       serial.on('data', onData);
       serial.on('error', () => finish(null));
-      serial.open((openError) => {
+      serial.open((openError?: Error) => {
         if (openError) {
           finish(null);
           return;
         }
-        serial.write(`${command}\n`, (writeError) => {
+        serial.write(`${command}\n`, (writeError?: Error) => {
           if (writeError) {
             finish(null);
           }
@@ -323,12 +340,12 @@ class RingLightClient {
     });
   }
 
-  portFor(transport) {
+  portFor(transport: string): number {
     return this.config.port || (transport === 'udp' ? 8888 : 80);
   }
 }
 
-function parseDeviceState(body) {
+export function parseDeviceState(body: string | null): DeviceState | null {
   if (!body) {
     return null;
   }
@@ -337,13 +354,13 @@ function parseDeviceState(body) {
     return { reachable: true, raw: body.slice(0, 200) };
   }
   try {
-    return JSON.parse(json);
+    return JSON.parse(json) as DeviceState;
   } catch {
     return { reachable: true, raw: body.slice(0, 200) };
   }
 }
 
-function extractJsonObject(body) {
+export function extractJsonObject(body: string): string | null {
   const start = body.indexOf('{');
   if (start < 0) {
     return null;
@@ -385,9 +402,3 @@ function extractJsonObject(body) {
 
   return null;
 }
-
-module.exports = {
-  RingLightClient,
-  extractJsonObject,
-  parseDeviceState,
-};

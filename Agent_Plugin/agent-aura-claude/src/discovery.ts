@@ -1,13 +1,20 @@
 'use strict';
 
-const dgram = require('node:dgram');
+import * as dgram from 'node:dgram';
 
-const DISCOVERY_PORT = 8888;
+export const DISCOVERY_PORT = 8888;
 
-function discoverDevices(timeoutMs = 2500) {
+export interface DiscoveredDevice {
+  mac?: string;
+  ip: string;
+  http?: number;
+  [key: string]: unknown;
+}
+
+export function discoverDevices(timeoutMs = 2500): Promise<DiscoveredDevice[]> {
   return new Promise((resolve) => {
-    const devices = [];
-    const seen = new Set();
+    const devices: DiscoveredDevice[] = [];
+    const seen = new Set<string>();
     const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     let settled = false;
 
@@ -27,21 +34,21 @@ function discoverDevices(timeoutMs = 2500) {
     const timer = setTimeout(finish, timeoutMs);
     timer.unref?.();
 
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       debugLog(`discovery socket error: ${error.message}`);
       clearTimeout(timer);
       finish();
     });
 
-    socket.on('message', (message, remoteInfo) => {
+    socket.on('message', (message: Buffer, remoteInfo: dgram.RemoteInfo) => {
       try {
-        const parsed = JSON.parse(message.toString('utf8'));
-        const key = parsed.mac || parsed.ip || remoteInfo.address;
+        const parsed = JSON.parse(message.toString('utf8')) as Record<string, unknown>;
+        const key = (parsed.mac as string) || (parsed.ip as string) || remoteInfo.address;
         if (seen.has(key)) {
           return;
         }
         seen.add(key);
-        devices.push({ ...parsed, ip: parsed.ip || remoteInfo.address });
+        devices.push({ ...parsed, ip: (parsed.ip as string) || remoteInfo.address } as DiscoveredDevice);
       } catch {
         // Ignore unrelated UDP replies.
       }
@@ -54,7 +61,7 @@ function discoverDevices(timeoutMs = 2500) {
         // Some network stacks refuse broadcast toggles; send still may work.
       }
       const payload = Buffer.from('discover\n', 'utf8');
-      socket.send(payload, DISCOVERY_PORT, '255.255.255.255', (error) => {
+      socket.send(payload, DISCOVERY_PORT, '255.255.255.255', (error?: Error | null) => {
         if (error) {
           debugLog(`discovery send error: ${error.message}`);
           clearTimeout(timer);
@@ -65,20 +72,14 @@ function discoverDevices(timeoutMs = 2500) {
   });
 }
 
-async function discoverFirst(timeoutMs = 1500) {
+export async function discoverFirst(timeoutMs = 1500): Promise<DiscoveredDevice | null> {
   const devices = await discoverDevices(timeoutMs);
   return devices[0] || null;
 }
 
-function debugLog(message) {
+function debugLog(message: string): void {
   const value = process.env.AGENTAURA_CLAUDE_DEBUG || process.env.AGENTAURA_DEBUG || '';
   if (['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())) {
     process.stderr.write(`[agent-aura-claude] ${message}\n`);
   }
 }
-
-module.exports = {
-  DISCOVERY_PORT,
-  discoverDevices,
-  discoverFirst,
-};

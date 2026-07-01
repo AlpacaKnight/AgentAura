@@ -1,11 +1,31 @@
 'use strict';
 
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { isTransportName } = require('./types');
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { isTransportName, type Transport } from './types';
 
-const DEFAULT_CONFIG = {
+export interface Config {
+  enabled: boolean;
+  transport: Transport;
+  host: string;
+  port: number;
+  serialPort: string;
+  baud: number;
+  debounceMs: number;
+  cooldownMs: number;
+  timeoutMs: number;
+  autoDiscover: boolean;
+  authToken: string;
+}
+
+export interface RuntimeState {
+  hookSuppressedUntil?: number;
+  hookSuppressionReason?: string;
+  [key: string]: unknown;
+}
+
+export const DEFAULT_CONFIG: Config = {
   enabled: true,
   transport: 'http',
   host: '',
@@ -19,21 +39,21 @@ const DEFAULT_CONFIG = {
   authToken: '',
 };
 
-const DEFAULT_HOOK_SUPPRESSION_MS = 8000;
+export const DEFAULT_HOOK_SUPPRESSION_MS = 8000;
 
-function claudeDir() {
+export function claudeDir(): string {
   return process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 }
 
-function configPath() {
+export function configPath(): string {
   return process.env.AGENTAURA_CLAUDE_CONFIG || path.join(claudeDir(), 'agent-aura-claude.json');
 }
 
-function configExists() {
+export function configExists(): boolean {
   return fs.existsSync(configPath());
 }
 
-function runtimeStatePath() {
+export function runtimeStatePath(): string {
   if (process.env.AGENTAURA_CLAUDE_STATE) {
     return process.env.AGENTAURA_CLAUDE_STATE;
   }
@@ -43,43 +63,43 @@ function runtimeStatePath() {
   return path.join(claudeDir(), 'agent-aura-claude-state.json');
 }
 
-function disabledPath() {
+export function disabledPath(): string {
   return path.join(claudeDir(), 'agent-aura-claude.disabled');
 }
 
-function loadConfig() {
+export function loadConfig(): Config {
   const fileConfig = readJsonFile(configPath()) || {};
   const config = normalizeConfig(fileConfig);
   applyPluginOptionOverrides(config);
   applyEnvironmentOverrides(config);
-  return normalizeConfig(config);
+  return normalizeConfig(config as unknown as Record<string, unknown>);
 }
 
-function saveConfig(patch) {
+export function saveConfig(patch: Partial<Config>): Config {
   const fileConfig = readJsonFile(configPath()) || {};
-  const next = normalizeConfig({ ...fileConfig, ...patch });
+  const next = normalizeConfig({ ...fileConfig, ...patch } as Record<string, unknown>);
   writeJsonFile(configPath(), next);
   return next;
 }
 
-function initConfig(force = false) {
+export function initConfig(force = false): Config {
   if (!force && configExists()) {
     return loadConfig();
   }
-  const next = normalizeConfig(DEFAULT_CONFIG);
+  const next = normalizeConfig({ ...DEFAULT_CONFIG });
   writeJsonFile(configPath(), next);
   return next;
 }
 
-function loadRuntimeState() {
+export function loadRuntimeState(): RuntimeState {
   return readJsonFile(runtimeStatePath()) || {};
 }
 
-function saveRuntimeState(state) {
+export function saveRuntimeState(state: RuntimeState): void {
   writeJsonFile(runtimeStatePath(), state);
 }
 
-function clearRuntimeState() {
+export function clearRuntimeState(): void {
   try {
     fs.unlinkSync(runtimeStatePath());
   } catch {
@@ -87,7 +107,7 @@ function clearRuntimeState() {
   }
 }
 
-function suppressHooks(durationMs = DEFAULT_HOOK_SUPPRESSION_MS, reason = 'manual command') {
+export function suppressHooks(durationMs = DEFAULT_HOOK_SUPPRESSION_MS, reason = 'manual command'): void {
   const runtime = loadRuntimeState();
   saveRuntimeState({
     ...runtime,
@@ -96,25 +116,25 @@ function suppressHooks(durationMs = DEFAULT_HOOK_SUPPRESSION_MS, reason = 'manua
   });
 }
 
-function clearHookSuppression() {
+export function clearHookSuppression(): void {
   const runtime = loadRuntimeState();
   if (!runtime.hookSuppressedUntil && !runtime.hookSuppressionReason) {
     return;
   }
   const { hookSuppressedUntil, hookSuppressionReason, ...next } = runtime;
-  saveRuntimeState(next);
+  saveRuntimeState(next as RuntimeState);
 }
 
-function hooksSuppressed(now = Date.now()) {
+export function hooksSuppressed(now = Date.now()): boolean {
   const until = Number(loadRuntimeState().hookSuppressedUntil || 0);
   return Number.isFinite(until) && until > now;
 }
 
-function isDisabled() {
+export function isDisabled(): boolean {
   return fs.existsSync(disabledPath());
 }
 
-function setDisabled(disabled) {
+export function setDisabled(disabled: boolean): void {
   if (disabled) {
     fs.mkdirSync(path.dirname(disabledPath()), { recursive: true });
     fs.writeFileSync(disabledPath(), 'disabled\n', 'utf8');
@@ -127,7 +147,7 @@ function setDisabled(disabled) {
   }
 }
 
-function normalizeConfig(input) {
+function normalizeConfig(input: Record<string, unknown>): Config {
   const transport = normalizeTransport(input.transport);
   const defaultPort = transport === 'udp' ? 8888 : 80;
   return {
@@ -145,7 +165,7 @@ function normalizeConfig(input) {
   };
 }
 
-function applyPluginOptionOverrides(config) {
+function applyPluginOptionOverrides(config: Config): void {
   const enabled = readEnv('CLAUDE_PLUGIN_OPTION_ENABLED', 'CLAUDE_PLUGIN_OPTION_enabled');
   if (enabled !== undefined && parseBoolean(enabled) !== DEFAULT_CONFIG.enabled) {
     config.enabled = parseBoolean(enabled);
@@ -209,7 +229,7 @@ function applyPluginOptionOverrides(config) {
   }
 }
 
-function applyEnvironmentOverrides(config) {
+function applyEnvironmentOverrides(config: Config): void {
   const enabled = readEnv('AGENTAURA_CLAUDE_ENABLED', 'AGENTAURA_ENABLED');
   if (enabled !== undefined) {
     config.enabled = parseBoolean(enabled);
@@ -217,7 +237,7 @@ function applyEnvironmentOverrides(config) {
 
   const transport = readEnv('AGENTAURA_CLAUDE_TRANSPORT', 'AGENTAURA_TRANSPORT');
   if (transport !== undefined && isTransportName(transport.trim().toLowerCase())) {
-    config.transport = transport.trim().toLowerCase();
+    config.transport = transport.trim().toLowerCase() as Transport;
   }
 
   const host = readEnv('AGENTAURA_CLAUDE_HOST', 'AGENTAURA_HOST');
@@ -266,14 +286,14 @@ function applyEnvironmentOverrides(config) {
   }
 }
 
-function normalizeTransport(value) {
+function normalizeTransport(value: unknown): Transport {
   if (typeof value === 'string' && isTransportName(value.trim().toLowerCase())) {
-    return value.trim().toLowerCase();
+    return value.trim().toLowerCase() as Transport;
   }
   return DEFAULT_CONFIG.transport;
 }
 
-function readEnv(...names) {
+function readEnv(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name];
     if (value !== undefined && value !== '') {
@@ -283,15 +303,15 @@ function readEnv(...names) {
   return undefined;
 }
 
-function parseBoolean(value) {
+export function parseBoolean(value: unknown): boolean {
   return !['0', 'false', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
-function asString(value) {
+function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeInt(value, fallback, min, max) {
+function normalizeInt(value: unknown, fallback: number, min: number, max: number): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) {
     return fallback;
@@ -303,7 +323,7 @@ function normalizeInt(value, fallback, min, max) {
   return rounded;
 }
 
-function readJsonFile(filePath) {
+export function readJsonFile(filePath: string): Record<string, unknown> | null {
   try {
     if (!fs.existsSync(filePath)) {
       return null;
@@ -317,33 +337,12 @@ function readJsonFile(filePath) {
   }
 }
 
-function debugEnabled() {
+export function debugEnabled(): boolean {
   const value = process.env.AGENTAURA_CLAUDE_DEBUG || process.env.AGENTAURA_DEBUG || '';
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
-function writeJsonFile(filePath, value) {
+function writeJsonFile(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
-
-module.exports = {
-  DEFAULT_CONFIG,
-  DEFAULT_HOOK_SUPPRESSION_MS,
-  claudeDir,
-  configPath,
-  configExists,
-  runtimeStatePath,
-  disabledPath,
-  loadConfig,
-  saveConfig,
-  initConfig,
-  loadRuntimeState,
-  saveRuntimeState,
-  clearRuntimeState,
-  suppressHooks,
-  clearHookSuppression,
-  hooksSuppressed,
-  isDisabled,
-  setDisabled,
-};

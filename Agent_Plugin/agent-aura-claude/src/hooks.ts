@@ -1,12 +1,12 @@
 'use strict';
 
-const { clearHookSuppression, hooksSuppressed, loadConfig, suppressHooks } = require('./config');
-const { RingLightClient } = require('./deviceClient');
-const { isAgentState } = require('./types');
+import { clearHookSuppression, hooksSuppressed, loadConfig, suppressHooks } from './config';
+import { RingLightClient } from './deviceClient';
+import { isAgentState, type AgentState } from './types';
 
 const STDIN_READ_TIMEOUT_MS = 1000;
 
-const CLAUDE_HOOK_EVENTS = [
+export const CLAUDE_HOOK_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
   'PreToolUse',
@@ -25,9 +25,9 @@ const CLAUDE_HOOK_EVENTS = [
   'Stop',
   'StopFailure',
   'SessionEnd',
-];
+] as const;
 
-const CLAUDE_EVENT_TO_AGENT_STATE = {
+export const CLAUDE_EVENT_TO_AGENT_STATE: Record<string, AgentState> = {
   SessionStart: 'init',
   Setup: 'init',
   UserPromptSubmit: 'running',
@@ -49,7 +49,7 @@ const CLAUDE_EVENT_TO_AGENT_STATE = {
   SessionEnd: 'offline',
 };
 
-async function runClaudeHook(eventArg) {
+export async function runClaudeHook(eventArg: string): Promise<void> {
   try {
     const payload = await readStdinJson();
     const eventName = normalizeClaudeEventName(eventArg || '', payload) || 'Unknown';
@@ -63,7 +63,7 @@ async function runClaudeHook(eventArg) {
   }
 }
 
-function shouldSkipClaudeHook(eventName, payload) {
+export function shouldSkipClaudeHook(eventName: string, payload: unknown): boolean {
   if (payloadContainsAgentAuraCommand(payload)) {
     suppressHooks(undefined, 'agent-aura slash command');
     return true;
@@ -78,7 +78,7 @@ function shouldSkipClaudeHook(eventName, payload) {
   return false;
 }
 
-function mapClaudeEventToAgentState(eventName, payload) {
+export function mapClaudeEventToAgentState(eventName: string, payload: unknown): AgentState {
   const normalized = eventName.trim();
   const lowered = normalized.toLowerCase();
 
@@ -117,14 +117,14 @@ function mapClaudeEventToAgentState(eventName, payload) {
   return 'running';
 }
 
-function normalizeClaudeEventName(eventArg, payload) {
+export function normalizeClaudeEventName(eventArg: string, payload: unknown): string {
   if (eventArg.trim()) {
     return eventArg.trim();
   }
   if (!payload || typeof payload !== 'object') {
     return '';
   }
-  const record = payload;
+  const record = payload as Record<string, unknown>;
   for (const key of ['hook_event_name', 'hookEventName', 'event', 'type', 'name', 'hook']) {
     const value = record[key];
     if (typeof value === 'string' && value.trim()) {
@@ -134,15 +134,15 @@ function normalizeClaudeEventName(eventArg, payload) {
   return '';
 }
 
-async function readStdinJson() {
+export async function readStdinJson(): Promise<unknown> {
   if (process.stdin.isTTY) {
     return undefined;
   }
 
-  const text = await new Promise((resolve) => {
+  const text: string = await new Promise((resolve) => {
     let buffer = '';
     let settled = false;
-    let timer;
+    let timer: ReturnType<typeof setTimeout>;
     const finish = () => {
       if (settled) {
         return;
@@ -154,7 +154,7 @@ async function readStdinJson() {
       process.stdin.pause();
       resolve(buffer);
     };
-    const onData = (chunk) => {
+    const onData = (chunk: string) => {
       buffer += chunk;
     };
 
@@ -177,7 +177,7 @@ async function readStdinJson() {
   }
 }
 
-function payloadSignalsError(payload) {
+function payloadSignalsError(payload: unknown): boolean {
   return inspectPayload(payload, (key, value) => {
     const normalizedKey = key.toLowerCase();
     if ((normalizedKey === 'success' || normalizedKey === 'ok') && value === false) {
@@ -198,7 +198,7 @@ function payloadSignalsError(payload) {
   });
 }
 
-function payloadSignalsWaiting(payload) {
+function payloadSignalsWaiting(payload: unknown): boolean {
   return inspectPayload(payload, (key, value) => {
     const normalizedKey = key.toLowerCase();
     if (waitingSignalKey(normalizedKey) && Boolean(value)) {
@@ -216,7 +216,7 @@ function payloadSignalsWaiting(payload) {
   });
 }
 
-function waitingSignalKey(normalizedKey) {
+export function waitingSignalKey(normalizedKey: string): boolean {
   if (!(normalizedKey.includes('permission') || normalizedKey.includes('approval') || normalizedKey.includes('elicitation'))) {
     return false;
   }
@@ -230,7 +230,7 @@ function waitingSignalKey(normalizedKey) {
     || normalizedKey.includes('dialog');
 }
 
-function mapNotificationToAgentState(payload) {
+function mapNotificationToAgentState(payload: unknown): AgentState | null {
   const values = collectStringValues(payload).map((value) => value.toLowerCase());
   if (values.some((value) => value.includes('permission_prompt') || value.includes('elicitation_dialog'))) {
     return 'waiting';
@@ -244,7 +244,7 @@ function mapNotificationToAgentState(payload) {
   return null;
 }
 
-function payloadContainsAgentAuraCommand(payload) {
+export function payloadContainsAgentAuraCommand(payload: unknown): boolean {
   return collectStringValues(payload).some((value) => {
     const trimmed = value.trim();
     return trimmed.startsWith('/agent-aura-claude:aura')
@@ -252,7 +252,7 @@ function payloadContainsAgentAuraCommand(payload) {
   });
 }
 
-function collectStringValues(value, depth = 0) {
+function collectStringValues(value: unknown, depth = 0): string[] {
   if (value === null || value === undefined || depth > 3) {
     return [];
   }
@@ -263,12 +263,12 @@ function collectStringValues(value, depth = 0) {
     return value.flatMap((item) => collectStringValues(item, depth + 1));
   }
   if (typeof value === 'object') {
-    return Object.values(value).flatMap((item) => collectStringValues(item, depth + 1));
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectStringValues(item, depth + 1));
   }
   return [];
 }
 
-function inspectPayload(payload, predicate, depth = 0) {
+function inspectPayload(payload: unknown, predicate: (key: string, value: unknown) => boolean, depth = 0): boolean {
   if (!payload || depth > 4) {
     return false;
   }
@@ -278,7 +278,7 @@ function inspectPayload(payload, predicate, depth = 0) {
   if (typeof payload !== 'object') {
     return false;
   }
-  for (const [key, value] of Object.entries(payload)) {
+  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
     if (predicate(key, value)) {
       return true;
     }
@@ -288,15 +288,3 @@ function inspectPayload(payload, predicate, depth = 0) {
   }
   return false;
 }
-
-module.exports = {
-  CLAUDE_HOOK_EVENTS,
-  CLAUDE_EVENT_TO_AGENT_STATE,
-  runClaudeHook,
-  shouldSkipClaudeHook,
-  mapClaudeEventToAgentState,
-  normalizeClaudeEventName,
-  readStdinJson,
-  payloadContainsAgentAuraCommand,
-  waitingSignalKey,
-};
