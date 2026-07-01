@@ -1,0 +1,44 @@
+{
+  "name": "agent-aura-kimi-code",
+  "displayName": "AgentAura - Kimi Code Ring Light",
+  "description": "Sync Kimi Code CLI hook lifecycle events to AgentAura ESP32 Ring Light and PetDesktop",
+  "version": "0.1.0",
+  "author": "AgentAura",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "agent-aura-kimi-code": "./out/index.js"
+  },
+  "files": [
+    "agent-aura-kimi-code.config.example.json",
+    "out/**",
+    "scripts/**",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "bash scripts/pack.sh",
+    "test": "npm run compile && node --test test/*.test.js"
+  },
+  "keywords": [
+    "kimi",
+    "kimi-code",
+    "agentaura",
+    "esp32",
+    "petdesktop",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  }
+}

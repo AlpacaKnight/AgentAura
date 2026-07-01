@@ -1,6 +1,6 @@
 # AgentAura PetDesktop
 
-PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 Codex、Claude Code、GitHub Copilot、QwenPaw 的状态，在透明置顶窗口播放 Codex 宠物动画，并可将仲裁后的状态同步到 ESP32 环形灯。
+PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 Codex、Claude Code、Kimi Code、GitHub Copilot、QwenPaw 的状态，在透明置顶窗口播放桌宠动画，并可将仲裁后的状态同步到 ESP32 环形灯。
 
 ## 接口文档
 
@@ -164,4 +164,4 @@ npm run tauri -- build
 - 已明确配置硬件主机或串口的插件继续直连硬件。
 - 网络目标为空且自动发现开启时，插件先探测本机 PetDesktop，再回退到原 ESP32 UDP 发现。
 - Copilot 与 QwenPaw 是常驻进程，会注册并每 10 秒发送心跳。
-- Codex 与 Claude Code 使用短生命周期 hook 进程，通过兼容请求头提供稳定实例身份，每次生命周期事件刷新在线状态。
+- Codex、Claude Code 与 Kimi Code 使用短生命周期 hook 进程，通过兼容请求头提供稳定实例身份，每次生命周期事件刷新在线状态。

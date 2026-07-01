@@ -23,17 +23,18 @@
 - QwenPaw：由于 QwenPaw 支持 hooks，可以从官方接口直接拿到状态，功能比较完善，会优先更新。
 - Claude Code：已支持，使用 Claude Code 原生插件结构和 hooks，将会话开始、用户提交、工具调用、权限等待、停止等事件同步到环形灯，并提供 `/agent-aura-claude:aura` 命令在会话内手动控制。
 - VS Code Copilot：还在“打补丁”的阶段，原生没 hooks，也没有接口能拿到完整的运行状态，信息跑起来有点费劲，体验上很不稳定，建议勇士抱着实验精神凑合试用。
-- Codex：已支持，采用类似 Codex 宠物的 hook 机制，将 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest` 等事件同步到环形灯。
-- qwen code / kimi cli / zcode 等国产工具：尽量支持，看时间和当时的 token 余额而定。
+- Codex：已支持，采用 `~/.codex/hooks.json` 注册命令型 hook，将 `SessionStart`、`PreToolUse`、`PermissionRequest`、`PostToolUse` 等事件同步到环形灯。
+- Kimi Code：已支持，采用 `~/.kimi-code/config.toml` 的 `[[hooks]]` 机制，将 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 等事件同步到环形灯，并兼容 PetDesktop。
+- qwen code / zcode 等国产工具：尽量支持，看时间和当时的 token 余额而定。
 - 未来计划：希望做带屏幕、可确认交互的硬件设备，但时间还没敲定，市场好货多的时候可能就随缘。
 
 ## 子模块实现概述
 
 - `PetDesktop`
   - 基于 Tauri 2、React 和 Rust 的 Windows/macOS/Linux 桌面宠物应用。
-  - 接收多个 Agent 插件状态，按优先级仲裁后驱动 Codex 宠物 spritesheet 动画。
+  - 接收多个 Agent 插件状态，按优先级仲裁后驱动桌宠 spritesheet 动画。
   - 提供 Agent 管理、宠物安装、透明桌宠、系统托盘，以及 HTTP/UDP/串口 AgentAura 硬件桥接。
-  - 默认在本机提供固件兼容 API；四个现有插件在没有显式硬件目标时会优先连接 PetDesktop。
+  - 默认在本机提供固件兼容 API；五个现有插件在没有显式硬件目标时会优先连接 PetDesktop。
 
 - `Agent_Plugin/agent-aura-copilot`
   - 监听 GitHub Copilot Chat 的 transcript 和 VS Code 终端事件。
@@ -44,6 +45,11 @@
   - 通过 Codex `~/.codex/hooks.json` 注册命令型 hook，捕获用户提交、工具执行、权限请求和停止事件。
   - 将 Codex 事件映射为固件内置状态指令，如 `agent running`、`agent busy`、`agent waiting`、`agent idle`。
   - 提供 CLI 配置、设备发现、手动测试和打包脚本，支持 HTTP / UDP / Serial 三种传输方式。
+
+- `Agent_Plugin/agent-aura-kimi-code`
+  - 通过 Kimi Code `~/.kimi-code/config.toml` 的 `[[hooks]]` 注册命令型 hook，捕获 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 等生命周期事件。
+  - 将 Kimi Code 事件映射为固件内置状态指令，如 `agent init`、`agent running`、`agent busy`、`agent waiting`、`agent idle`、`agent error`、`agent offline`。
+  - 提供 CLI 配置、设备发现、手动测试和打包脚本，支持 HTTP / UDP / Serial 三种传输方式，并兼容 PetDesktop 的身份请求头与 Bearer Token。
 
 - `Agent_Plugin/agent-aura-claude`
   - 通过 Claude Code marketplace 插件和 `hooks/hooks.json` 捕获 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 等生命周期事件。
@@ -73,6 +79,7 @@ AgentAura/
 │   ├── agent-aura-copilot/              # Copilot VS Code 插件
 │   ├── agent-aura-claude/               # Claude Code marketplace 插件
 │   ├── agent-aura-codex/                # Codex hook 插件
+│   ├── agent-aura-kimi-code/            # Kimi Code hook 插件
 │   └── qwenpaw-plugin/                  # QwenPaw 插件
 ├── Arduino_ESP32_RingLight/             # 硬件：ESP32 环形灯
 │   ├── ESP32_RingLight_Demo/
@@ -83,7 +90,7 @@ AgentAura/
 ### 目录命名约定
 
 - `Arduino_{MCU}_{硬件类型}/`：硬件子项目，例如 `Arduino_ESP32_RingLight` 表示基于 ESP32 的环形灯。
-- `Agent_Plugin/{plugin_name}/`：IDE / Agent CLI 插件，例如 `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/agent-aura-claude`、`Agent_Plugin/qwenpaw-plugin`。
+- `Agent_Plugin/{plugin_name}/`：IDE / Agent CLI 插件，例如 `Agent_Plugin/agent-aura-copilot`、`Agent_Plugin/agent-aura-claude`、`Agent_Plugin/agent-aura-kimi-code`、`Agent_Plugin/qwenpaw-plugin`。
 
 ---
 
