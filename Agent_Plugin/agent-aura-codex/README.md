@@ -229,8 +229,23 @@ agent-aura-codex config init --force
     "cooldownMs": 3000,
     "timeoutMs": 650,
     "idleFallbackMs": 5000,
-    "autoDiscover": true
+    "autoDiscover": true,
+    "authToken": ""
 }
+```
+
+### 认证 (authToken)
+
+当固件开启了 HTTP 认证时，在配置中设置 `authToken`，插件会在所有 HTTP 请求中携带 `Authorization: Bearer <token>` 头。留空则不认证。UDP 和串口传输不携带 token。
+
+```bash
+agent-aura-codex config set --auth-token "your-secret-token"
+```
+
+清除 token：
+
+```bash
+agent-aura-codex config set --auth-token ""
 ```
 
 也可以通过环境变量指定另一份配置文件：
@@ -255,6 +270,7 @@ AGENTAURA_CODEX_COOLDOWN_MS=3000
 AGENTAURA_CODEX_TIMEOUT_MS=650
 AGENTAURA_CODEX_IDLE_FALLBACK_MS=5000
 AGENTAURA_CODEX_AUTO_DISCOVER=true
+AGENTAURA_CODEX_AUTH_TOKEN=your-secret-token
 ```
 
 也兼容不带 `CODEX` 的通用变量，例如 `AGENTAURA_HOST`、`AGENTAURA_TRANSPORT`。

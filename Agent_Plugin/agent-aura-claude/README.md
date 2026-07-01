@@ -77,6 +77,7 @@ claude plugin install agent-aura-claude@agentaura --config enabled=true --config
 | `serial_port` | USB CDC 串口路径，如 `/dev/ttyACM0` | 空 |
 | `baud` | 串口波特率 | `115200` |
 | `auto_discover` | `host` 为空时在 UDP 8888 自动发现设备 | `true` |
+| `auth_token` | HTTP Bearer 认证令牌，留空则不认证 | 空 |
 
 常见组合：
 
@@ -86,6 +87,18 @@ claude plugin install agent-aura-claude@agentaura --config enabled=true --config
 - 自动发现：`host` 留空且 `auto_discover=true`
 
 改完配置后运行 `/reload-plugins` 或重启会话。
+
+### 认证 (auth_token)
+
+当固件开启了 HTTP 认证时，设置 `auth_token` 后插件会在所有 HTTP 请求中携带 `Authorization: Bearer <token>` 头。留空则不认证。UDP 和串口传输不携带 token。
+
+在 `/plugin` 配置界面设置，或通过命令行：
+
+```bash
+agent-aura-claude config set --auth-token "your-secret-token"
+```
+
+也可通过环境变量 `AGENTAURA_CLAUDE_AUTH_TOKEN`（或通用 `AGENTAURA_AUTH_TOKEN`）临时指定。
 
 ## 工作方式
 

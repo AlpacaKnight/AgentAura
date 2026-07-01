@@ -113,7 +113,14 @@ npx @vscode/vsce package # 打包 .vsix
 | `agentAura.udpPort` | `8888` | UDP 端口 |
 | `agentAura.serialPort` | *(空)* | 串口路径 (/dev/ttyACM0, COM3) |
 | `agentAura.serialBaud` | `115200` | 波特率 |
+| `agentAura.authToken` | *(空)* | HTTP Bearer 认证令牌，留空则不认证 |
 | `agentAura.showStatusBar` | `true` | 状态栏显示连接状态 |
+
+### 认证 (authToken)
+
+当固件开启了 HTTP 认证时，设置 `authToken` 后插件会在所有 HTTP 请求中携带 `Authorization: Bearer <token>` 头。留空则不认证。UDP 和串口传输不携带 token。
+
+可在 VS Code Settings 中设置 `agentAura.authToken`，或通过侧边栏控制面板的「密钥」输入框设置。
 
 ## 快速开始
 
