@@ -36,6 +36,7 @@ export class DeviceClient implements vscode.Disposable {
     private _udpPort: number = 8888;
     private _serialPort: string = '';
     private _serialBaud: number = 115200;
+    private _authToken: string = '';
     private _connected: boolean = false;
     private _unreachableUntil: number = 0;
     private _serialHandle: any = null;
@@ -65,6 +66,7 @@ export class DeviceClient implements vscode.Disposable {
         this._udpPort = config.get<number>('udpPort') || 8888;
         this._serialPort = config.get<string>('serialPort') || '';
         this._serialBaud = config.get<number>('serialBaud') || 115200;
+        this._authToken = config.get<string>('authToken') || '';
     }
 
     async connect(): Promise<void> {
@@ -168,9 +170,13 @@ export class DeviceClient implements vscode.Disposable {
         }
 
         return new Promise((resolve) => {
+            const headers: http.OutgoingHttpHeaders = {};
+            if (this._authToken) {
+                headers.authorization = `Bearer ${this._authToken}`;
+            }
             const req = http.get(
                 `http://${this._host}:${this._httpPort}/api/state`,
-                { timeout: 2000 },
+                { timeout: 2000, headers },
                 (res) => {
                     let data = '';
                     res.on('data', chunk => data += chunk);
@@ -205,16 +211,20 @@ export class DeviceClient implements vscode.Disposable {
 
     private _httpPost(path: string, body: string): Promise<boolean> {
         return new Promise((resolve) => {
+            const headers: http.OutgoingHttpHeaders = {
+                'Content-Type': 'text/plain',
+                'Content-Length': Buffer.byteLength(body),
+            };
+            if (this._authToken) {
+                headers.authorization = `Bearer ${this._authToken}`;
+            }
             const options: http.RequestOptions = {
                 hostname: this._host,
                 port: this._httpPort,
                 path,
                 method: 'POST',
                 timeout: 2000,
-                headers: {
-                    'Content-Type': 'text/plain',
-                    'Content-Length': Buffer.byteLength(body),
-                },
+                headers,
             };
 
             const req = http.request(options, (res) => {

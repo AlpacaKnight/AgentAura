@@ -124,16 +124,20 @@ export class RingLightClient {
 
     private httpPost(requestPath: string, body: string): Promise<boolean> {
         return new Promise((resolve) => {
+            const headers: http.OutgoingHttpHeaders = {
+                'Content-Type': 'text/plain',
+                'Content-Length': Buffer.byteLength(body),
+            };
+            if (this.config.authToken) {
+                headers.authorization = `Bearer ${this.config.authToken}`;
+            }
             const req = http.request({
                 hostname: this.config.host,
                 port: this.portFor('http'),
                 path: requestPath,
                 method: 'POST',
                 timeout: this.config.timeoutMs,
-                headers: {
-                    'Content-Type': 'text/plain',
-                    'Content-Length': Buffer.byteLength(body),
-                },
+                headers,
             }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk.toString());
@@ -155,11 +159,16 @@ export class RingLightClient {
 
     private httpGetJson(requestPath: string): Promise<DeviceState | null> {
         return new Promise((resolve) => {
+            const headers: http.OutgoingHttpHeaders = {};
+            if (this.config.authToken) {
+                headers.authorization = `Bearer ${this.config.authToken}`;
+            }
             const req = http.get({
                 hostname: this.config.host,
                 port: this.portFor('http'),
                 path: requestPath,
                 timeout: Math.max(this.config.timeoutMs, 1200),
+                headers,
             }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk.toString());

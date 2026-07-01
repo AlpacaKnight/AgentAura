@@ -151,6 +151,9 @@ async function configure(args) {
   if (flags.autoDiscover !== undefined) {
     patch.autoDiscover = parseBoolean(flags.autoDiscover);
   }
+  if (flags.authToken !== undefined) {
+    patch.authToken = flags.authToken;
+  }
 
   if (flags.discover !== undefined) {
     const devices = await discoverDevices(2500);
@@ -327,6 +330,9 @@ Environment overrides:
   AGENTAURA_CLAUDE_SERIAL_PORT=/dev/ttyACM0
   AGENTAURA_CLAUDE_BAUD=115200
   AGENTAURA_CLAUDE_ENABLED=true|false
+
+Set auth token:
+  agent-aura-claude config set --auth-token my-secret-token
 `);
 }
 

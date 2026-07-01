@@ -98,6 +98,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show connection status in the status bar"
+        },
+        "agentAura.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Authentication token sent as Authorization: Bearer <token> header on HTTP requests to the Ring Light"
         }
       }
     },

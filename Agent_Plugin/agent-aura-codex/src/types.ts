@@ -27,6 +27,7 @@ export interface AgentAuraConfig {
     timeoutMs: number;
     idleFallbackMs: number;
     autoDiscover: boolean;
+    authToken: string;
 }
 
 export interface RuntimeState {

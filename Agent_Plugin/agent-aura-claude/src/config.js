@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
   cooldownMs: 3000,
   timeoutMs: 650,
   autoDiscover: true,
+  authToken: '',
 };
 
 const DEFAULT_HOOK_SUPPRESSION_MS = 8000;
@@ -140,6 +141,7 @@ function normalizeConfig(input) {
     cooldownMs: normalizeInt(input.cooldownMs ?? input.cooldown_ms, DEFAULT_CONFIG.cooldownMs, 0, 60000),
     timeoutMs: normalizeInt(input.timeoutMs ?? input.timeout_ms, DEFAULT_CONFIG.timeoutMs, 100, 10000),
     autoDiscover: input.autoDiscover !== false && input.auto_discover !== false,
+    authToken: asString(input.authToken),
   };
 }
 
@@ -200,6 +202,11 @@ function applyPluginOptionOverrides(config) {
   if (autoDiscover !== undefined && parseBoolean(autoDiscover) !== DEFAULT_CONFIG.autoDiscover) {
     config.autoDiscover = parseBoolean(autoDiscover);
   }
+
+  const authToken = readEnv('CLAUDE_PLUGIN_OPTION_AUTH_TOKEN', 'CLAUDE_PLUGIN_OPTION_auth_token');
+  if (authToken !== undefined && authToken.trim()) {
+    config.authToken = authToken.trim();
+  }
 }
 
 function applyEnvironmentOverrides(config) {
@@ -251,6 +258,11 @@ function applyEnvironmentOverrides(config) {
   const autoDiscover = readEnv('AGENTAURA_CLAUDE_AUTO_DISCOVER', 'AGENTAURA_AUTO_DISCOVER');
   if (autoDiscover !== undefined) {
     config.autoDiscover = parseBoolean(autoDiscover);
+  }
+
+  const authToken = readEnv('AGENTAURA_CLAUDE_AUTH_TOKEN', 'AGENTAURA_AUTH_TOKEN');
+  if (authToken !== undefined) {
+    config.authToken = authToken.trim();
   }
 }
 

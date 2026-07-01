@@ -127,6 +127,7 @@ async function configure(args: string[]): Promise<void> {
     if (flags.timeoutMs !== undefined) { patch.timeoutMs = parseNumberFlag(flags.timeoutMs, '--timeout-ms'); }
     if (flags.idleFallbackMs !== undefined) { patch.idleFallbackMs = parseNumberFlag(flags.idleFallbackMs, '--idle-fallback-ms'); }
     if (flags.autoDiscover !== undefined) { patch.autoDiscover = parseBoolean(flags.autoDiscover); }
+    if (flags.authToken !== undefined) { patch.authToken = flags.authToken; }
 
     if (flags.discover !== undefined) {
         const devices = await discoverDevices(2500);
@@ -321,6 +322,9 @@ Environment overrides:
   AGENTAURA_CODEX_BAUD=115200
   AGENTAURA_CODEX_ENABLED=true|false
   AGENTAURA_CODEX_IDLE_FALLBACK_MS=5000
+
+Set auth token:
+  agent-aura-codex config set --auth-token my-secret-token
 `);
 }
 

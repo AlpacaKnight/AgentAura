@@ -18,6 +18,7 @@ const ENV_KEYS = [
   'CLAUDE_PLUGIN_OPTION_HOST',
   'CLAUDE_PLUGIN_OPTION_PORT',
   'CLAUDE_PLUGIN_OPTION_AUTO_DISCOVER',
+  'CLAUDE_PLUGIN_OPTION_AUTH_TOKEN',
   'AGENTAURA_CLAUDE_CONFIG',
   'AGENTAURA_CLAUDE_STATE',
   'AGENTAURA_CLAUDE_HOST',
@@ -25,6 +26,7 @@ const ENV_KEYS = [
   'AGENTAURA_CLAUDE_AUTO_DISCOVER',
   'AGENTAURA_CLAUDE_TRANSPORT',
   'AGENTAURA_CLAUDE_ENABLED',
+  'AGENTAURA_CLAUDE_AUTH_TOKEN',
   'AGENTAURA_CLAUDE_DEBUG',
   'AGENTAURA_DEBUG',
 ];
@@ -111,6 +113,17 @@ test('plugin option defaults do not override saved CLI config', () => {
     assert.equal(loaded.enabled, false);
     assert.equal(loaded.transport, 'udp');
     assert.equal(loaded.port, 8888);
+  }));
+});
+
+test('plugin option auth token overrides config', () => {
+  withIsolatedEnv(() => withTempClaudeHome(() => {
+    saveConfig({ transport: 'http', host: '192.0.2.4', authToken: 'file-token' });
+
+    process.env.CLAUDE_PLUGIN_OPTION_AUTH_TOKEN = 'plugin-token';
+
+    const loaded = loadConfig();
+    assert.equal(loaded.authToken, 'plugin-token');
   }));
 });
 

@@ -39,6 +39,7 @@ const DEFAULT_CONFIG: AgentAuraConfig = {
     timeoutMs: 650,
     idleFallbackMs: 5000,
     autoDiscover: true,
+    authToken: '',
 };
 
 export function loadConfig(): AgentAuraConfig {
@@ -127,6 +128,7 @@ function normalizeConfig(input: Partial<AgentAuraConfig>): AgentAuraConfig {
         timeoutMs: normalizeInt(input.timeoutMs, DEFAULT_CONFIG.timeoutMs, 100, 10000),
         idleFallbackMs: normalizeInt(input.idleFallbackMs, DEFAULT_CONFIG.idleFallbackMs, 0, 600000),
         autoDiscover: input.autoDiscover !== false,
+        authToken: asString(input.authToken),
     };
 }
 
@@ -165,6 +167,9 @@ function applyEnvironmentOverrides(config: AgentAuraConfig): void {
 
     const autoDiscover = readEnv('AGENTAURA_CODEX_AUTO_DISCOVER', 'AGENTAURA_AUTO_DISCOVER');
     if (autoDiscover !== undefined) { config.autoDiscover = parseBoolean(autoDiscover); }
+
+    const authToken = readEnv('AGENTAURA_CODEX_AUTH_TOKEN', 'AGENTAURA_AUTH_TOKEN');
+    if (authToken !== undefined) { config.authToken = authToken.trim(); }
 }
 
 function normalizeTransport(value: unknown): TransportName {

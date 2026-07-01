@@ -134,6 +134,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private async _saveConfig(value: any) {
         if (!value || typeof value !== 'object') { return; }
         const config = vscode.workspace.getConfiguration('agentAura');
+        await config.update('authToken', this._asString(value.authToken), vscode.ConfigurationTarget.Global);
         const updates: Array<[string, unknown]> = [
             ['transport', this._normalizeTransport(value.transport)],
             ['host', this._asString(value.host)],
@@ -160,6 +161,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             serialPort: config.get<string>('serialPort') || '',
             serialBaud: config.get<number>('serialBaud') || 115200,
             enabled: config.get<boolean>('enabled') ?? true,
+            authToken: config.get<string>('authToken') || '',
         };
     }
 
@@ -402,6 +404,10 @@ input[type=color] {
         <input type="checkbox" id="enabled" checked>
     </div>
     <div class="field-row">
+        <label for="authToken">密钥</label>
+        <input id="authToken" type="password" placeholder="可选，留空则不认证">
+    </div>
+    <div class="field-row">
         <label for="transport">方式</label>
         <select id="transport" onchange="syncModeFields()">
             <option value="http">HTTP</option>
@@ -522,7 +528,8 @@ function formConfig() {
         httpPort: Number(byId('httpPort').value) || 80,
         udpPort: Number(byId('udpPort').value) || 8888,
         serialPort: byId('serialPort').value.trim(),
-        serialBaud: Number(byId('serialBaud').value) || 115200
+        serialBaud: Number(byId('serialBaud').value) || 115200,
+        authToken: byId('authToken').value
     };
 }
 
@@ -535,6 +542,7 @@ function applyConfig(config) {
     byId('udpPort').value = config.udpPort || 8888;
     byId('serialPort').value = config.serialPort || '';
     byId('serialBaud').value = config.serialBaud || 115200;
+    byId('authToken').value = config.authToken || '';
     syncModeFields();
 }
 
@@ -581,7 +589,7 @@ function useDiscovered(device) {
     saveConfig();
 }
 
-['enabled','transport','host','httpPort','udpPort','serialPort','serialBaud'].forEach(function(id) {
+['enabled','transport','host','httpPort','udpPort','serialPort','serialBaud','authToken'].forEach(function(id) {
     var el = byId(id);
     el.addEventListener('input', function() { configDirty = true; });
     el.addEventListener('change', function() { configDirty = true; });
