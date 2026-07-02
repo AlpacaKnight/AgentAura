@@ -123,3 +123,16 @@ export const STATE_LABELS: Record<AgentState, string> = {
   offline: '离线',
   upgrade: '升级中',
 };
+
+export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw';
+export type PluginPackageInspection = {
+  path: string; fileName: string; sha256: string; format: string; provider?: PluginProvider;
+  version?: string; valid: boolean; error?: string;
+};
+export type ManagedPluginStatus = {
+  provider: PluginProvider; installed: boolean; version?: string; hooksInstalled: boolean;
+  hooksSupported: boolean; configPath?: string;
+};
+export type PluginOperationResult = {
+  provider: PluginProvider; success: boolean; message: string; output: string;
+};

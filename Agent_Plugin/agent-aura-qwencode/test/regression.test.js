@@ -116,7 +116,9 @@ test('installQwenHooks appends managed hook entries to settings.json', () => {
     assert.ok(document.hooks.SessionStart);
     assert.ok(document.hooks.Stop);
     assert.equal(document.hooks.SessionStart[0].hooks[0].name, 'agent-aura-qwencode:SessionStart');
-    assert.match(document.hooks.SessionStart[0].hooks[0].command, /AGENTAURA_QWENCODE_HOOK=1|set AGENTAURA_QWENCODE_HOOK=1/);
+    assert.equal(document.hooks.SessionStart[0].hooks[0].timeout, 5);
+    assert.equal(document.hooks.SessionStart[0].hooks[0].env.AGENTAURA_QWENCODE_HOOK, '1');
+    if (process.platform === 'win32') assert.equal(document.hooks.SessionStart[0].hooks[0].shell, 'powershell');
     assert.equal(document.hooks.Notification[0].hooks[0].name, 'keep-auth');
     assert.equal(document.hooks.Notification[1].matcher, 'permission_prompt');
     assert.equal(document.hooks.Notification[1].hooks[0].name, 'agent-aura-qwencode:Notification');

@@ -10,6 +10,8 @@ type HookCommand = {
     command: string;
     name: string;
     timeout: number;
+    env?: Record<string, string>;
+    shell?: 'powershell';
 };
 
 type HookEntry = {
@@ -84,6 +86,9 @@ function managedHookEntry(eventName: string): HookEntry {
                 command: buildHookCommand(eventName),
                 name: `${HOOK_NAME_PREFIX}${eventName}`,
                 timeout: 5,
+                ...(process.platform === 'win32'
+                    ? { shell: 'powershell' as const, env: { AGENTAURA_QWENCODE_HOOK: '1' } }
+                    : {}),
             },
         ],
     };
@@ -123,7 +128,7 @@ function buildHookCommand(eventName: string): string {
     const node = process.execPath || 'node';
     const entry = path.resolve(__dirname, 'index.js');
     if (process.platform === 'win32') {
-        return `set ${MARKER}&& ${windowsQuote(node)} ${windowsQuote(entry)} hook ${windowsQuote(eventName)} >nul 2>nul`;
+        return `& ${powershellQuote(node)} ${powershellQuote(entry)} hook ${powershellQuote(eventName)}`;
     }
     return `${MARKER} ${shellQuote(node)} ${shellQuote(entry)} hook ${shellQuote(eventName)} >/dev/null 2>&1 || true`;
 }
@@ -146,10 +151,10 @@ function writeSettings(settings: QwenSettings): void {
     writeHooksText(`${JSON.stringify(settings, null, 2)}\n`);
 }
 
-function windowsQuote(value: string): string {
-    return `"${value.replace(/"/g, '\\"')}"`;
+function powershellQuote(value: string): string {
+    return `'${value.replace(/'/g, "'")}'`;
 }
 
 function shellQuote(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
+    return `'${value.replace(/'/g, "'")}'`;
 }

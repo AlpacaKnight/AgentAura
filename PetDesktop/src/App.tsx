@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   Plus,
+  Plug,
   Radio,
   RefreshCw,
   Settings,
@@ -22,6 +23,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { api, onSnapshot } from './api';
+import { PluginsPanel } from './PluginsPanel';
 import {
   AGENT_STATES,
   STATE_LABELS,
@@ -32,11 +34,12 @@ import {
   type SerialPortInfo,
 } from './types';
 
-type Tab = 'overview' | 'agents' | 'pets' | 'hardware' | 'settings' | 'logs';
+type Tab = 'overview' | 'agents' | 'pets' | 'plugins' | 'hardware' | 'settings' | 'logs';
 
 const tabItems: Array<{ id: Tab; label: string; icon: typeof Gauge }> = [
   { id: 'overview', label: '概览', icon: Gauge },
   { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'plugins', label: '插件', icon: Plug },
   { id: 'pets', label: '宠物', icon: HeartPulse },
   { id: 'hardware', label: '硬件', icon: Cpu },
   { id: 'settings', label: '设置', icon: Settings },
@@ -125,6 +128,7 @@ export default function App() {
         {tab === 'overview' && <Overview snapshot={snapshot} run={run} />}
         {tab === 'agents' && <Agents snapshot={snapshot} run={run} />}
         {tab === 'pets' && <Pets snapshot={snapshot} run={run} />}
+        {tab === 'plugins' && <PluginsPanel />}
         {tab === 'hardware' && <Hardware snapshot={snapshot} run={run} />}
         {tab === 'settings' && <SettingsPanel snapshot={snapshot} run={run} />}
         {tab === 'logs' && <Logs snapshot={snapshot} />}
