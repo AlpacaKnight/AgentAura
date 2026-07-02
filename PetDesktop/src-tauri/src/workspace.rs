@@ -12,10 +12,7 @@
 use tauri::WebviewWindow;
 
 /// Sets whether the window should be visible on all workspaces.
-pub fn set_show_on_all_workspaces(
-    window: &WebviewWindow,
-    show: bool,
-) -> Result<(), String> {
+pub fn set_show_on_all_workspaces(window: &WebviewWindow, show: bool) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         set_linux(window, show)?;
