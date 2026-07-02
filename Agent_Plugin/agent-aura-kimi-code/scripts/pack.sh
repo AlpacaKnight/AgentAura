@@ -48,7 +48,7 @@ fi
     cd "$STAGING"
     if command -v zip >/dev/null 2>&1; then
         zip -qr "$ZIP_PATH" .
-    else
+    elif command -v python3 >/dev/null 2>&1; then
         python3 - "$ZIP_PATH" <<'PY'
 import os, sys, zipfile
 zip_path = sys.argv[1]
@@ -58,6 +58,9 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             full = os.path.join(root, name)
             zf.write(full, os.path.relpath(full, "."))
 PY
+    else
+        echo "ERROR: No zip tool available (need zip or python3)" >&2
+        exit 1
     fi
 )
 

@@ -40,7 +40,7 @@ $staging = Join-Path $env:TEMP "agent-aura-qwencode-pack-$(Get-Random)"
 try {
     New-Item -ItemType Directory -Path $staging -Force | Out-Null
     $files = Get-ChildItem -LiteralPath $ProjectDir -Recurse -File | Where-Object {
-        $rel = $_.FullName.Substring($ProjectDir.Length).TrimStart('\\','/')
+        $rel = $_.FullName.Substring($ProjectDir.Length).TrimStart('\','/')
         $parts = $rel -split '[\\/]'
         -not ($parts -contains 'node_modules') -and
         -not ($parts -contains 'dist') -and
@@ -48,7 +48,7 @@ try {
         $_.Extension -notin @('.tgz', '.zip')
     }
     foreach ($file in $files) {
-        $rel = $file.FullName.Substring($ProjectDir.Length).TrimStart('\\','/')
+        $rel = $file.FullName.Substring($ProjectDir.Length).TrimStart('\','/')
         $dest = Join-Path $staging $rel
         $parent = Split-Path -Parent $dest
         if (-not (Test-Path $parent)) {

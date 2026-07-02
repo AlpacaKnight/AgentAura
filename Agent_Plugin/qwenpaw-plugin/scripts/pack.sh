@@ -39,19 +39,8 @@ fi
 
 # --- read version + id from plugin.json ---
 read_manifest_field() {
-    python3 - "$MANIFEST" "$1" <<'PY'
-import json, sys
-path, field = sys.argv[1], sys.argv[2]
-with open(path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-print(data.get(field, ""))
-PY
+    node -e "const d=require(process.argv[1]);process.stdout.write(d[process.argv[2]]||'')" "$MANIFEST" "$1"
 }
-
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "ERROR: python3 is required to read plugin.json" >&2
-    exit 1
-fi
 
 VERSION="$(read_manifest_field version)"
 PLUGIN_ID="$(read_manifest_field id)"
@@ -115,20 +104,11 @@ trap 'rm -rf "$STAGING"' EXIT
             --exclude="*.zip" \
             ./ "$STAGING/"
     else
-        find . -type f \
-            ! -path './ui/dist/*' \
-            ! -path './ui/node_modules/*' \
-            ! -path './node_modules/*' \
-            ! -path '*/__pycache__/*' \
-            ! -name '*.pyc' \
-            ! -name '*.pyo' \
-            ! -path './.pytest_cache/*' \
-            ! -path './.mypy_cache/*' \
-            ! -path './.git/*' \
-            ! -name '.gitignore' \
-            ! -name 'package-lock.json' \
-            ! -name '*.zip' \
-            -exec cp --parents {} "$STAGING/" \;
+        while IFS= read -r -d '' file; do
+            rel="${file#./}"
+            mkdir -p "$STAGING/$(dirname "$rel")"
+            cp "$file" "$STAGING/$rel"
+        done < <(find . -type f ! -path './ui/dist/*' ! -path './ui/node_modules/*' ! -path './node_modules/*' ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '*.pyo' ! -path './.pytest_cache/*' ! -path './.mypy_cache/*' ! -path './.git/*' ! -name '.gitignore' ! -name 'package-lock.json' ! -name '*.zip' -print0)
     fi
 )
 
@@ -136,7 +116,7 @@ trap 'rm -rf "$STAGING"' EXIT
     cd "$STAGING"
     if command -v zip >/dev/null 2>&1; then
         zip -qr "$ZIP_PATH" .
-    else
+    elif command -v python3 >/dev/null 2>&1; then
         python3 - "$ZIP_PATH" <<'PY'
 import os, sys, zipfile
 zip_path = sys.argv[1]
@@ -147,11 +127,25 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             arc = os.path.relpath(full, ".")
             zf.write(full, arc)
 PY
+    else
+        echo "ERROR: No zip tool available (need zip or python3)" >&2
+        exit 1
     fi
 )
 
 # --- report ---
-FILE_COUNT="$(python3 -c "import zipfile,sys; print(len(zipfile.ZipFile(sys.argv[1]).namelist()))" "$ZIP_PATH")"
+FILE_COUNT="$(node -e "
+const fs=require('fs');
+const buf=fs.readFileSync(process.argv[1]);
+const min=Math.max(0,buf.length-65557);
+for(let i=buf.length-22;i>=min;i--){
+  if(buf.readUInt32LE(i)===0x06054b50){
+    console.log(buf.readUInt16LE(i+10));
+    process.exit(0);
+  }
+}
+throw new Error('ZIP end-of-central-directory record not found');
+" "$ZIP_PATH" 2>/dev/null || echo '?')"
 SIZE="$(stat -f%z "$ZIP_PATH" 2>/dev/null || stat -c%s "$ZIP_PATH")"
 echo ""
 echo "Packed ${FILE_COUNT} file(s) -> ${ZIP_PATH} ($(printf '%d' "$SIZE") bytes)"
