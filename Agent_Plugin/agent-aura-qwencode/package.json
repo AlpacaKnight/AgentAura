@@ -1,0 +1,46 @@
+{
+  "name": "agent-aura-qwencode",
+  "displayName": "AgentAura - Qwen Code Ring Light",
+  "description": "Sync Qwen Code hook lifecycle events to AgentAura ESP32 Ring Light and PetDesktop",
+  "version": "0.1.0",
+  "author": "AgentAura",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "agent-aura-qwencode": "./out/index.js"
+  },
+  "files": [
+    "agent-aura-qwencode.config.example.json",
+    "qwen-extension.json",
+    "QWEN.md",
+    "out/**",
+    "scripts/**",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "bash scripts/pack.sh",
+    "test": "npm run compile && node --test test/*.test.js"
+  },
+  "keywords": [
+    "qwen",
+    "qwen-code",
+    "agentaura",
+    "esp32",
+    "petdesktop",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  }
+}

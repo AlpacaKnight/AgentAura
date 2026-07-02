@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "transport": "http",
+  "host": "127.0.0.1",
+  "port": 47831,
+  "serialPort": "",
+  "baud": 115200,
+  "debounceMs": 500,
+  "cooldownMs": 3000,
+  "timeoutMs": 650,
+  "autoDiscover": true,
+  "authToken": ""
+}
