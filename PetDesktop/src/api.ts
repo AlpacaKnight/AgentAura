@@ -23,6 +23,7 @@ const browserFallback: AppSnapshot = {
     roamSpeed: 80,
     clickThrough: false,
     petVisible: true,
+    showOnAllWorkspaces: false,
     launchAtStartup: false,
     lanEnabled: false,
     lanToken: '',

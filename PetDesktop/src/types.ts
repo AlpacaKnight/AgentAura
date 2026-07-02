@@ -70,6 +70,7 @@ export type AppSettings = {
   roamSpeed: number;
   clickThrough: boolean;
   petVisible: boolean;
+  showOnAllWorkspaces: boolean;
   launchAtStartup: boolean;
   lanEnabled: boolean;
   lanToken: string;

@@ -294,6 +294,9 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
 
 function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [form, setForm] = useState(snapshot.settings);
+  const showOnAllWorkspacesSupported = !navigator.userAgent.includes('Windows');
+  const canToggleShowOnAllWorkspaces =
+    showOnAllWorkspacesSupported || form.showOnAllWorkspaces;
   const [lanIp, setLanIp] = useState('127.0.0.1');
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
   useEffect(() => { void api.lanIp().then(ip => ip && setLanIp(ip)); }, []);
@@ -313,6 +316,19 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <div className="panel-title"><div><p className="eyebrow">PET BEHAVIOR</p><h2>桌宠行为</h2></div></div>
         <Toggle label="显示宠物" checked={form.petVisible} set={petVisible => patch({ petVisible })} />
         <Toggle label="始终置顶" checked={form.alwaysOnTop} set={alwaysOnTop => patch({ alwaysOnTop })} />
+        <Toggle
+          label="在所有工作区显示"
+          checked={form.showOnAllWorkspaces}
+          set={showOnAllWorkspaces => patch({ showOnAllWorkspaces })}
+          disabled={!canToggleShowOnAllWorkspaces}
+          note={
+            showOnAllWorkspacesSupported
+              ? undefined
+              : form.showOnAllWorkspaces
+                ? 'Windows 当前不支持该功能，可关闭此选项'
+                : 'Windows 当前不支持该功能'
+          }
+        />
         <Toggle label="随机闲逛" checked={form.roamEnabled} set={roamEnabled => patch({ roamEnabled })} />
         <Toggle label="点击穿透" checked={form.clickThrough} set={clickThrough => patch({ clickThrough })} />
         <label>宠物缩放 <output>{Math.round(form.petScale * 100)}%</output><input type="range" min="0.5" max="2" step="0.05" value={form.petScale} onInput={event => previewScale(Number(event.currentTarget.value))} /></label>
@@ -336,8 +352,23 @@ function Logs({ snapshot }: { snapshot: AppSnapshot }) {
   return <section className="panel full-panel"><div className="panel-title"><div><p className="eyebrow">RUNTIME EVENTS</p><h2>运行日志</h2></div><span className="muted">最多保留 500 条</span></div><div className="log-view">{snapshot.logs.length ? snapshot.logs.map((entry, index) => <div className={`log-row ${entry.level}`} key={`${entry.at}-${index}`}><time>{entry.at}</time><span>{entry.level.toUpperCase()}</span><strong>{entry.source}</strong><p>{entry.message}</p></div>) : <Empty text="暂无运行日志。" />}</div></section>;
 }
 
-function Toggle({ label, checked, set }: { label: string; checked: boolean; set: (value: boolean) => void }) {
-  return <label className="toggle-row"><span>{label}</span><button type="button" className={`toggle ${checked ? 'on' : ''}`} onClick={() => set(!checked)}><i /></button></label>;
+function Toggle({ label, checked, set, disabled = false, note }: { label: string; checked: boolean; set: (value: boolean) => void; disabled?: boolean; note?: string }) {
+  return (
+    <label className={`toggle-row${disabled ? ' disabled' : ''}`}>
+      <span>
+        {label}
+        {note && <small className="muted">{note}</small>}
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        className={`toggle ${checked ? 'on' : ''}`}
+        onClick={() => !disabled && set(!checked)}
+      >
+        <i />
+      </button>
+    </label>
+  );
 }
 
 function Empty({ text }: { text: string }) {

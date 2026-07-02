@@ -3,6 +3,7 @@ mod hardware;
 mod model;
 mod pets;
 mod server;
+mod workspace;
 
 use std::{
     fs,
@@ -289,6 +290,7 @@ fn apply_window_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), 
         pet.hide()
     }
     .map_err(|error| error.to_string())?;
+    workspace::set_show_on_all_workspaces(&pet, settings.show_on_all_workspaces)?;
     clamp_to_monitor(&pet)?;
     Ok(())
 }
