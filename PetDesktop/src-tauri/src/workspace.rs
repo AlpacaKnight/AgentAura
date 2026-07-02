@@ -53,7 +53,7 @@ fn set_macos(window: &WebviewWindow, show: bool) -> Result<(), String> {
     let ns_window: &NSWindow = unsafe { &*ns_window_ptr.cast() };
 
     let mut behavior = ns_window.collectionBehavior();
-    let flag = NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces;
+    let flag = NSWindowCollectionBehavior::CanJoinAllSpaces;
     if show {
         behavior.insert(flag);
     } else {
