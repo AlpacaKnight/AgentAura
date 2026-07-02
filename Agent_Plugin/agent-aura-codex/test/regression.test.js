@@ -4,6 +4,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+
+const http = require('node:http');
+
+const { RingLightClient } = require('../out/deviceClient');
+const { loadRuntimeState, saveRuntimeState } = require('../out/config');
 const { loadConfig, saveConfig } = require('../out/config');
 const { mapCodexEventToAgentState, shouldArmIdleFallback } = require('../out/hooks');
 const { installCodexHooks } = require('../out/installHooks');
@@ -188,4 +193,202 @@ test('Codex permission mode metadata alone does not force waiting state', () => 
   assert.equal(mapCodexEventToAgentState('UnknownEvent', { permission_mode: 'ask' }), 'running');
   assert.equal(mapCodexEventToAgentState('UnknownEvent', { approval_request: { pending: true } }), 'waiting');
   assert.equal(mapCodexEventToAgentState('UnknownEvent', { tool_response: { success: false } }), 'error');
+});
+
+
+test('http mode uses PetDesktop register and heartbeat without breaking firmware commands', async () => {
+  await withIsolatedEnv(async () => withTempCodexHome(async () => {
+    const events = [];
+    const stateByInstance = new Map();
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => body += chunk.toString());
+      req.on('end', () => {
+        events.push({ method: req.method, url: req.url, body, headers: req.headers });
+        if (req.url === '/api/v1/agents/register' && req.method === 'POST') {
+          const payload = JSON.parse(body || '{}');
+          stateByInstance.set(payload.instanceId, { registered: true, state: payload.state });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, instanceId: payload.instanceId, heartbeatIntervalMs: 100 }));
+          return;
+        }
+        const stateMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)\/state$/);
+        if (stateMatch && req.method === 'POST') {
+          const instanceId = decodeURIComponent(stateMatch[1]);
+          if (!stateByInstance.has(instanceId)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        const heartbeatMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)\/heartbeat$/);
+        if (heartbeatMatch && req.method === 'POST') {
+          if (!stateByInstance.has(decodeURIComponent(heartbeatMatch[1]))) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        const deleteMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)$/);
+        if (deleteMatch && req.method === 'DELETE') {
+          stateByInstance.delete(decodeURIComponent(deleteMatch[1]));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        if (req.url === '/api/cmd' && req.method === 'POST') {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.end('OK');
+          return;
+        }
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, url: req.url }));
+      });
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.equal(typeof address, 'object');
+
+    const client = new RingLightClient({
+      enabled: true,
+      transport: 'http',
+      host: '127.0.0.1',
+      port: address.port,
+      serialPort: '',
+      baud: 115200,
+      debounceMs: 0,
+      cooldownMs: 0,
+      timeoutMs: 500,
+      idleFallbackMs: 5000,
+      autoDiscover: false,
+      authToken: 'secret-token',
+    });
+
+    try {
+      const ok = await client.sendAgentState('running');
+      assert.equal(ok, true);
+
+      const registerEvent = events.find((event) => event.url === '/api/v1/agents/register');
+      assert.ok(registerEvent, 'expected PetDesktop register request');
+      assert.equal(registerEvent.headers.authorization, 'Bearer secret-token');
+      assert.equal(registerEvent.headers['x-agentaura-client'], 'codex');
+
+      const stateEvent = events.find((event) => /\/api\/v1\/agents\/.*\/state$/.test(event.url));
+      assert.ok(stateEvent, 'expected PetDesktop state request');
+      assert.equal(JSON.parse(stateEvent.body).state, 'running');
+
+      const commandOk = await client.sendCommand('rgb 1,2,3');
+      assert.equal(commandOk, true);
+      assert.ok(events.some((event) => event.url === '/api/cmd' && event.body === 'rgb 1,2,3'));
+    } finally {
+      const runtime = loadRuntimeState();
+      if (runtime.heartbeatToken) {
+        saveRuntimeState({ ...runtime, heartbeatToken: 'stop-test-heartbeat' });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  }));
+});
+
+
+test('PetDesktop heartbeat loop refreshes presence until the token changes', async () => {
+  await withIsolatedEnv(async () => withTempCodexHome(async () => {
+    const events = [];
+    const stateByInstance = new Set();
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk) => body += chunk.toString());
+      req.on('end', () => {
+        events.push({ method: req.method, url: req.url, body, headers: req.headers });
+        if (req.url === '/api/v1/agents/register' && req.method === 'POST') {
+          const payload = JSON.parse(body || '{}');
+          stateByInstance.add(payload.instanceId);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, instanceId: payload.instanceId, heartbeatIntervalMs: 100 }));
+          return;
+        }
+        const stateMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)\/state$/);
+        if (stateMatch && req.method === 'POST') {
+          const instanceId = decodeURIComponent(stateMatch[1]);
+          if (!stateByInstance.has(instanceId)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        const heartbeatMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)\/heartbeat$/);
+        if (heartbeatMatch && req.method === 'POST') {
+          const instanceId = decodeURIComponent(heartbeatMatch[1]);
+          if (!stateByInstance.has(instanceId)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        const deleteMatch = req.url.match(/^\/api\/v1\/agents\/([^/]+)$/);
+        if (deleteMatch && req.method === 'DELETE') {
+          stateByInstance.delete(decodeURIComponent(deleteMatch[1]));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, url: req.url }));
+      });
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.equal(typeof address, 'object');
+
+    const client = new RingLightClient({
+      enabled: true,
+      transport: 'http',
+      host: '127.0.0.1',
+      port: address.port,
+      serialPort: '',
+      baud: 115200,
+      debounceMs: 0,
+      cooldownMs: 0,
+      timeoutMs: 500,
+      idleFallbackMs: 5000,
+      autoDiscover: false,
+      authToken: '',
+    });
+
+    try {
+      const registered = await client.sendAgentState('running');
+      assert.equal(registered, true);
+
+      const runtime = loadRuntimeState();
+      assert.ok(runtime.heartbeatToken, 'expected heartbeat token after registration');
+
+      const loopPromise = client.runHeartbeatLoop(runtime.heartbeatToken, 100);
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      saveRuntimeState({ ...loadRuntimeState(), heartbeatToken: 'stop-test-heartbeat-loop' });
+      await Promise.race([
+        loopPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('heartbeat loop did not stop in time')), 1500)),
+      ]);
+
+      const heartbeatEvents = events.filter((event) => /\/api\/v1\/agents\/.*\/heartbeat$/.test(event.url));
+      assert.ok(heartbeatEvents.length >= 1, 'expected PetDesktop heartbeat request');
+    } finally {
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  }));
 });

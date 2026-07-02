@@ -38,10 +38,13 @@ npm run compile
 # 创建默认配置文件，便于手动编辑
 node out/index.js config init
 
-# 推荐：自动发现局域网设备并保存当前 transport 对应的连接信息
+# 推荐：连接本机 PetDesktop
+node out/index.js configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false
+
+# 或自动发现局域网设备并保存当前 transport 对应的连接信息
 node out/index.js configure --discover
 
-# 或手动配置 HTTP
+# 或手动配置 HTTP 固件
 node out/index.js configure --transport http --host 192.168.1.100 --port 80
 
 # 或手动配置 UDP
@@ -63,7 +66,7 @@ node out/index.js config set --idle-fallback-ms 5000
 
 ```bash
 agent-aura-codex config init
-agent-aura-codex configure --discover
+agent-aura-codex configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false
 agent-aura-codex install-hooks
 agent-aura-codex test busy
 ```
@@ -72,7 +75,7 @@ agent-aura-codex test busy
 
 ```text
 运行：agent-aura-codex config init
-运行：agent-aura-codex configure --transport http --host 192.168.1.100 --port 80
+运行：agent-aura-codex configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false
 运行：agent-aura-codex install-hooks
 运行：agent-aura-codex test busy
 ```
@@ -81,11 +84,19 @@ agent-aura-codex test busy
 
 ### HTTP 推荐
 
+本机 `PetDesktop`：
+
+```bash
+agent-aura-codex configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false
+```
+
+HTTP 固件：
+
 ```bash
 agent-aura-codex configure --transport http --host 192.168.1.100 --port 80
 ```
 
-HTTP 模式会优先调用固件的 `POST /api/agent?state=<state>`，原始命令使用 `POST /api/cmd`。
+HTTP 模式会优先调用固件的 `POST /api/agent?state=<state>`，原始命令使用 `POST /api/cmd`。连接 `PetDesktop` 时会额外附带 `x-agentaura-*` 身份头，让桌宠能把 Codex 识别成独立 agent 实例。
 
 ### UDP
 

@@ -18,6 +18,10 @@ async function main(): Promise<void> {
         await idleFallbackCommand(args);
         return;
     }
+    if (command === 'heartbeat-loop') {
+        await heartbeatLoopCommand(args);
+        return;
+    }
 
     switch (command) {
         case 'configure':
@@ -217,6 +221,15 @@ async function idleFallbackCommand(args: string[]): Promise<void> {
         throw new Error('idle-fallback token is required');
     }
     await runIdleFallback(token, delayMs);
+}
+
+async function heartbeatLoopCommand(args: string[]): Promise<void> {
+    const token = (args[0] || '').trim();
+    const intervalMs = parseNumberFlag(args[1] || '0', 'heartbeat-loop interval');
+    if (!token) {
+        throw new Error('heartbeat-loop token is required');
+    }
+    await new RingLightClient(loadConfig()).runHeartbeatLoop(token, intervalMs);
 }
 
 function hooksCommand(args: string[]): void {

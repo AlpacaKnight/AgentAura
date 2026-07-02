@@ -74,5 +74,5 @@ Write-Host "  $zipPath"
 Write-Host ''
 Write-Host 'Install with:'
 Write-Host "  npm install -g `"$($tgz.FullName)`""
-Write-Host '  agent-aura-codex configure --discover'
+Write-Host '  agent-aura-codex configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false'
 Write-Host '  agent-aura-codex install-hooks'

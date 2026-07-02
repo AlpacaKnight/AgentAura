@@ -1,8 +1,24 @@
+import * as childProcess from 'child_process';
+import * as crypto from 'crypto';
 import * as dgram from 'dgram';
 import * as http from 'http';
+import * as os from 'os';
+import * as path from 'path';
 import { isDisabled, loadRuntimeState, saveConfig, saveRuntimeState } from './config';
 import { discoverFirst } from './discovery';
-import { AgentAuraConfig, AgentState, DeviceState, TransportName } from './types';
+import { AgentAuraConfig, AgentState, DeviceState, RuntimeState, TransportName } from './types';
+
+const DEFAULT_PETDESKTOP_HEARTBEAT_MS = 10_000;
+const MIN_PETDESKTOP_HEARTBEAT_MS = 500;
+const MAX_PETDESKTOP_HEARTBEAT_MS = 60_000;
+const PETDESKTOP_HEARTBEAT_IDLE_TTL_MS = 120_000;
+
+interface JsonRequestResult {
+    ok: boolean;
+    statusCode: number;
+    body: string;
+    json?: any;
+}
 
 export class RingLightClient {
     constructor(private config: AgentAuraConfig) {}
@@ -34,13 +50,25 @@ export class RingLightClient {
         }
 
         const ok = this.config.transport === 'http'
-            ? await this.httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '')
+            ? await this.sendHttpAgentState(state, runtime)
             : await this.sendCommand(`agent ${state}`);
 
+        const latest = loadRuntimeState();
         if (ok) {
-            saveRuntimeState({ ...runtime, lastState: state, lastSentAt: now, unreachableUntil: 0, lastError: undefined });
+            saveRuntimeState({
+                ...latest,
+                lastState: state,
+                lastSentAt: now,
+                lastActivityAt: now,
+                unreachableUntil: 0,
+                lastError: undefined,
+            });
         } else {
-            saveRuntimeState({ ...runtime, unreachableUntil: now + this.config.cooldownMs, lastError: `send ${state} failed` });
+            saveRuntimeState({
+                ...latest,
+                unreachableUntil: now + this.config.cooldownMs,
+                lastError: `send ${state} failed`,
+            });
         }
         return ok;
     }
@@ -57,7 +85,7 @@ export class RingLightClient {
 
         switch (this.config.transport) {
             case 'http':
-                return this.httpPost('/api/cmd', command);
+                return this.httpTextRequest('POST', '/api/cmd', command, 'text/plain').then((result) => result.ok && (result.body === '' || result.body.startsWith('OK') || result.body.startsWith('{')));
             case 'udp': {
                 const body = await this.udpExchange(command, this.config.timeoutMs);
                 return body !== null && (body === '' || body.startsWith('OK') || body.startsWith('{'));
@@ -90,6 +118,40 @@ export class RingLightClient {
         }
     }
 
+    async runHeartbeatLoop(token: string, intervalMs: number): Promise<void> {
+        const interval = clampHeartbeatInterval(intervalMs);
+        for (;;) {
+            const runtime = loadRuntimeState();
+            if (runtime.heartbeatToken !== token) {
+                return;
+            }
+            if (!this.config.enabled || isDisabled() || this.config.transport !== 'http') {
+                return;
+            }
+            if (runtime.httpTarget !== 'petdesktop' || !runtime.petDesktopRegistered) {
+                return;
+            }
+
+            const lastActivityAt = runtime.lastActivityAt || runtime.lastSentAt || 0;
+            if (lastActivityAt > 0 && Date.now() - lastActivityAt > PETDESKTOP_HEARTBEAT_IDLE_TTL_MS) {
+                await this.disconnectPetDesktop();
+                this.clearPetDesktopSession(token);
+                return;
+            }
+
+            const heartbeatOk = await this.sendPetDesktopHeartbeat();
+            if (!heartbeatOk) {
+                const registered = await this.registerPetDesktop(runtime.lastState || 'init', interval, false);
+                if (!registered) {
+                    this.clearPetDesktopSession(token);
+                    return;
+                }
+            }
+
+            await delay(interval);
+        }
+    }
+
     describe(): Record<string, unknown> {
         return {
             transport: this.config.transport,
@@ -98,6 +160,7 @@ export class RingLightClient {
             serialPort: this.config.serialPort,
             baud: this.config.baud,
             configured: this.isConfigured,
+            agentIdentity: this.agentIdentity(),
         };
     }
 
@@ -122,53 +185,231 @@ export class RingLightClient {
         this.config = saveConfig(patch);
     }
 
-    private httpPost(requestPath: string, body: string): Promise<boolean> {
-        return new Promise((resolve) => {
-            const headers: http.OutgoingHttpHeaders = {
-                'Content-Type': 'text/plain',
-                'Content-Length': Buffer.byteLength(body),
-            };
-            if (this.config.authToken) {
-                headers.authorization = `Bearer ${this.config.authToken}`;
+    private async sendHttpAgentState(state: AgentState, runtime: RuntimeState): Promise<boolean> {
+        if (runtime.httpTarget === 'firmware') {
+            return await this.sendFirmwareState(state) || await this.sendPetDesktopState(state, runtime);
+        }
+        if (runtime.httpTarget === 'petdesktop') {
+            return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state);
+        }
+        return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state);
+    }
+
+    private async sendPetDesktopState(state: AgentState, runtime: RuntimeState): Promise<boolean> {
+        const interval = clampHeartbeatInterval(runtime.heartbeatIntervalMs);
+        const registered = await this.ensurePetDesktopRegistration(state, interval, runtime);
+        if (!registered) {
+            return false;
+        }
+
+        const instanceId = this.agentIdentity().instanceId;
+        let result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state });
+        if (!result.ok && result.statusCode === 404) {
+            const reRegistered = await this.registerPetDesktop(state, interval, false);
+            if (!reRegistered) {
+                return false;
             }
+            result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state });
+        }
+        if (!result.ok) {
+            return false;
+        }
+
+        const latest = loadRuntimeState();
+        saveRuntimeState({
+            ...latest,
+            httpTarget: 'petdesktop',
+            petDesktopRegistered: true,
+        });
+        return true;
+    }
+
+    private async sendFirmwareState(state: AgentState): Promise<boolean> {
+        const result = await this.httpTextRequest('POST', `/api/agent?state=${encodeURIComponent(state)}`, '', 'text/plain');
+        if (!result.ok) {
+            return false;
+        }
+        const latest = loadRuntimeState();
+        saveRuntimeState({
+            ...latest,
+            httpTarget: 'firmware',
+            petDesktopRegistered: false,
+            heartbeatToken: undefined,
+            heartbeatIntervalMs: undefined,
+        });
+        return true;
+    }
+
+    private async ensurePetDesktopRegistration(state: AgentState, intervalMs: number, runtime: RuntimeState): Promise<boolean> {
+        if (runtime.httpTarget === 'petdesktop' && runtime.petDesktopRegistered) {
+            this.ensureHeartbeatProcess(intervalMs, runtime);
+            return true;
+        }
+        return this.registerPetDesktop(state, intervalMs, true);
+    }
+
+    private async registerPetDesktop(state: AgentState, intervalMs: number, allowSpawn: boolean): Promise<boolean> {
+        const identity = this.agentIdentity();
+        const result = await this.httpJsonRequest('POST', '/api/v1/agents/register', {
+            clientId: 'codex',
+            instanceId: identity.instanceId,
+            displayName: 'Codex',
+            state,
+        });
+        if (!result.ok) {
+            return false;
+        }
+
+        const negotiatedInterval = clampHeartbeatInterval(result.json?.heartbeatIntervalMs || intervalMs);
+        const latest = loadRuntimeState();
+        const next: RuntimeState = {
+            ...latest,
+            httpTarget: 'petdesktop',
+            petDesktopRegistered: true,
+            heartbeatIntervalMs: negotiatedInterval,
+        };
+        saveRuntimeState(next);
+        if (allowSpawn) {
+            this.ensureHeartbeatProcess(negotiatedInterval, next);
+        }
+        return true;
+    }
+
+    private ensureHeartbeatProcess(intervalMs: number, runtime?: RuntimeState): void {
+        const latest = runtime || loadRuntimeState();
+        const normalizedInterval = clampHeartbeatInterval(intervalMs);
+        if (latest.heartbeatToken && latest.heartbeatIntervalMs === normalizedInterval) {
+            return;
+        }
+
+        const token = crypto.randomUUID();
+        saveRuntimeState({
+            ...latest,
+            heartbeatToken: token,
+            heartbeatIntervalMs: normalizedInterval,
+        });
+
+        const entry = path.resolve(__dirname, 'index.js');
+        const child = childProcess.spawn(process.execPath || 'node', [entry, 'heartbeat-loop', token, String(normalizedInterval)], {
+            detached: true,
+            stdio: 'ignore',
+        });
+        child.unref();
+    }
+
+    private async sendPetDesktopHeartbeat(): Promise<boolean> {
+        const instanceId = this.agentIdentity().instanceId;
+        const result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/heartbeat`, undefined);
+        return result.ok;
+    }
+
+    private async disconnectPetDesktop(): Promise<void> {
+        const instanceId = this.agentIdentity().instanceId;
+        await this.httpJsonRequest('DELETE', `/api/v1/agents/${encodeURIComponent(instanceId)}`, undefined);
+    }
+
+    private clearPetDesktopSession(token: string): void {
+        const latest = loadRuntimeState();
+        if (latest.heartbeatToken !== token) {
+            return;
+        }
+        saveRuntimeState({
+            ...latest,
+            petDesktopRegistered: false,
+            heartbeatToken: undefined,
+            heartbeatIntervalMs: undefined,
+        });
+    }
+
+    private httpTextRequest(method: string, requestPath: string, body: string, contentType: string): Promise<JsonRequestResult> {
+        return new Promise((resolve) => {
             const req = http.request({
                 hostname: this.config.host,
                 port: this.portFor('http'),
                 path: requestPath,
-                method: 'POST',
+                method,
                 timeout: this.config.timeoutMs,
-                headers,
+                headers: {
+                    ...this.httpHeaders(),
+                    'Content-Type': contentType,
+                    'Content-Length': Buffer.byteLength(body),
+                },
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk.toString());
+                res.on('end', () => resolve({
+                    ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
+                    statusCode: res.statusCode || 0,
+                    body: data.trim(),
+                }));
+            });
+            req.on('error', () => resolve({ ok: false, statusCode: 0, body: '' }));
+            req.on('timeout', () => {
+                req.destroy();
+                resolve({ ok: false, statusCode: 0, body: '' });
+            });
+            if (body.length > 0) {
+                req.write(body);
+            }
+            req.end();
+        });
+    }
+
+    private httpJsonRequest(method: string, requestPath: string, body?: unknown): Promise<JsonRequestResult> {
+        const text = body === undefined ? '' : JSON.stringify(body);
+        return new Promise((resolve) => {
+            const req = http.request({
+                hostname: this.config.host,
+                port: this.portFor('http'),
+                path: requestPath,
+                method,
+                timeout: Math.max(this.config.timeoutMs, 1200),
+                headers: {
+                    ...this.httpHeaders(),
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(text),
+                },
             }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk.toString());
                 res.on('end', () => {
-                    const okStatus = (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300;
-                    const trimmed = data.trim();
-                    resolve(okStatus && (requestPath.startsWith('/api/agent') || trimmed === '' || trimmed.startsWith('OK') || trimmed.startsWith('{')));
+                    const bodyText = data.trim();
+                    let json: any;
+                    if (bodyText) {
+                        try {
+                            json = JSON.parse(bodyText);
+                        } catch {
+                            json = undefined;
+                        }
+                    }
+                    resolve({
+                        ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
+                        statusCode: res.statusCode || 0,
+                        body: bodyText,
+                        json,
+                    });
                 });
             });
-            req.on('error', () => resolve(false));
+            req.on('error', () => resolve({ ok: false, statusCode: 0, body: '' }));
             req.on('timeout', () => {
                 req.destroy();
-                resolve(false);
+                resolve({ ok: false, statusCode: 0, body: '' });
             });
-            req.write(body);
+            if (text.length > 0) {
+                req.write(text);
+            }
             req.end();
         });
     }
 
     private httpGetJson(requestPath: string): Promise<DeviceState | null> {
         return new Promise((resolve) => {
-            const headers: http.OutgoingHttpHeaders = {};
-            if (this.config.authToken) {
-                headers.authorization = `Bearer ${this.config.authToken}`;
-            }
             const req = http.get({
                 hostname: this.config.host,
                 port: this.portFor('http'),
                 path: requestPath,
                 timeout: Math.max(this.config.timeoutMs, 1200),
-                headers,
+                headers: this.httpHeaders(),
             }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk.toString());
@@ -266,21 +507,59 @@ export class RingLightClient {
         });
     }
 
+    private httpHeaders(): http.OutgoingHttpHeaders {
+        const identity = this.agentIdentity();
+        const headers: http.OutgoingHttpHeaders = {
+            'x-agentaura-client': 'codex',
+            'x-agentaura-instance': identity.instanceId,
+            'x-agentaura-name': 'Codex',
+        };
+        if (this.config.authToken) {
+            headers.authorization = `Bearer ${this.config.authToken}`;
+        }
+        return headers;
+    }
+
+    private agentIdentity(): { instanceId: string } {
+        const override = process.env.AGENTAURA_CODEX_INSTANCE?.trim();
+        if (override) {
+            return { instanceId: override };
+        }
+        const host = os.hostname().trim().toLowerCase().replace(/[^a-z0-9._:-]+/g, '-').replace(/^-+|-+$/g, '') || 'local';
+        return { instanceId: `codex-${host}`.slice(0, 128) };
+    }
+
     private portFor(transport: TransportName): number {
-        return this.config.port || (transport === 'udp' ? 8888 : 80);
+        if (transport === 'udp') {
+            return this.config.port || 8888;
+        }
+        return this.config.port || 80;
     }
 }
 
+function clampHeartbeatInterval(value: unknown): number {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) {
+        return DEFAULT_PETDESKTOP_HEARTBEAT_MS;
+    }
+    return Math.min(MAX_PETDESKTOP_HEARTBEAT_MS, Math.max(MIN_PETDESKTOP_HEARTBEAT_MS, Math.round(n)));
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parseDeviceState(body: string | null): DeviceState | null {
-    if (!body) { return null; }
-    const start = body.indexOf('{');
-    const end = body.lastIndexOf('}');
-    if (start < 0 || end <= start) {
-        return { reachable: true, raw: body.slice(0, 200) };
+    if (!body) {
+        return null;
     }
     try {
-        return JSON.parse(body.slice(start, end + 1)) as DeviceState;
+        return JSON.parse(body) as DeviceState;
     } catch {
-        return { reachable: true, raw: body.slice(0, 200) };
+        const trimmed = body.trim();
+        if (!trimmed) {
+            return null;
+        }
+        return { reachable: true, raw: trimmed };
     }
 }

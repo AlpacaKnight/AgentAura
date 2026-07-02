@@ -37,6 +37,11 @@ export interface RuntimeState {
     lastError?: string;
     idleFallbackToken?: string;
     idleFallbackDueAt?: number;
+    lastActivityAt?: number;
+    httpTarget?: 'petdesktop' | 'firmware';
+    petDesktopRegistered?: boolean;
+    heartbeatToken?: string;
+    heartbeatIntervalMs?: number;
 }
 
 export interface DiscoveredDevice {
