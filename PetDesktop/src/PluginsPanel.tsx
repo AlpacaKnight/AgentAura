@@ -29,6 +29,22 @@ const names: Record<PluginProvider, string> = {
   qwenpaw: 'QwenPaw',
 };
 
+const sourceLabel = (item: ManagedPluginStatus) => {
+  const parts: string[] = [];
+  if (item.managedInstalled) parts.push(`托管${item.managedVersion ? ` ${item.managedVersion}` : ''}`.trim());
+  if (item.globalInstalled) parts.push(`全局${item.globalVersion ? ` ${item.globalVersion}` : ''}`.trim());
+  if (item.externalInstalled) parts.push(`宿主${item.externalVersion ? ` ${item.externalVersion}` : ''}`.trim());
+  return parts.join(' / ');
+};
+
+const statusLabel = (item: ManagedPluginStatus) => {
+  if (!item.installed) return '未检测到';
+  if (item.preferredSource === 'managed') return '已安装（托管优先）';
+  if (item.preferredSource === 'global') return '已检测到全局安装';
+  if (item.preferredSource === 'external') return '已安装（宿主扩展）';
+  return '已安装';
+};
+
 const defaults = (provider: PluginProvider): PluginConfig => ({
   enabled: true,
   transport: 'http',
@@ -175,7 +191,8 @@ export function PluginsPanel() {
     <div className="plugin-grid">{statuses.map(item => <article className="plugin-card" key={item.provider}>
       <div>
         <strong>{names[item.provider]}</strong>
-        <span className={item.installed ? 'ok' : ''}>{item.installed ? '已安装' : '未检测到'} {item.version ?? ''}</span>
+        <span className={item.installed ? 'ok' : ''}>{statusLabel(item)} {item.version ?? ''}</span>
+        {item.installed && <span>{sourceLabel(item)}</span>}
       </div>
       <div className="plugin-actions">
         {item.hooksSupported && <button disabled={busy} onClick={() => void run(async () => {

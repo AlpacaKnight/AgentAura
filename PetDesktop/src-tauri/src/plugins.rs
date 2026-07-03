@@ -81,6 +81,13 @@ pub struct ManagedPluginStatus {
     pub hooks_installed: bool,
     pub hooks_supported: bool,
     pub config_path: Option<String>,
+    pub managed_installed: bool,
+    pub global_installed: bool,
+    pub external_installed: bool,
+    pub preferred_source: Option<String>,
+    pub managed_version: Option<String>,
+    pub global_version: Option<String>,
+    pub external_version: Option<String>,
 }
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -229,17 +236,38 @@ pub fn list_plugins(data: &Path) -> Result<Vec<ManagedPluginStatus>, String> {
     ]
     .into_iter()
     .map(|p| {
-        let managed = p.package().is_some_and(|n| pkg(data, n).exists());
-        let external = external_installed(p);
-        let version = managed_version(data, p);
-        let installed = managed || external;
+        let managed_installed = p.package().is_some_and(|n| pkg(data, n).exists());
+        let managed_version = managed_version(data, p);
+        let global_version = p.package().and_then(global_node_package_version);
+        let global_installed = global_version.is_some();
+        let (external_installed, external_version) = external_install_info(p);
+        let version = managed_version
+            .clone()
+            .or(global_version.clone())
+            .or(external_version.clone());
+        let preferred_source = if managed_installed {
+            Some("managed".to_string())
+        } else if global_installed {
+            Some("global".to_string())
+        } else if external_installed {
+            Some("external".to_string())
+        } else {
+            None
+        };
         ManagedPluginStatus {
             provider: p,
-            installed,
+            installed: managed_installed || global_installed || external_installed,
             version,
             hooks_installed: hook_present(p),
             hooks_supported: p.hooks(),
             config_path: config(p).map(|v| v.display().to_string()),
+            managed_installed,
+            global_installed,
+            external_installed,
+            preferred_source,
+            managed_version,
+            global_version,
+            external_version,
         }
     })
     .collect())
@@ -257,7 +285,7 @@ pub fn install_package(data: &Path, path: &Path) -> Result<PluginOperationResult
             .arg("install")
             .arg(path))?,
         PluginProvider::Qwencode if i.format == "zip" => {
-            if external_installed(PluginProvider::Qwencode) {
+            if external_install_info(PluginProvider::Qwencode).0 {
                 let mut uninstall = qwen_command()?;
                 let uninstall_output = run(uninstall
                     .arg("extensions")
@@ -278,7 +306,7 @@ pub fn install_package(data: &Path, path: &Path) -> Result<PluginOperationResult
                 .arg("install")
                 .arg("--consent")
                 .arg(path))?
-        },
+        }
         PluginProvider::Claude => {
             return Ok(PluginOperationResult {
                 provider: p,
@@ -318,7 +346,8 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
             if p.hooks() {
                 let _ = manage_hooks(data, p, false);
             }
-            if external_installed(PluginProvider::Qwencode) {
+            let (extension_installed, _) = external_install_info(PluginProvider::Qwencode);
+            if extension_installed {
                 let mut qwen = qwen_command()?;
                 outputs.push(run(qwen
                     .arg("extensions")
@@ -340,27 +369,77 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
                     .arg("-g")
                     .arg("agent-aura-qwencode"))?);
             }
+            if outputs.is_empty() {
+                return Ok(PluginOperationResult {
+                    provider: p,
+                    success: true,
+                    message: "未检测到可卸载的安装来源".into(),
+                    output: String::new(),
+                });
+            }
             let success = outputs.iter().all(|o| o.status.success());
-            let output = outputs.into_iter().map(|o| out(&o)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("
-");
+            let output = outputs
+                .into_iter()
+                .map(|o| out(&o))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
             return Ok(PluginOperationResult {
                 provider: p,
                 success,
-                message: if success { "卸载完成" } else { "卸载失败" }.into(),
+                message: if success {
+                    "卸载完成"
+                } else {
+                    "卸载失败"
+                }
+                .into(),
                 output,
             });
         }
         _ => {
             let package = p.package().ok_or("没有可卸载的托管包")?;
+            let mut outputs = Vec::new();
             if p.hooks() {
                 let _ = manage_hooks(data, p, false);
             }
-            let mut npm = npm_command()?;
-            run(npm
-                .arg("uninstall")
-                .arg("--prefix")
-                .arg(root(data))
-                .arg(package))?
+            if pkg(data, package).exists() {
+                let mut npm = npm_command()?;
+                outputs.push(run(npm
+                    .arg("uninstall")
+                    .arg("--prefix")
+                    .arg(root(data))
+                    .arg(package))?);
+            }
+            if global_node_package_installed(package) {
+                let mut npm = npm_command()?;
+                outputs.push(run(npm.arg("uninstall").arg("-g").arg(package))?);
+            }
+            if outputs.is_empty() {
+                return Ok(PluginOperationResult {
+                    provider: p,
+                    success: true,
+                    message: "未检测到可卸载的安装来源".into(),
+                    output: String::new(),
+                });
+            }
+            let success = outputs.iter().all(|o| o.status.success());
+            let output = outputs
+                .into_iter()
+                .map(|o| out(&o))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Ok(PluginOperationResult {
+                provider: p,
+                success,
+                message: if success {
+                    "卸载完成"
+                } else {
+                    "卸载失败"
+                }
+                .into(),
+                output,
+            });
         }
     };
     let success = o.status.success();
@@ -596,52 +675,76 @@ fn managed_version(data: &Path, p: PluginProvider) -> Option<String> {
         serde_json::from_slice(&fs::read(pkg(data, package).join("package.json")).ok()?).ok()?;
     value.get("version")?.as_str().map(str::to_owned)
 }
-fn global_node_package_installed(package: &str) -> bool {
-    let mut npm = match npm_command() {
-        Ok(command) => command,
-        Err(_) => return false,
-    };
-    run(npm
+fn global_node_package_version(package: &str) -> Option<String> {
+    let mut npm = npm_command().ok()?;
+    let output = run(npm
         .arg("list")
         .arg("-g")
         .arg("--depth=0")
+        .arg("--json")
         .arg(package))
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value: Value = serde_json::from_slice(&output.stdout).ok()?;
+    value
+        .get("dependencies")?
+        .get(package)?
+        .get("version")?
+        .as_str()
+        .map(str::to_owned)
+}
+fn global_node_package_installed(package: &str) -> bool {
+    global_node_package_version(package).is_some()
+}
+fn external_install_info(p: PluginProvider) -> (bool, Option<String>) {
+    match p {
+        PluginProvider::Copilot => run(Command::new("code")
+            .arg("--list-extensions")
+            .arg("--show-versions"))
         .ok()
         .filter(|o| o.status.success())
-        .is_some_and(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .to_ascii_lowercase()
-                .contains(package)
+        .map(|o| {
+            let needle = "alpacaknight.agent-aura-copilot@";
+            for line in String::from_utf8_lossy(&o.stdout).lines() {
+                let lowered = line.to_ascii_lowercase();
+                if let Some(index) = lowered.find(needle) {
+                    return (true, Some(line[index + needle.len()..].trim().to_string()));
+                }
+            }
+            (false, None)
         })
-}
-fn external_installed(p: PluginProvider) -> bool {
-    match p {
-        PluginProvider::Copilot => run(Command::new("code").arg("--list-extensions"))
-            .ok()
-            .filter(|o| o.status.success())
-            .is_some_and(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .to_ascii_lowercase()
-                    .contains("alpacaknight.agent-aura-copilot")
-            }),
+        .unwrap_or((false, None)),
         PluginProvider::Qwenpaw => run(Command::new("qwenpaw").arg("plugin").arg("list"))
             .ok()
             .filter(|o| o.status.success())
-            .is_some_and(|o| {
-                String::from_utf8_lossy(&o.stdout)
+            .map(|o| {
+                let installed = String::from_utf8_lossy(&o.stdout)
                     .to_ascii_lowercase()
-                    .contains("agentaura")
-            }),
+                    .contains("agentaura");
+                (installed, None)
+            })
+            .unwrap_or((false, None)),
         PluginProvider::Qwencode => qwen_command()
             .ok()
             .and_then(|mut qwen| run(qwen.arg("extensions").arg("list")).ok())
             .filter(|o| o.status.success())
-            .is_some_and(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .to_ascii_lowercase()
-                    .contains("agent-aura-qwencode")
-            }),
-        _ => false,
+            .map(|o| {
+                for line in String::from_utf8_lossy(&o.stdout).lines() {
+                    let lowered = line.to_ascii_lowercase();
+                    if lowered.contains("agent-aura-qwencode") {
+                        let version = line
+                            .rsplit_once('(')
+                            .and_then(|(_, tail)| tail.strip_suffix(')'))
+                            .map(|value| value.trim().to_string());
+                        return (true, version);
+                    }
+                }
+                (false, None)
+            })
+            .unwrap_or((false, None)),
+        _ => (false, None),
     }
 }
 fn root(d: &Path) -> PathBuf {

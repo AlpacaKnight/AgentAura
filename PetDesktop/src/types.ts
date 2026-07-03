@@ -132,6 +132,9 @@ export type PluginPackageInspection = {
 export type ManagedPluginStatus = {
   provider: PluginProvider; installed: boolean; version?: string; hooksInstalled: boolean;
   hooksSupported: boolean; configPath?: string;
+  managedInstalled: boolean; globalInstalled: boolean; externalInstalled: boolean;
+  preferredSource?: 'managed' | 'global' | 'external';
+  managedVersion?: string; globalVersion?: string; externalVersion?: string;
 };
 export type PluginOperationResult = {
   provider: PluginProvider; success: boolean; message: string; output: string;
