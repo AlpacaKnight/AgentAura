@@ -118,6 +118,9 @@ if [[ "$SKIP_DESKTOP" == false && (-z "$ONLY" || "$ONLY" == "desktop") ]]; then
     if [[ "$desktop_failed" == false && -d "$BUNDLE/deb" ]]; then
         cp -f "$BUNDLE/deb/"*.deb "$DESKTOP_OUT/" 2>/dev/null || true
     fi
+    if [[ "$desktop_failed" == false && -d "$BUNDLE/rpm" ]]; then
+        cp -f "$BUNDLE/rpm/"*.rpm "$DESKTOP_OUT/" 2>/dev/null || true
+    fi
     if [[ "$desktop_failed" == false && (-d "$BUNDLE/appimage" || -d "$BUNDLE/AppImage") ]]; then
         cp -f "$BUNDLE/appimage/"*.AppImage "$DESKTOP_OUT/" 2>/dev/null || true
         cp -f "$BUNDLE/AppImage/"*.AppImage "$DESKTOP_OUT/" 2>/dev/null || true

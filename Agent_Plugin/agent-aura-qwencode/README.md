@@ -43,6 +43,7 @@
 1. 用打包产物全局安装 CLI
 2. 用 Qwen Code 正常安装扩展
 3. 用已安装的 `agent-aura-qwencode` 命令写入 hooks
+4. 完全退出并重新启动 Qwen Code，让新 hooks 生效
 
 ```bash
 cd Agent_Plugin/agent-aura-qwencode
@@ -72,7 +73,7 @@ node out/index.js status
 node out/index.js test busy
 ```
 
-但正常使用时，不要在源码目录执行 `node out/index.js install-hooks`，否则 hooks 会写死到源码路径。
+但正常使用时，不要在源码目录执行 `node out/index.js install-hooks`，否则 hooks 会写死到源码路径。普通安装和扩展内命令都应使用全局 `agent-aura-qwencode` CLI。
 
 ## Qwen Code 扩展安装
 

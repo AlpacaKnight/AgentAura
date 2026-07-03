@@ -188,7 +188,13 @@ export class RingLightClient {
     }
 
     private async sendHttpAgentState(state: AgentState, runtime: RuntimeState, context?: SendContext): Promise<boolean> {
-        return await this.sendFirmwareState(state, context);
+        if (runtime.httpTarget === 'firmware') {
+            return await this.sendFirmwareState(state, context) || await this.sendPetDesktopState(state, runtime);
+        }
+        if (runtime.httpTarget === 'petdesktop') {
+            return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state, context);
+        }
+        return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state, context);
     }
 
     private async sendPetDesktopState(state: AgentState, runtime: RuntimeState): Promise<boolean> {

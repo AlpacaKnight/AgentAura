@@ -219,6 +219,8 @@ body:has(.pet-window) { overflow: hidden; background: transparent; }
 .config-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .config-form > label { display: grid; align-content: start; gap: 7px; color: #e5eaf2; font-size: 13px; }
 .config-form input, .config-form select { background: #0b121d; border-color: #46546d; color: #f2f5fa; }
+.config-form select { color-scheme: dark; appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, #aeb9ca 50%), linear-gradient(135deg, #aeb9ca 50%, transparent 50%); background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px); background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 32px; }
+.config-form select option { background: #111a29; color: #f2f5fa; }
 .config-form .checkbox-field { grid-template-columns: auto 1fr; padding-top: 26px; }
 .config-form .checkbox-field small { grid-column: 2; }
 .advanced-toggle { justify-self: start; }
