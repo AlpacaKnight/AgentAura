@@ -230,15 +230,12 @@ pub fn list_plugins(data: &Path) -> Result<Vec<ManagedPluginStatus>, String> {
     .into_iter()
     .map(|p| {
         let managed = p.package().is_some_and(|n| pkg(data, n).exists());
-        let version = managed_version(data, p).or_else(|| {
-            p.cli()
-                .and_then(|c| run(Command::new(c).arg("--version")).ok())
-                .filter(|o| o.status.success())
-                .and_then(|o| out(&o).lines().next().map(str::to_owned))
-        });
+        let external = external_installed(p);
+        let version = managed_version(data, p);
+        let installed = managed || external;
         ManagedPluginStatus {
             provider: p,
-            installed: managed || version.is_some() || external_installed(p),
+            installed,
             version,
             hooks_installed: hook_present(p),
             hooks_supported: p.hooks(),
@@ -259,10 +256,29 @@ pub fn install_package(data: &Path, path: &Path) -> Result<PluginOperationResult
             .arg("plugin")
             .arg("install")
             .arg(path))?,
-        PluginProvider::Qwencode if i.format == "zip" => run(Command::new("qwen")
-            .arg("extensions")
-            .arg("install")
-            .arg(path))?,
+        PluginProvider::Qwencode if i.format == "zip" => {
+            if external_installed(PluginProvider::Qwencode) {
+                let mut uninstall = qwen_command()?;
+                let uninstall_output = run(uninstall
+                    .arg("extensions")
+                    .arg("uninstall")
+                    .arg("agent-aura-qwencode"))?;
+                if !uninstall_output.status.success() {
+                    return Ok(PluginOperationResult {
+                        provider: p,
+                        success: false,
+                        message: "卸载旧版 Qwen Code 扩展失败".into(),
+                        output: out(&uninstall_output),
+                    });
+                }
+            }
+            let mut qwen = qwen_command()?;
+            run(qwen
+                .arg("extensions")
+                .arg("install")
+                .arg("--consent")
+                .arg(path))?
+        },
         PluginProvider::Claude => {
             return Ok(PluginOperationResult {
                 provider: p,
@@ -297,21 +313,50 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
             .arg("plugin")
             .arg("uninstall")
             .arg("agentaura"))?,
-        PluginProvider::Qwencode if !pkg(data, "agent-aura-qwencode").exists() => {
-            run(Command::new("qwen")
-                .arg("extensions")
-                .arg("uninstall")
-                .arg("agent-aura-qwencode"))?
-        }
-        PluginProvider::Claude => {
-            return Err("Claude marketplace 卸载尚未自动化，请使用 Claude Code 插件管理命令".into())
+        PluginProvider::Qwencode => {
+            let mut outputs = Vec::new();
+            if p.hooks() {
+                let _ = manage_hooks(data, p, false);
+            }
+            if external_installed(PluginProvider::Qwencode) {
+                let mut qwen = qwen_command()?;
+                outputs.push(run(qwen
+                    .arg("extensions")
+                    .arg("uninstall")
+                    .arg("agent-aura-qwencode"))?);
+            }
+            if pkg(data, "agent-aura-qwencode").exists() {
+                let mut npm = npm_command()?;
+                outputs.push(run(npm
+                    .arg("uninstall")
+                    .arg("--prefix")
+                    .arg(root(data))
+                    .arg("agent-aura-qwencode"))?);
+            }
+            if global_node_package_installed("agent-aura-qwencode") {
+                let mut npm = npm_command()?;
+                outputs.push(run(npm
+                    .arg("uninstall")
+                    .arg("-g")
+                    .arg("agent-aura-qwencode"))?);
+            }
+            let success = outputs.iter().all(|o| o.status.success());
+            let output = outputs.into_iter().map(|o| out(&o)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("
+");
+            return Ok(PluginOperationResult {
+                provider: p,
+                success,
+                message: if success { "卸载完成" } else { "卸载失败" }.into(),
+                output,
+            });
         }
         _ => {
             let package = p.package().ok_or("没有可卸载的托管包")?;
             if p.hooks() {
                 let _ = manage_hooks(data, p, false);
             }
-            run(Command::new("npm")
+            let mut npm = npm_command()?;
+            run(npm
                 .arg("uninstall")
                 .arg("--prefix")
                 .arg(root(data))
@@ -346,7 +391,8 @@ pub fn manage_hooks(
     };
     let entry = pkg(data, p.package().unwrap()).join("out/index.js");
     let o = if entry.exists() {
-        run(Command::new("node").arg(entry).arg(action))?
+        let mut node = node_command()?;
+        run(node.arg(entry).arg(action))?
     } else {
         run(Command::new(p.cli().unwrap()).arg(action))?
     };
@@ -402,9 +448,94 @@ fn npm_command() -> Result<Command, String> {
         .map(Command::new)
         .ok_or_else(|| "npm.cmd was not found. Install Node.js 18+ and restart PetDesktop so it can read the updated PATH.".to_string())
 }
+#[cfg(target_os = "windows")]
+fn qwen_command() -> Result<Command, String> {
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join("qwen.cmd")));
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join("qwen.exe")));
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(Command::new)
+        .ok_or_else(|| "qwen was not found. Install Qwen Code CLI and restart PetDesktop so it can read the updated PATH.".to_string())
+}
+#[cfg(not(target_os = "windows"))]
+fn qwen_command() -> Result<Command, String> {
+    resolve_unix_command("qwen")
+}
 #[cfg(not(target_os = "windows"))]
 fn npm_command() -> Result<Command, String> {
-    Ok(Command::new("npm"))
+    resolve_unix_command("npm")
+}
+#[cfg(target_os = "windows")]
+fn node_command() -> Result<Command, String> {
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join("node.exe")));
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join("node.cmd")));
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        candidates.push(PathBuf::from(program_files).join("nodejs").join("node.exe"));
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(Command::new)
+        .ok_or_else(|| "node was not found. Install Node.js 18+ and restart PetDesktop so it can read the updated PATH.".to_string())
+}
+#[cfg(not(target_os = "windows"))]
+fn node_command() -> Result<Command, String> {
+    resolve_unix_command("node")
+}
+#[cfg(not(target_os = "windows"))]
+fn resolve_unix_command(name: &str) -> Result<Command, String> {
+    let candidate_names = [name.to_string()];
+    let home = home();
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            for candidate in &candidate_names {
+                candidates.push(dir.join(candidate));
+            }
+        }
+    }
+    if let Some(home) = &home {
+        candidates.push(home.join(".local/bin").join(name));
+        candidates.push(home.join(".nvm/current/bin").join(name));
+        let nvm_versions = home.join(".nvm/versions/node");
+        if let Ok(entries) = fs::read_dir(&nvm_versions) {
+            let mut bins: Vec<PathBuf> = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path().join("bin").join(name))
+                .collect();
+            bins.sort();
+            bins.reverse();
+            candidates.extend(bins);
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|path| path.is_file())
+        .map(command_with_resolved_unix_path)
+        .ok_or_else(|| format!(
+            "{name} was not found. Install the CLI and restart PetDesktop so it can read the updated PATH or use a standard install location like ~/.nvm/versions/node/*/bin."
+        ))
+}
+#[cfg(not(target_os = "windows"))]
+fn command_with_resolved_unix_path(path: PathBuf) -> Command {
+    let mut command = Command::new(&path);
+    if let Some(bin_dir) = path.parent() {
+        let mut entries = vec![bin_dir.to_path_buf()];
+        if let Some(existing) = std::env::var_os("PATH") {
+            entries.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(entries) {
+            command.env("PATH", joined);
+        }
+    }
+    command
 }
 fn install_node_package(data: &Path, source: &Path) -> Result<Output, String> {
     let destination = root(data);
@@ -465,6 +596,24 @@ fn managed_version(data: &Path, p: PluginProvider) -> Option<String> {
         serde_json::from_slice(&fs::read(pkg(data, package).join("package.json")).ok()?).ok()?;
     value.get("version")?.as_str().map(str::to_owned)
 }
+fn global_node_package_installed(package: &str) -> bool {
+    let mut npm = match npm_command() {
+        Ok(command) => command,
+        Err(_) => return false,
+    };
+    run(npm
+        .arg("list")
+        .arg("-g")
+        .arg("--depth=0")
+        .arg(package))
+        .ok()
+        .filter(|o| o.status.success())
+        .is_some_and(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .to_ascii_lowercase()
+                .contains(package)
+        })
+}
 fn external_installed(p: PluginProvider) -> bool {
     match p {
         PluginProvider::Copilot => run(Command::new("code").arg("--list-extensions"))
@@ -482,6 +631,15 @@ fn external_installed(p: PluginProvider) -> bool {
                 String::from_utf8_lossy(&o.stdout)
                     .to_ascii_lowercase()
                     .contains("agentaura")
+            }),
+        PluginProvider::Qwencode => qwen_command()
+            .ok()
+            .and_then(|mut qwen| run(qwen.arg("extensions").arg("list")).ok())
+            .filter(|o| o.status.success())
+            .is_some_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .to_ascii_lowercase()
+                    .contains("agent-aura-qwencode")
             }),
         _ => false,
     }
