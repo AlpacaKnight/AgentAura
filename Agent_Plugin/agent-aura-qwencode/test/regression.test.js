@@ -8,7 +8,7 @@ const http = require('node:http');
 const { loadConfig, saveConfig, loadRuntimeState, saveRuntimeState } = require('../out/config');
 const { RingLightClient } = require('../out/deviceClient');
 const { mapQwenEventToAgentState } = require('../out/hooks');
-const { installQwenHooks, uninstallQwenHooks } = require('../out/installHooks');
+const { installQwenHooks, uninstallQwenHooks, buildHookCommand } = require('../out/installHooks');
 
 const ENV_KEYS = [
   'QWEN_CODE_HOME',
@@ -135,14 +135,46 @@ test('installQwenHooks appends managed hook entries to settings.json', () => {
     const document = JSON.parse(fs.readFileSync(settingsJson, 'utf8'));
     assert.ok(document.hooks.SessionStart);
     assert.ok(document.hooks.Stop);
-    assert.equal(document.hooks.SessionStart[0].hooks[0].name, 'agent-aura-qwencode:SessionStart');
-    assert.equal(document.hooks.SessionStart[0].hooks[0].timeout, 15);
-    assert.equal(document.hooks.SessionStart[0].hooks[0].env, undefined);
-    assert.equal(document.hooks.SessionStart[0].hooks[0].shell, undefined);
+    const managed = document.hooks.SessionStart[0].hooks[0];
+    assert.equal(managed.name, 'agent-aura-qwencode:SessionStart');
+    assert.equal(managed.timeout, 15000);
+    assert.deepEqual(managed.env, { AGENTAURA_QWENCODE_HOOK: '1' });
+    assert.equal(managed.shell, process.platform === 'win32' ? 'powershell' : 'bash');
     assert.equal(document.hooks.Notification[0].hooks[0].name, 'keep-auth');
     assert.equal(document.hooks.Notification[1].matcher, 'permission_prompt');
     assert.equal(document.hooks.Notification[1].hooks[0].name, 'agent-aura-qwencode:Notification');
   }));
+});
+
+test('buildHookCommand builds a PowerShell call for Windows with quoted paths', () => {
+  const { command, shell } = buildHookCommand('SessionStart', {
+    platform: 'win32',
+    node: "C:\\Program Files\\nodejs\\node.exe",
+    entry: "C:\\path with spaces\\o'brien\\index.js",
+  });
+  assert.equal(shell, 'powershell');
+  assert.equal(
+    command,
+    "& 'C:\\Program Files\\nodejs\\node.exe' 'C:\\path with spaces\\o''brien\\index.js' hook 'SessionStart'",
+  );
+  assert.ok(!command.includes('set '));
+  assert.ok(!command.includes('&&'));
+  assert.ok(!command.includes('>nul'));
+});
+
+test('buildHookCommand builds a bash command for POSIX with quoted paths', () => {
+  const { command, shell } = buildHookCommand('Stop', {
+    platform: 'linux',
+    node: '/usr/local/bin/node',
+    entry: "/home/o'brien/my plugin/index.js",
+  });
+  assert.equal(shell, 'bash');
+  assert.equal(
+    command,
+    "'/usr/local/bin/node' '/home/o'\\''brien/my plugin/index.js' hook 'Stop'",
+  );
+  assert.ok(!command.includes('/dev/null'));
+  assert.ok(!command.includes('|| true'));
 });
 
 test('installQwenHooks is idempotent and uninstall removes only managed entries', () => {
