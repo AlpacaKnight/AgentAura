@@ -2,6 +2,7 @@ mod core;
 mod hardware;
 mod model;
 mod pets;
+mod plugins;
 mod server;
 mod workspace;
 
@@ -157,6 +158,66 @@ fn show_pet(app: AppHandle, visible: bool) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn inspect_plugin_packages(paths: Vec<String>) -> Vec<plugins::PluginPackageInspection> {
+    tauri::async_runtime::spawn_blocking(move || plugins::inspect_packages(paths))
+        .await
+        .unwrap_or_else(|error| {
+            vec![plugins::PluginPackageInspection::failure(
+                "",
+                error.to_string(),
+            )]
+        })
+}
+#[tauri::command]
+fn list_managed_plugins(
+    core: State<'_, AppCore>,
+) -> Result<Vec<plugins::ManagedPluginStatus>, String> {
+    plugins::list_plugins(&core.data_dir().map_err(|error| error.to_string())?)
+}
+#[tauri::command]
+async fn install_plugin_package(
+    core: State<'_, AppCore>,
+    path: String,
+) -> Result<plugins::PluginOperationResult, String> {
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        plugins::install_package(&data_dir, Path::new(&path))
+    })
+    .await
+    .map_err(|error| format!("plugin installer failed: {error}"))?
+}
+#[tauri::command]
+async fn uninstall_managed_plugin(
+    core: State<'_, AppCore>,
+    provider: plugins::PluginProvider,
+) -> Result<plugins::PluginOperationResult, String> {
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || plugins::uninstall_plugin(&data_dir, provider))
+        .await
+        .map_err(|error| format!("plugin uninstaller failed: {error}"))?
+}
+#[tauri::command]
+async fn manage_plugin_hooks(
+    core: State<'_, AppCore>,
+    provider: plugins::PluginProvider,
+    install: bool,
+) -> Result<plugins::PluginOperationResult, String> {
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        plugins::manage_hooks(&data_dir, provider, install)
+    })
+    .await
+    .map_err(|error| format!("hook operation failed: {error}"))?
+}
+#[tauri::command]
+fn load_plugin_config(provider: plugins::PluginProvider) -> Result<String, String> {
+    plugins::load_config(provider)
+}
+#[tauri::command]
+fn save_plugin_config(provider: plugins::PluginProvider, config: String) -> Result<(), String> {
+    plugins::save_config(provider, &config)
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -224,6 +285,13 @@ pub fn run() {
             test_hardware,
             show_management,
             show_pet,
+            inspect_plugin_packages,
+            list_managed_plugins,
+            install_plugin_package,
+            uninstall_managed_plugin,
+            manage_plugin_hooks,
+            load_plugin_config,
+            save_plugin_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AgentAura PetDesktop");

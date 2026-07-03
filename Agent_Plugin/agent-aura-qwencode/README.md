@@ -43,6 +43,7 @@
 1. 用打包产物全局安装 CLI
 2. 用 Qwen Code 正常安装扩展
 3. 用已安装的 `agent-aura-qwencode` 命令写入 hooks
+4. 完全退出并重新启动 Qwen Code，让新 hooks 生效
 
 ```bash
 cd Agent_Plugin/agent-aura-qwencode
@@ -72,7 +73,7 @@ node out/index.js status
 node out/index.js test busy
 ```
 
-但正常使用时，不要在源码目录执行 `node out/index.js install-hooks`，否则 hooks 会写死到源码路径。
+但正常使用时，不要在源码目录执行 `node out/index.js install-hooks`，否则 hooks 会写死到源码路径。普通安装和扩展内命令都应使用全局 `agent-aura-qwencode` CLI。
 
 ## Qwen Code 扩展安装
 
@@ -163,6 +164,26 @@ agent-aura-qwencode hooks uninstall
 - `hooks print`：只打印将写入的 hooks JSON 片段，不修改文件。
 - `uninstall-hooks` / `hooks uninstall`：只删除本插件写入的命名 hook 项，不影响其它 Qwen 配置或其它 hooks。
 
+写入的每个 hook 项包含：
+- `timeout`：单位是**毫秒**，本插件写入 `15000`（15 秒），足够 Node 启动并完成一次 HTTP 同步。
+- `env`：注入 `AGENTAURA_QWENCODE_HOOK=1`，不再在命令行里用 `set`/前缀赋值。
+- `shell`：Windows 上为 `powershell`，其它平台为 `bash`，由 Qwen Code 显式选择解释器。
+- `command`：使用绝对 Node 路径与入口路径，并对空格、单引号做转义。Windows 使用 PowerShell 调用运算符，例如：
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' 'C:\Users\me\.qwen\extensions\agent-aura-qwencode\out\index.js' hook 'SessionStart'
+```
+
+POSIX 使用 bash：
+
+```bash
+'/usr/local/bin/node' '/home/me/.qwen/extensions/agent-aura-qwencode/out/index.js' hook 'SessionStart'
+```
+
+命令不再吞掉错误输出（不再有 `>nul`、`/dev/null`、`|| true`），hook 的 stderr 会写入 Qwen Code 的 debug 日志，便于排障；插件内部仍会捕获自身异常，不会阻断 Qwen 主流程。
+
+> 修改任何路径环境变量（如 `QWEN_CODE_HOME`）后，需要完全退出并重启 Qwen Code 与 PetDesktop，才能读到新的环境。
+
 ## 配置文件
 
 查看路径：
@@ -184,3 +205,37 @@ AGENTAURA_QWENCODE_AUTH_TOKEN=
 ```
 
 也兼容通用变量 `AGENTAURA_HOST`、`AGENTAURA_TRANSPORT`、`AGENTAURA_AUTH_TOKEN`。
+
+### 路径变量优先级
+
+CLI 与 PetDesktop 使用同一套路径解析规则（空环境变量视为未设置）：
+
+| 用途 | 优先级 |
+| :--- | :--- |
+| Qwen 目录 | `QWEN_CODE_HOME` > `QWEN_HOME` > `USERPROFILE`/`HOME` 下的 `.qwen` |
+| settings（hooks） | `QWEN_CODE_SETTINGS` > `QWEN_SETTINGS_PATH` > `<Qwen 目录>/settings.json` |
+| 插件配置 | `AGENTAURA_QWENCODE_CONFIG` > `<Qwen 目录>/agent-aura-qwencode.json` |
+
+这样即使自定义了 Qwen 目录或 settings 路径，App、CLI 与 hooks 也会读写同一份文件。修改这些变量后需重启 Qwen Code 与 PetDesktop。
+
+## ZIP 双安装
+
+通过 PetDesktop 安装 Qwen Code 的 `.zip` 包时会执行两步：
+
+1. **扩展**：卸载同名旧扩展后运行 `qwen extensions install --consent <zip>`，日志前缀 `[qwen extension]`。
+2. **托管 CLI**：把同一个 ZIP 安全解压并安装到 PetDesktop 托管目录，日志前缀 `[managed cli]`，供 hooks 使用其绝对 `out/index.js`。
+
+只有两步都成功才返回“安装完成”。若托管 CLI 安装失败，会先尝试恢复失败前的旧版扩展；如果没有可恢复的旧版，再回滚本次扩展安装，并在 `[rollback]` 段落输出结果。ZIP 根目录必须包含 `qwen-extension.json`、`package.json`、`out/index.js`，否则拒绝安装。
+
+hooks 优先执行托管包的绝对 `out/index.js`，安装来源状态优先级为 `managed > global > external`。
+
+## Windows 诊断
+
+如果 Windows 上 hooks 已安装但 PetDesktop 状态不同步，可按顺序排查：
+
+1. 在 Qwen Code 的 `/hooks` 视图里确认存在 `agent-aura-qwencode:*` 项，或者直接查看 settings.json，确认 `shell` 为 `powershell`、`timeout` 为 `15000`。
+2. 打开 settings.json，确认 `command` 中的 Node 与入口路径存在且正确。
+3. `agent-aura-qwencode status --probe` 检查设备连通性与配置。
+4. 查看 Qwen Code 的 debug 日志，hook 的 `[agentaura]` stderr 会显示事件与同步结果。
+5. 若从资源管理器启动 PetDesktop 时 GUI PATH 不完整，插件会额外在 `%ProgramFiles%\nodejs`、`%APPDATA%\npm`、NVM/Volta 目录查找 `node`/`npm`/`qwen`，并把解析到的目录前置到子进程 PATH。找不到时错误信息会列出检查过的目录。
+6. 修改任何路径环境变量后，完全退出并重启 Qwen Code 与 PetDesktop。

@@ -6,6 +6,10 @@ import type {
   AppSnapshot,
   DiscoveredHardware,
   SerialPortInfo,
+  ManagedPluginStatus,
+  PluginOperationResult,
+  PluginPackageInspection,
+  PluginProvider,
 } from './types';
 
 const browserFallback: AppSnapshot = {
@@ -46,7 +50,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   if (!isTauri()) {
     if (command === 'get_snapshot') return browserFallback as T;
     if (command === 'read_selected_pet_asset') return '' as T;
-    if (command === 'discover_hardware' || command === 'list_serial_ports') return [] as T;
+    if (command === 'discover_hardware' || command === 'list_serial_ports' || command === 'list_managed_plugins' || command === 'inspect_plugin_packages') return [] as T;
     return undefined as T;
   }
   return invoke<T>(command, args);
@@ -69,6 +73,13 @@ export const api = {
   testHardware: () => call<void>('test_hardware'),
   showManagement: () => call<void>('show_management'),
   showPet: (visible: boolean) => call<void>('show_pet', { visible }),
+  inspectPluginPackages: (paths: string[]) => call<PluginPackageInspection[]>('inspect_plugin_packages', { paths }),
+  listPlugins: () => call<ManagedPluginStatus[]>('list_managed_plugins'),
+  installPlugin: (path: string) => call<PluginOperationResult>('install_plugin_package', { path }),
+  uninstallPlugin: (provider: PluginProvider) => call<PluginOperationResult>('uninstall_managed_plugin', { provider }),
+  managePluginHooks: (provider: PluginProvider, install: boolean) => call<PluginOperationResult>('manage_plugin_hooks', { provider, install }),
+  loadPluginConfig: (provider: PluginProvider) => call<string>('load_plugin_config', { provider }),
+  savePluginConfig: (provider: PluginProvider, config: string) => call<void>('save_plugin_config', { provider, config }),
 };
 
 export async function onSnapshot(callback: (snapshot: AppSnapshot) => void): Promise<UnlistenFn> {

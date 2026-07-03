@@ -45,9 +45,20 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
         }
         const state = mapQwenEventToAgentState(eventName, payload);
         const context: SendContext | undefined = sessionId ? { sessionId } : undefined;
-        await new RingLightClient(loadConfig()).sendAgentState(state, context);
-    } catch {
-        // Hook commands must never break Qwen Code execution.
+        process.stderr.write(`[agentaura] hook ${eventName} -> ${state}\n`);
+        const ok = await new RingLightClient(loadConfig()).sendAgentState(state, context);
+        process.stderr.write(`[agentaura] sendAgentState result=${ok}\n`);
+        if (state === 'idle' || state === 'offline') {
+            const runtime = loadRuntimeState();
+            if (runtime.heartbeatToken) {
+                saveRuntimeState({ ...runtime, heartbeatToken: undefined, heartbeatIntervalMs: undefined });
+            }
+            if (state === 'offline') {
+                await new RingLightClient(loadConfig()).disconnectPetDesktop();
+            }
+        }
+    } catch (e) {
+        process.stderr.write(`[agentaura] hook error: ${e}\n`);
     }
 }
 

@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, SecondsFormat, Utc};
 
 use parking_lot::{Mutex, RwLock};
 use tauri::{AppHandle, Emitter};
@@ -458,7 +458,7 @@ fn persist_settings(data_dir: &Path, settings: &AppSettings) -> anyhow::Result<(
 }
 
 pub fn now_iso() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+    Local::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 #[cfg(test)]
