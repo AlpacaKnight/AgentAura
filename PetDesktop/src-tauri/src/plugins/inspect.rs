@@ -1,5 +1,5 @@
-use sha2::{Digest, Sha256};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Read,
@@ -19,12 +19,12 @@ pub fn inspect_packages(paths: Vec<String>) -> Vec<PluginPackageInspection> {
         .map(|p| inspect(Path::new(&p)).unwrap_or_else(|e| PluginPackageInspection::failure(p, e)))
         .collect();
     // 配对逻辑：agent-aura-qwencode 的 tgz（CLI 包）和 zip（扩展包）应版本一致
-    let tgz_idx = results.iter().position(|r| {
-        r.provider == Some(PluginProvider::Qwencode) && r.format == "tgz"
-    });
-    let zip_idx = results.iter().position(|r| {
-        r.provider == Some(PluginProvider::Qwencode) && r.format == "zip"
-    });
+    let tgz_idx = results
+        .iter()
+        .position(|r| r.provider == Some(PluginProvider::Qwencode) && r.format == "tgz");
+    let zip_idx = results
+        .iter()
+        .position(|r| r.provider == Some(PluginProvider::Qwencode) && r.format == "zip");
     if let (Some(ti), Some(zi)) = (tgz_idx, zip_idx) {
         let tgz_ver = results[ti].version.clone();
         let zip_ver = results[zi].version.clone();

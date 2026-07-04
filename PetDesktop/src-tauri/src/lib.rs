@@ -17,8 +17,8 @@ use model::{AgentState, AppSettings, AppSnapshot, LogLevel};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::MenuBuilder, tray::TrayIconBuilder, AppHandle, Manager, PhysicalPosition,
-    Position, State, WebviewWindow, WindowEvent,
+    menu::MenuBuilder, tray::TrayIconBuilder, AppHandle, Manager, PhysicalPosition, Position,
+    State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt;
 
@@ -52,10 +52,7 @@ fn begin_plugin_operation(
     cancel_rx
 }
 
-fn finish_plugin_operation(
-    op: &State<'_, Mutex<Option<ActiveOperation>>>,
-    operation_id: u64,
-) {
+fn finish_plugin_operation(op: &State<'_, Mutex<Option<ActiveOperation>>>, operation_id: u64) {
     let mut guard = op.lock();
     if guard
         .as_ref()
@@ -244,23 +241,52 @@ async fn install_plugin_package(
 
     // 先预检
     let paths = vec![path.clone()];
-    let inspections = tauri::async_runtime::spawn_blocking(move || plugins::inspect_packages(paths))
-        .await
-        .map_err(|error| format!("plugin inspector failed: {error}"))?;
+    let inspections =
+        tauri::async_runtime::spawn_blocking(move || plugins::inspect_packages(paths))
+            .await
+            .map_err(|error| format!("plugin inspector failed: {error}"))?;
 
     let Some(inspection) = inspections.into_iter().next() else {
         return Err("无法检查插件包".to_string());
     };
     if !inspection.valid {
-        return Err(inspection.error.unwrap_or_else(|| "无效的插件包".to_string()));
+        return Err(inspection
+            .error
+            .unwrap_or_else(|| "无效的插件包".to_string()));
     }
 
-    plugins::emit_log(&app, operation_id, "log", format!("🔍 已识别插件: {:?} v{}", inspection.provider, inspection.version.as_deref().unwrap_or("?")));
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "log",
+        format!(
+            "🔍 已识别插件: {:?} v{}",
+            inspection.provider,
+            inspection.version.as_deref().unwrap_or("?")
+        ),
+    );
 
     let cancel_rx = begin_plugin_operation(&op, operation_id);
 
-    let result = plugins::install_package_streaming(&data_dir, Path::new(&path), inspection, &app, operation_id, cancel_rx).await;
-    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ 安装完成".into() } else { format!("❌ {}", result.message) });
+    let result = plugins::install_package_streaming(
+        &data_dir,
+        Path::new(&path),
+        inspection,
+        &app,
+        operation_id,
+        cancel_rx,
+    )
+    .await;
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "complete",
+        if result.success {
+            "✅ 安装完成".into()
+        } else {
+            format!("❌ {}", result.message)
+        },
+    );
     finish_plugin_operation(&op, operation_id);
     Ok(result)
 }
@@ -274,12 +300,28 @@ async fn uninstall_managed_plugin(
     let data_dir = core.data_dir().map_err(|error| error.to_string())?;
     let operation_id = plugins::next_operation_id();
 
-    plugins::emit_log(&app, operation_id, "log", format!("🗑️ 开始卸载 {:?}...", provider));
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "log",
+        format!("🗑️ 开始卸载 {:?}...", provider),
+    );
 
     let cancel_rx = begin_plugin_operation(&op, operation_id);
 
-    let result = plugins::uninstall_plugin_streaming(&data_dir, provider, &app, operation_id, cancel_rx).await;
-    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ 卸载完成".into() } else { format!("❌ {}", result.message) });
+    let result =
+        plugins::uninstall_plugin_streaming(&data_dir, provider, &app, operation_id, cancel_rx)
+            .await;
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "complete",
+        if result.success {
+            "✅ 卸载完成".into()
+        } else {
+            format!("❌ {}", result.message)
+        },
+    );
     finish_plugin_operation(&op, operation_id);
     Ok(result)
 }
@@ -295,12 +337,34 @@ async fn manage_plugin_hooks(
     let operation_id = plugins::next_operation_id();
 
     let action_label = if install { "安装" } else { "卸载" };
-    plugins::emit_log(&app, operation_id, "log", format!("🔧 {} {:?} Hooks...", action_label, provider));
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "log",
+        format!("🔧 {} {:?} Hooks...", action_label, provider),
+    );
 
     let cancel_rx = begin_plugin_operation(&op, operation_id);
 
-    let result = plugins::manage_hooks_streaming(&data_dir, provider, install, &app, operation_id, cancel_rx).await;
-    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ Hooks 操作完成".into() } else { format!("❌ {}", result.message) });
+    let result = plugins::manage_hooks_streaming(
+        &data_dir,
+        provider,
+        install,
+        &app,
+        operation_id,
+        cancel_rx,
+    )
+    .await;
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "complete",
+        if result.success {
+            "✅ Hooks 操作完成".into()
+        } else {
+            format!("❌ {}", result.message)
+        },
+    );
     finish_plugin_operation(&op, operation_id);
     Ok(result)
 }
@@ -314,18 +378,22 @@ async fn repair_plugin_hooks(
     let data_dir = core.data_dir().map_err(|error| error.to_string())?;
     let operation_id = plugins::next_operation_id();
 
-    plugins::emit_log(&app, operation_id, "log", format!("🔧 修复 {:?} Hooks...", provider));
+    plugins::emit_log(
+        &app,
+        operation_id,
+        "log",
+        format!("🔧 修复 {:?} Hooks...", provider),
+    );
 
     let cancel_rx = begin_plugin_operation(&op, operation_id);
 
-    let result = plugins::repair_hooks_streaming(&data_dir, provider, &app, operation_id, cancel_rx).await;
+    let result =
+        plugins::repair_hooks_streaming(&data_dir, provider, &app, operation_id, cancel_rx).await;
     finish_plugin_operation(&op, operation_id);
     Ok(result)
 }
 #[tauri::command]
-fn cancel_plugin_operation(
-    op: State<'_, Mutex<Option<ActiveOperation>>>,
-) -> bool {
+fn cancel_plugin_operation(op: State<'_, Mutex<Option<ActiveOperation>>>) -> bool {
     let mut guard = op.lock();
     if let Some(active) = guard.as_mut() {
         active.cancel();

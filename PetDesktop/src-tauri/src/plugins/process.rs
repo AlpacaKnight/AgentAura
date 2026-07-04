@@ -1,5 +1,6 @@
 //! Plugin install, uninstall, hooks, and configuration operations.
 
+use serde_json::Value;
 #[cfg(target_os = "windows")]
 #[allow(unused_imports)]
 use std::os::windows::process::CommandExt;
@@ -12,7 +13,6 @@ use std::{
         Arc,
     },
 };
-use serde_json::Value;
 use tauri::AppHandle;
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::oneshot;
@@ -117,7 +117,10 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
             }
             if global_node_package_installed("agent-aura-qwencode") {
                 let mut npm = npm_command()?;
-                outputs.push(run(npm.arg("uninstall").arg("-g").arg("agent-aura-qwencode"))?);
+                outputs.push(run(npm
+                    .arg("uninstall")
+                    .arg("-g")
+                    .arg("agent-aura-qwencode"))?);
             }
             if outputs.is_empty() {
                 return Ok(PluginOperationResult {
@@ -137,7 +140,12 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
             return Ok(PluginOperationResult {
                 provider: p,
                 success,
-                message: if success { "卸载完成" } else { "卸载失败" }.into(),
+                message: if success {
+                    "卸载完成"
+                } else {
+                    "卸载失败"
+                }
+                .into(),
                 output,
             });
         }
@@ -177,7 +185,12 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
             return Ok(PluginOperationResult {
                 provider: p,
                 success,
-                message: if success { "卸载完成" } else { "卸载失败" }.into(),
+                message: if success {
+                    "卸载完成"
+                } else {
+                    "卸载失败"
+                }
+                .into(),
                 output,
             });
         }
@@ -186,7 +199,12 @@ pub fn uninstall_plugin(data: &Path, p: PluginProvider) -> Result<PluginOperatio
     Ok(PluginOperationResult {
         provider: p,
         success,
-        message: if success { "卸载完成" } else { "卸载失败" }.into(),
+        message: if success {
+            "卸载完成"
+        } else {
+            "卸载失败"
+        }
+        .into(),
         output: out(&o),
     })
 }
@@ -405,16 +423,25 @@ fn cancelled_result(p: PluginProvider) -> PluginOperationResult {
     }
 }
 
-fn command_result(p: PluginProvider, success_message: &str, failure_message: &str, output: Output) -> PluginOperationResult {
+fn command_result(
+    p: PluginProvider,
+    success_message: &str,
+    failure_message: &str,
+    output: Output,
+) -> PluginOperationResult {
     let success = output.status.success();
     PluginOperationResult {
         provider: p,
         success,
-        message: if success { success_message } else { failure_message }.into(),
+        message: if success {
+            success_message
+        } else {
+            failure_message
+        }
+        .into(),
         output: out(&output),
     }
 }
-
 
 /// Run a command and push its stdout/stderr in real-time via Tauri events.
 /// On cancel, kills the child process and emits a "cancel" event.
@@ -450,7 +477,19 @@ async fn run_and_emit(
         .spawn()
         .map_err(|e| format!("无法启动进程: {e}"))?;
 
-    emit_log(app, operation_id, "log", format!("$ {:?} {}", program.to_string_lossy(), args.iter().map(|a| a.to_string_lossy()).collect::<Vec<_>>().join(" ")));
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        format!(
+            "$ {:?} {}",
+            program.to_string_lossy(),
+            args.iter()
+                .map(|a| a.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    );
 
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
@@ -483,7 +522,12 @@ async fn run_and_emit(
     let log_stderr = tokio::spawn(async move {
         let mut lines = stderr_reader;
         while let Ok(Some(line)) = lines.next_line().await {
-            emit_log(&app_for_stderr, operation_id, "log", format!("[stderr] {}", line));
+            emit_log(
+                &app_for_stderr,
+                operation_id,
+                "log",
+                format!("[stderr] {}", line),
+            );
             collector_stderr.lock().push(line);
             if cancel_for_stderr.load(Ordering::Relaxed) {
                 return;
@@ -537,7 +581,10 @@ async fn install_node_package_streaming(
     let destination = root(data);
     fs::create_dir_all(&destination).map_err(|e| e.to_string())?;
     let mut npm = npm_command()?;
-    npm.arg("install").arg("--prefix").arg(destination).arg(source);
+    npm.arg("install")
+        .arg("--prefix")
+        .arg(destination)
+        .arg(source);
     run_and_emit(&mut npm, app, operation_id, cancelled).await
 }
 
@@ -591,7 +638,12 @@ async fn install_node_zip_streaming(
         return Err(error);
     }
 
-    emit_log(app, operation_id, "log", "✅ 解压完成，开始 npm 安装...".into());
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        "✅ 解压完成，开始 npm 安装...".into(),
+    );
     let result = install_node_package_streaming(data, &staging, app, operation_id, cancelled).await;
     let _ = fs::remove_dir_all(staging);
     result
@@ -605,7 +657,12 @@ async fn install_qwen_zip_streaming(
     operation_id: u64,
     cancelled: &Arc<AtomicBool>,
 ) -> PluginOperationResult {
-    emit_log(app, operation_id, "log", "验证 Qwen Code 扩展 ZIP...".into());
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        "验证 Qwen Code 扩展 ZIP...".into(),
+    );
     if let Err(error) = validate_qwen_zip(path) {
         return PluginOperationResult {
             provider: p,
@@ -619,7 +676,12 @@ async fn install_qwen_zip_streaming(
     let backup_path: Option<PathBuf>;
 
     if existed_before {
-        emit_log(app, operation_id, "log", "备份旧版 Qwen Code 扩展...".into());
+        emit_log(
+            app,
+            operation_id,
+            "log",
+            "备份旧版 Qwen Code 扩展...".into(),
+        );
         match backup_qwen_extension(data) {
             Ok(backup) => {
                 backup_path = backup;
@@ -634,17 +696,32 @@ async fn install_qwen_zip_streaming(
             }
         }
 
-        emit_log(app, operation_id, "log", "卸载旧版 Qwen Code 扩展...".into());
+        emit_log(
+            app,
+            operation_id,
+            "log",
+            "卸载旧版 Qwen Code 扩展...".into(),
+        );
         let mut qwen = match qwen_command() {
             Ok(cmd) => cmd,
-            Err(error) => return PluginOperationResult {
-                provider: p,
-                success: false,
-                message: "无法找到 qwen CLI".into(),
-                output: error,
-            },
+            Err(error) => {
+                return PluginOperationResult {
+                    provider: p,
+                    success: false,
+                    message: "无法找到 qwen CLI".into(),
+                    output: error,
+                }
+            }
         };
-        let uninstall_output = run_and_emit(qwen.arg("extensions").arg("uninstall").arg("agent-aura-qwencode"), app, operation_id, cancelled).await;
+        let uninstall_output = run_and_emit(
+            qwen.arg("extensions")
+                .arg("uninstall")
+                .arg("agent-aura-qwencode"),
+            app,
+            operation_id,
+            cancelled,
+        )
+        .await;
         if let Ok(ref output) = uninstall_output {
             if !output.status.success() {
                 let out_str = out(output);
@@ -667,14 +744,25 @@ async fn install_qwen_zip_streaming(
     emit_log(app, operation_id, "log", "安装 Qwen Code 扩展...".into());
     let mut qwen = match qwen_command() {
         Ok(cmd) => cmd,
-        Err(error) => return PluginOperationResult {
-            provider: p,
-            success: false,
-            message: "无法找到 qwen CLI".into(),
-            output: error,
-        },
+        Err(error) => {
+            return PluginOperationResult {
+                provider: p,
+                success: false,
+                message: "无法找到 qwen CLI".into(),
+                output: error,
+            }
+        }
     };
-    let extension_output = run_and_emit(qwen.arg("extensions").arg("install").arg("--consent").arg(path), app, operation_id, cancelled).await;
+    let extension_output = run_and_emit(
+        qwen.arg("extensions")
+            .arg("install")
+            .arg("--consent")
+            .arg(path),
+        app,
+        operation_id,
+        cancelled,
+    )
+    .await;
     let extension_log = match &extension_output {
         Ok(output) => {
             let s = out(output);
@@ -682,7 +770,12 @@ async fn install_qwen_zip_streaming(
             s
         }
         Err(error) => {
-            emit_log(app, operation_id, "error", format!("[qwen extension] 失败: {error}"));
+            emit_log(
+                app,
+                operation_id,
+                "error",
+                format!("[qwen extension] 失败: {error}"),
+            );
             return PluginOperationResult {
                 provider: p,
                 success: false,
@@ -727,7 +820,9 @@ async fn install_qwen_zip_streaming(
                 provider: p,
                 success: false,
                 message: "托管 CLI 安装失败，已尝试回滚扩展安装".into(),
-                output: format!("{extension_log}\n[managed cli]\n{managed_detail}\n[rollback]\n{rollback}"),
+                output: format!(
+                    "{extension_log}\n[managed cli]\n{managed_detail}\n[rollback]\n{rollback}"
+                ),
             }
         }
     }
@@ -744,18 +839,34 @@ pub async fn install_package_streaming(
 ) -> PluginOperationResult {
     let p = match inspection.provider {
         Some(provider) => provider,
-        None => return PluginOperationResult {
-            provider: PluginProvider::Claude,
-            success: false,
-            message: "无法识别插件".into(),
-            output: String::new(),
-        },
+        None => {
+            return PluginOperationResult {
+                provider: PluginProvider::Claude,
+                success: false,
+                message: "无法识别插件".into(),
+                output: String::new(),
+            }
+        }
     };
 
     let cancelled = cancellation_flag(cancel_rx);
 
-    emit_log(app, operation_id, "log", format!("📦 安装包: {}", inspection.file_name));
-    emit_log(app, operation_id, "log", format!("🏷️  格式: {} | 版本: {}", inspection.format, inspection.version.as_deref().unwrap_or("?")));
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        format!("📦 安装包: {}", inspection.file_name),
+    );
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        format!(
+            "🏷️  格式: {} | 版本: {}",
+            inspection.format,
+            inspection.version.as_deref().unwrap_or("?")
+        ),
+    );
 
     let result = match p {
         PluginProvider::Copilot => {
@@ -779,14 +890,20 @@ pub async fn install_package_streaming(
                 output: "未修改系统".into(),
             }
         }
-        _ if inspection.format == "tgz" => install_node_package_streaming(data, path, app, operation_id, &cancelled).await,
-        _ if inspection.format == "zip" => install_node_zip_streaming(data, path, app, operation_id, &cancelled).await,
-        _ => return PluginOperationResult {
-            provider: p,
-            success: false,
-            message: "包格式不受支持".into(),
-            output: String::new(),
-        },
+        _ if inspection.format == "tgz" => {
+            install_node_package_streaming(data, path, app, operation_id, &cancelled).await
+        }
+        _ if inspection.format == "zip" => {
+            install_node_zip_streaming(data, path, app, operation_id, &cancelled).await
+        }
+        _ => {
+            return PluginOperationResult {
+                provider: p,
+                success: false,
+                message: "包格式不受支持".into(),
+                output: String::new(),
+            }
+        }
     };
 
     match &result {
@@ -800,7 +917,12 @@ pub async fn install_package_streaming(
             }
         }
         Ok(output) => {
-            emit_log(app, operation_id, "error", format!("❌ 命令失败 (exit: {:?})", output.status.code()));
+            emit_log(
+                app,
+                operation_id,
+                "error",
+                format!("❌ 命令失败 (exit: {:?})", output.status.code()),
+            );
             PluginOperationResult {
                 provider: p,
                 success: false,
@@ -842,7 +964,11 @@ async fn manage_hooks_with_cancel(
         return cancelled_result(p);
     }
 
-    let action = if install { "install-hooks" } else { "uninstall-hooks" };
+    let action = if install {
+        "install-hooks"
+    } else {
+        "uninstall-hooks"
+    };
     let managed_entry = pkg(data, p.package().unwrap()).join("out/index.js");
     let external_entry = if p == PluginProvider::Qwencode {
         qwen_extension_dir().map(|dir| dir.join("out/index.js"))
@@ -854,15 +980,31 @@ async fn manage_hooks_with_cancel(
         let mut node = match node_command() {
             Ok(command) => command,
             Err(error) => {
-                return PluginOperationResult { provider: p, success: false, message: error, output: String::new() };
+                return PluginOperationResult {
+                    provider: p,
+                    success: false,
+                    message: error,
+                    output: String::new(),
+                };
             }
         };
-        run_and_emit(node.arg(managed_entry).arg(action), app, operation_id, cancelled).await
+        run_and_emit(
+            node.arg(managed_entry).arg(action),
+            app,
+            operation_id,
+            cancelled,
+        )
+        .await
     } else if let Some(entry) = external_entry.filter(|entry| entry.exists()) {
         let mut node = match node_command() {
             Ok(command) => command,
             Err(error) => {
-                return PluginOperationResult { provider: p, success: false, message: error, output: String::new() };
+                return PluginOperationResult {
+                    provider: p,
+                    success: false,
+                    message: error,
+                    output: String::new(),
+                };
             }
         };
         run_and_emit(node.arg(entry).arg(action), app, operation_id, cancelled).await
@@ -874,7 +1016,12 @@ async fn manage_hooks_with_cancel(
     match result {
         Ok(output) => command_result(p, "Hooks 操作完成", "Hooks 操作失败", output),
         Err(_error) if cancelled.load(Ordering::Relaxed) => cancelled_result(p),
-        Err(error) => PluginOperationResult { provider: p, success: false, message: error, output: String::new() },
+        Err(error) => PluginOperationResult {
+            provider: p,
+            success: false,
+            message: error,
+            output: String::new(),
+        },
     }
 }
 
@@ -908,7 +1055,9 @@ pub async fn uninstall_plugin_streaming(
     let mut outputs = Vec::new();
     let mut success = true;
 
-    let run_step = |result: Result<Output, String>, outputs: &mut Vec<String>, success: &mut bool| {
+    let run_step = |result: Result<Output, String>,
+                    outputs: &mut Vec<String>,
+                    success: &mut bool| {
         match result {
             Ok(output) => {
                 *success &= output.status.success();
@@ -924,12 +1073,25 @@ pub async fn uninstall_plugin_streaming(
     match p {
         PluginProvider::Copilot => {
             let mut cmd = Command::new("code");
-            let result = run_and_emit(cmd.arg("--uninstall-extension").arg("AlpacaKnight.agent-aura-copilot"), app, operation_id, &cancelled).await;
+            let result = run_and_emit(
+                cmd.arg("--uninstall-extension")
+                    .arg("AlpacaKnight.agent-aura-copilot"),
+                app,
+                operation_id,
+                &cancelled,
+            )
+            .await;
             run_step(result, &mut outputs, &mut success);
         }
         PluginProvider::Qwenpaw => {
             let mut cmd = Command::new("qwenpaw");
-            let result = run_and_emit(cmd.arg("plugin").arg("uninstall").arg("agentaura"), app, operation_id, &cancelled).await;
+            let result = run_and_emit(
+                cmd.arg("plugin").arg("uninstall").arg("agentaura"),
+                app,
+                operation_id,
+                &cancelled,
+            )
+            .await;
             run_step(result, &mut outputs, &mut success);
         }
         PluginProvider::Qwencode => {
@@ -937,7 +1099,15 @@ pub async fn uninstall_plugin_streaming(
             if extension_installed {
                 match qwen_command() {
                     Ok(mut qwen) => {
-                        let result = run_and_emit(qwen.arg("extensions").arg("uninstall").arg("agent-aura-qwencode"), app, operation_id, &cancelled).await;
+                        let result = run_and_emit(
+                            qwen.arg("extensions")
+                                .arg("uninstall")
+                                .arg("agent-aura-qwencode"),
+                            app,
+                            operation_id,
+                            &cancelled,
+                        )
+                        .await;
                         run_step(result, &mut outputs, &mut success);
                     }
                     Err(error) => {
@@ -949,7 +1119,16 @@ pub async fn uninstall_plugin_streaming(
             if pkg(data, "agent-aura-qwencode").exists() {
                 match npm_command() {
                     Ok(mut npm) => {
-                        let result = run_and_emit(npm.arg("uninstall").arg("--prefix").arg(root(data)).arg("agent-aura-qwencode"), app, operation_id, &cancelled).await;
+                        let result = run_and_emit(
+                            npm.arg("uninstall")
+                                .arg("--prefix")
+                                .arg(root(data))
+                                .arg("agent-aura-qwencode"),
+                            app,
+                            operation_id,
+                            &cancelled,
+                        )
+                        .await;
                         run_step(result, &mut outputs, &mut success);
                     }
                     Err(error) => {
@@ -961,7 +1140,13 @@ pub async fn uninstall_plugin_streaming(
             if global_node_package_installed("agent-aura-qwencode") {
                 match npm_command() {
                     Ok(mut npm) => {
-                        let result = run_and_emit(npm.arg("uninstall").arg("-g").arg("agent-aura-qwencode"), app, operation_id, &cancelled).await;
+                        let result = run_and_emit(
+                            npm.arg("uninstall").arg("-g").arg("agent-aura-qwencode"),
+                            app,
+                            operation_id,
+                            &cancelled,
+                        )
+                        .await;
                         run_step(result, &mut outputs, &mut success);
                     }
                     Err(error) => {
@@ -973,12 +1158,26 @@ pub async fn uninstall_plugin_streaming(
         }
         _ => {
             let Some(package) = p.package() else {
-                return PluginOperationResult { provider: p, success: false, message: "没有可卸载的托管包".into(), output: String::new() };
+                return PluginOperationResult {
+                    provider: p,
+                    success: false,
+                    message: "没有可卸载的托管包".into(),
+                    output: String::new(),
+                };
             };
             if pkg(data, package).exists() {
                 match npm_command() {
                     Ok(mut npm) => {
-                        let result = run_and_emit(npm.arg("uninstall").arg("--prefix").arg(root(data)).arg(package), app, operation_id, &cancelled).await;
+                        let result = run_and_emit(
+                            npm.arg("uninstall")
+                                .arg("--prefix")
+                                .arg(root(data))
+                                .arg(package),
+                            app,
+                            operation_id,
+                            &cancelled,
+                        )
+                        .await;
                         run_step(result, &mut outputs, &mut success);
                     }
                     Err(error) => {
@@ -990,7 +1189,13 @@ pub async fn uninstall_plugin_streaming(
             if global_node_package_installed(package) {
                 match npm_command() {
                     Ok(mut npm) => {
-                        let result = run_and_emit(npm.arg("uninstall").arg("-g").arg(package), app, operation_id, &cancelled).await;
+                        let result = run_and_emit(
+                            npm.arg("uninstall").arg("-g").arg(package),
+                            app,
+                            operation_id,
+                            &cancelled,
+                        )
+                        .await;
                         run_step(result, &mut outputs, &mut success);
                     }
                     Err(error) => {
@@ -1006,13 +1211,23 @@ pub async fn uninstall_plugin_streaming(
         return cancelled_result(p);
     }
     if outputs.is_empty() {
-        return PluginOperationResult { provider: p, success: true, message: "未检测到可卸载的安装来源".into(), output: String::new() };
+        return PluginOperationResult {
+            provider: p,
+            success: true,
+            message: "未检测到可卸载的安装来源".into(),
+            output: String::new(),
+        };
     }
 
     PluginOperationResult {
         provider: p,
         success,
-        message: if success { "卸载完成" } else { "卸载失败" }.into(),
+        message: if success {
+            "卸载完成"
+        } else {
+            "卸载失败"
+        }
+        .into(),
         output: collect_output(&outputs),
     }
 }
@@ -1028,7 +1243,12 @@ pub async fn manage_hooks_streaming(
 ) -> PluginOperationResult {
     let cancelled = cancellation_flag(cancel_rx);
     let action = if install { "安装" } else { "卸载" };
-    emit_log(app, operation_id, "log", format!("{} {:?} Hooks...", action, p));
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        format!("{} {:?} Hooks...", action, p),
+    );
     manage_hooks_with_cancel(data, p, install, app, operation_id, &cancelled).await
 }
 
@@ -1044,11 +1264,21 @@ pub async fn repair_hooks_streaming(
     emit_log(app, operation_id, "log", format!("修复 {:?} Hooks...", p));
 
     let before = print_hooks(data, p).ok();
-    emit_log(app, operation_id, "log", "当前 Hooks 状态（修复前）：".into());
+    emit_log(
+        app,
+        operation_id,
+        "log",
+        "当前 Hooks 状态（修复前）：".into(),
+    );
     if let Some(ref before) = before {
         emit_log(app, operation_id, "log", format!("```\n{}\n```", before));
     } else {
-        emit_log(app, operation_id, "log", "(无法读取当前 Hooks 状态，将直接重新安装)".into());
+        emit_log(
+            app,
+            operation_id,
+            "log",
+            "(无法读取当前 Hooks 状态，将直接重新安装)".into(),
+        );
     }
 
     if cancelled.load(Ordering::Relaxed) {
@@ -1063,7 +1293,12 @@ pub async fn repair_hooks_streaming(
     }
 
     if cancelled.load(Ordering::Relaxed) {
-        emit_log(app, operation_id, "cancel", "操作已取消（Hooks 已卸载，未重新安装）".into());
+        emit_log(
+            app,
+            operation_id,
+            "cancel",
+            "操作已取消（Hooks 已卸载，未重新安装）".into(),
+        );
         return cancelled_result(p);
     }
 
@@ -1076,11 +1311,16 @@ pub async fn repair_hooks_streaming(
         emit_log(app, operation_id, "log", format!("```\n{}\n```", after));
     }
 
-    emit_log(app, operation_id, "complete", if result.success {
-        "Hooks 修复完成".into()
-    } else {
-        format!("Hooks 修复失败: {}", result.message)
-    });
+    emit_log(
+        app,
+        operation_id,
+        "complete",
+        if result.success {
+            "Hooks 修复完成".into()
+        } else {
+            format!("Hooks 修复失败: {}", result.message)
+        },
+    );
 
     result
 }

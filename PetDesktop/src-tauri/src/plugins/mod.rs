@@ -11,14 +11,12 @@ mod inspect;
 mod model;
 mod process;
 
-pub use model::{
-    ManagedPluginStatus, PluginOperationResult, PluginPackageInspection,
-    PluginProvider,
-};
 pub use env::{emit_log, next_operation_id};
 pub use inspect::inspect_packages;
+pub use model::{
+    ManagedPluginStatus, PluginOperationResult, PluginPackageInspection, PluginProvider,
+};
 pub use process::{
     install_package_streaming, list_plugin_status, list_plugins, load_config,
-    manage_hooks_streaming, repair_hooks_streaming, save_config,
-    uninstall_plugin_streaming,
+    manage_hooks_streaming, repair_hooks_streaming, save_config, uninstall_plugin_streaming,
 };

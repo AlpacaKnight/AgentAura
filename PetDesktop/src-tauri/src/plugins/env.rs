@@ -1,5 +1,6 @@
 //! Environment detection, CLI resolution, and shared utilities.
 
+use serde_json::Value;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::{
@@ -8,7 +9,6 @@ use std::{
     process::{Command, Output},
     sync::atomic::{AtomicU64, Ordering},
 };
-use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use super::model::{PluginOperationLog, PluginProvider};
