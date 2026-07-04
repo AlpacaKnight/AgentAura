@@ -7,6 +7,8 @@ use std::{
     path::{Component, Path, PathBuf},
     process::{Command, Output},
 };
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use zip::ZipArchive;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -448,8 +450,16 @@ pub fn manage_hooks(
     } else {
         "uninstall-hooks"
     };
-    let entry = pkg(data, p.package().unwrap()).join("out/index.js");
-    let o = if entry.exists() {
+    let managed_entry = pkg(data, p.package().unwrap()).join("out/index.js");
+    let external_entry = if p == PluginProvider::Qwencode {
+        qwen_extension_dir().map(|dir| dir.join("out/index.js"))
+    } else {
+        None
+    };
+    let o = if managed_entry.exists() {
+        let mut node = node_command()?;
+        run(node.arg(managed_entry).arg(action))?
+    } else if let Some(entry) = external_entry.filter(|entry| entry.exists()) {
         let mut node = node_command()?;
         run(node.arg(entry).arg(action))?
     } else {
@@ -1117,6 +1127,9 @@ fn has_managed_qwen_hook(text: &str) -> bool {
     })
 }
 fn run(c: &mut Command) -> Result<Output, String> {
+    #[cfg(target_os = "windows")]
+    c.creation_flags(0x08000000);
+
     c.output()
         .map_err(|e| format!("无法启动 {:?}: {e}", c.get_program()))
 }
