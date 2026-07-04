@@ -200,6 +200,7 @@ body:has(.pet-window) { overflow: hidden; background: transparent; }
 .plugins-page button:not(.plugin-dropzone):hover:not(:disabled) { border-color: #8b80ff; background: #2a3550; }
 .plugins-page button:disabled { color: #7d899b; background: #171e2a; cursor: not-allowed; opacity: .72; }
 .plugin-card .ok { color: var(--success); }
+.plugin-card .checking { display: inline-flex; align-items: center; gap: 6px; color: #8b95a8; }
 .config-editor { padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); display: grid; gap: 10px; }
 .config-editor code { color: #aebbd0; overflow-wrap: anywhere; }
 .config-editor textarea { width: 100%; min-height: 240px; resize: vertical; border: 1px solid #46546d; border-radius: 10px; padding: 12px; background: #090f18; color: #f0f3f8; caret-color: #9a91ff; font: 13px/1.5 ui-monospace, monospace; }

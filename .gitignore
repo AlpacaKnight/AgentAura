@@ -100,3 +100,6 @@ crash-reports/
 .vscode-test/
 playwright-report/
 test-results/
+
+# code Agent
+.workbuddy/

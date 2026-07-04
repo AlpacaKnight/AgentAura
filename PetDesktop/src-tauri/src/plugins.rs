@@ -227,6 +227,41 @@ fn identify(v: &Value, f: &str) -> Option<PluginProvider> {
         None
     }
 }
+pub fn list_plugin_status(data: &Path, p: PluginProvider) -> ManagedPluginStatus {
+    let managed_installed = p.package().is_some_and(|n| pkg(data, n).exists());
+    let managed_version = managed_version(data, p);
+    let global_version = p.package().and_then(global_node_package_version);
+    let global_installed = global_version.is_some();
+    let (external_installed, external_version) = external_install_info(p);
+    let version = managed_version
+        .clone()
+        .or(global_version.clone())
+        .or(external_version.clone());
+    let preferred_source = if managed_installed {
+        Some("managed".to_string())
+    } else if global_installed {
+        Some("global".to_string())
+    } else if external_installed {
+        Some("external".to_string())
+    } else {
+        None
+    };
+    ManagedPluginStatus {
+        provider: p,
+        installed: managed_installed || global_installed || external_installed,
+        version,
+        hooks_installed: hook_present(p),
+        hooks_supported: p.hooks(),
+        config_path: config(p).map(|v| v.display().to_string()),
+        managed_installed,
+        global_installed,
+        external_installed,
+        preferred_source,
+        managed_version,
+        global_version,
+        external_version,
+    }
+}
 pub fn list_plugins(data: &Path) -> Result<Vec<ManagedPluginStatus>, String> {
     Ok([
         PluginProvider::Claude,
@@ -237,41 +272,7 @@ pub fn list_plugins(data: &Path) -> Result<Vec<ManagedPluginStatus>, String> {
         PluginProvider::Qwenpaw,
     ]
     .into_iter()
-    .map(|p| {
-        let managed_installed = p.package().is_some_and(|n| pkg(data, n).exists());
-        let managed_version = managed_version(data, p);
-        let global_version = p.package().and_then(global_node_package_version);
-        let global_installed = global_version.is_some();
-        let (external_installed, external_version) = external_install_info(p);
-        let version = managed_version
-            .clone()
-            .or(global_version.clone())
-            .or(external_version.clone());
-        let preferred_source = if managed_installed {
-            Some("managed".to_string())
-        } else if global_installed {
-            Some("global".to_string())
-        } else if external_installed {
-            Some("external".to_string())
-        } else {
-            None
-        };
-        ManagedPluginStatus {
-            provider: p,
-            installed: managed_installed || global_installed || external_installed,
-            version,
-            hooks_installed: hook_present(p),
-            hooks_supported: p.hooks(),
-            config_path: config(p).map(|v| v.display().to_string()),
-            managed_installed,
-            global_installed,
-            external_installed,
-            preferred_source,
-            managed_version,
-            global_version,
-            external_version,
-        }
-    })
+    .map(|p| list_plugin_status(data, p))
     .collect())
 }
 pub fn install_package(data: &Path, path: &Path) -> Result<PluginOperationResult, String> {

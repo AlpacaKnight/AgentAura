@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm, open } from '@tauri-apps/plugin-dialog';
 import { ChevronDown, ChevronUp, Download, FileArchive, LoaderCircle, RefreshCw, Save, Wrench } from 'lucide-react';
@@ -28,6 +28,8 @@ const names: Record<PluginProvider, string> = {
   qwencode: 'Qwen Code',
   qwenpaw: 'QwenPaw',
 };
+
+const PROVIDERS: PluginProvider[] = ['claude', 'codex', 'copilot', 'kimi-code', 'qwencode', 'qwenpaw'];
 
 const sourceLabel = (item: ManagedPluginStatus) => {
   const parts: string[] = [];
@@ -61,16 +63,31 @@ const defaults = (provider: PluginProvider): PluginConfig => ({
 });
 
 export function PluginsPanel() {
-  const [statuses, setStatuses] = useState<ManagedPluginStatus[]>([]);
+  const [statuses, setStatuses] = useState<Partial<Record<PluginProvider, ManagedPluginStatus>>>({});
   const [packages, setPackages] = useState<PluginPackageInspection[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState<PluginProvider>();
   const [config, setConfig] = useState<PluginConfig>();
   const [advanced, setAdvanced] = useState(false);
   const [advancedText, setAdvancedText] = useState('');
+  const refreshIdRef = useRef(0);
 
-  const refresh = useCallback(async () => setStatuses(await api.listPlugins()), []);
+  const refresh = useCallback(async () => {
+    const id = ++refreshIdRef.current;
+    setLoading(true);
+    await Promise.all(PROVIDERS.map(async provider => {
+      try {
+        const status = await api.inspectPlugin(provider);
+        if (id !== refreshIdRef.current) return;
+        setStatuses(prev => ({ ...prev, [provider]: status }));
+      } catch {
+        // 单个 provider 检测失败时静默，保持骨架态；可再次点刷新重试
+      }
+    }));
+    if (id === refreshIdRef.current) setLoading(false);
+  }, []);
   const inspect = useCallback(async (paths: string[]) => {
     if (paths.length) setPackages(await api.inspectPluginPackages(paths));
   }, []);
@@ -169,7 +186,7 @@ export function PluginsPanel() {
   return <section className="plugins-page">
     <div className="section-heading">
       <div><p className="eyebrow">PLUGIN MANAGER</p><h2>插件管理</h2></div>
-      <button onClick={() => void refresh()}><RefreshCw size={16}/>刷新状态</button>
+      <button onClick={() => void refresh()} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : undefined}/>刷新状态</button>
     </div>
 
     <button className="plugin-dropzone" onClick={() => void choose()}>
@@ -188,33 +205,40 @@ export function PluginsPanel() {
       <button disabled={busy || !item.valid} onClick={() => void install(item)}><Download size={16}/>安装</button>
     </article>)}
 
-    <div className="plugin-grid">{statuses.map(item => <article className="plugin-card" key={item.provider}>
-      <div>
-        <strong>{names[item.provider]}</strong>
-        <span className={item.installed ? 'ok' : ''}>{statusLabel(item)} {item.version ?? ''}</span>
-        {item.installed && <span>{sourceLabel(item)}</span>}
-      </div>
-      <div className="plugin-actions">
-        {item.hooksSupported && <button disabled={busy} onClick={() => void run(async () => {
-          const installing = !item.hooksInstalled;
-          const result = await api.managePluginHooks(item.provider, installing);
-          if (result.success && installing && item.provider === 'qwencode') {
-            return { ...result, message: `${result.message}\n请完全退出并重新启动 Qwen Code，当前会话不会重新加载新 Hooks。` };
-          }
-          return result;
-        })}>
-          <Wrench size={15}/>{item.hooksInstalled ? '卸载 Hooks' : '安装 Hooks'}
-        </button>}
-        {item.configPath && <button onClick={() => void edit(item.provider)}>配置连接</button>}
-        {item.installed && <button disabled={busy} onClick={() => void confirm('确认卸载该插件？', {
-          title: '确认卸载', kind: 'warning',
-        }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); })}>卸载</button>}
-      </div>
-    </article>)}</div>
+    <div className="plugin-grid">{PROVIDERS.map(provider => {
+      const item = statuses[provider];
+      return <article className="plugin-card" key={provider}>
+        <div>
+          <strong>{names[provider]}</strong>
+          {item ? <>
+            <span className={item.installed ? 'ok' : ''}>{statusLabel(item)} {item.version ?? ''}</span>
+            {item.installed && <span>{sourceLabel(item)}</span>}
+          </> : <span className="checking"><LoaderCircle className="spin" size={13}/> 检测中…</span>}
+        </div>
+        <div className="plugin-actions">
+          {item ? <>
+            {item.hooksSupported && <button disabled={busy} onClick={() => void run(async () => {
+              const installing = !item.hooksInstalled;
+              const result = await api.managePluginHooks(item.provider, installing);
+              if (result.success && installing && item.provider === 'qwencode') {
+                return { ...result, message: `${result.message}\n请完全退出并重新启动 Qwen Code，当前会话不会重新加载新 Hooks。` };
+              }
+              return result;
+            })}>
+              <Wrench size={15}/>{item.hooksInstalled ? '卸载 Hooks' : '安装 Hooks'}
+            </button>}
+            {item.configPath && <button onClick={() => void edit(item.provider)}>配置连接</button>}
+            {item.installed && <button disabled={busy} onClick={() => void confirm('确认卸载该插件？', {
+              title: '确认卸载', kind: 'warning',
+            }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); })}>卸载</button>}
+          </> : <button disabled>检测中…</button>}
+        </div>
+      </article>;
+    })}</div>
 
     {editing && config && <article className="config-editor">
       <div className="config-heading">
-        <div><h3>{names[editing]} 连接配置</h3><code>{statuses.find(value => value.provider === editing)?.configPath}</code></div>
+        <div><h3>{names[editing]} 连接配置</h3><code>{statuses[editing]?.configPath}</code></div>
         <label className="config-enabled"><input type="checkbox" checked={config.enabled} onChange={event => update('enabled', event.target.checked)}/>启用同步</label>
       </div>
 

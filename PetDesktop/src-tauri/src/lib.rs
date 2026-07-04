@@ -170,10 +170,23 @@ async fn inspect_plugin_packages(paths: Vec<String>) -> Vec<plugins::PluginPacka
         })
 }
 #[tauri::command]
-fn list_managed_plugins(
+async fn list_managed_plugins(
     core: State<'_, AppCore>,
 ) -> Result<Vec<plugins::ManagedPluginStatus>, String> {
-    plugins::list_plugins(&core.data_dir().map_err(|error| error.to_string())?)
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || plugins::list_plugins(&data_dir))
+        .await
+        .map_err(|error| format!("plugin listing failed: {error}"))?
+}
+#[tauri::command]
+async fn inspect_managed_plugin(
+    core: State<'_, AppCore>,
+    provider: plugins::PluginProvider,
+) -> Result<plugins::ManagedPluginStatus, String> {
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || plugins::list_plugin_status(&data_dir, provider))
+        .await
+        .map_err(|error| format!("plugin inspection failed: {error}"))
 }
 #[tauri::command]
 async fn install_plugin_package(
@@ -287,6 +300,7 @@ pub fn run() {
             show_pet,
             inspect_plugin_packages,
             list_managed_plugins,
+            inspect_managed_plugin,
             install_plugin_package,
             uninstall_managed_plugin,
             manage_plugin_hooks,
