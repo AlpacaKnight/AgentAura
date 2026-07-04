@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm, open } from '@tauri-apps/plugin-dialog';
-import { ChevronDown, ChevronUp, Download, FileArchive, LoaderCircle, RefreshCw, Save, Wrench } from 'lucide-react';
-import { api, isTauri } from './api';
+import { ChevronDown, ChevronUp, Download, FileArchive, LoaderCircle, RefreshCw, Save, SquareX, Wrench } from 'lucide-react';
+import { api, isTauri, onPluginOperationLog } from './api';
+import type { PluginOperationLog } from './api';
 import type { ManagedPluginStatus, PluginPackageInspection, PluginProvider } from './types';
 
 type PluginConfig = {
@@ -67,12 +68,43 @@ export function PluginsPanel() {
   const [packages, setPackages] = useState<PluginPackageInspection[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<PluginOperationLog[]>([]);
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState<PluginProvider>();
   const [config, setConfig] = useState<PluginConfig>();
   const [advanced, setAdvanced] = useState(false);
   const [advancedText, setAdvancedText] = useState('');
+  const [dragging, setDragging] = useState(false);
   const refreshIdRef = useRef(0);
+  const operationIdRef = useRef(0);
+  const busyRef = useRef(false);
+
+  // 自动滚动流式日志到底部
+  const preRef = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+  }, [logs]);
+
+  // 监听插件操作日志事件
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void onPluginOperationLog(log => {
+      if (cancelled || !busyRef.current) return;
+      if (operationIdRef.current === 0) operationIdRef.current = log.operationId;
+      if (log.operationId !== operationIdRef.current) return;
+      setLogs(prev => [...prev, log]);
+      // 不在 complete/error 事件中重置 busy，由 run() 的 finally 统一管理
+      if (log.kind === 'cancel') {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }).then(unlisten => {
+      if (cancelled) { unlisten(); } else { stop = unlisten; }
+    });
+    return () => { cancelled = true; stop?.(); };
+  }, []);
 
   const refresh = useCallback(async () => {
     const id = ++refreshIdRef.current;
@@ -97,7 +129,10 @@ export function PluginsPanel() {
     if (!isTauri()) return;
     let stop: undefined | (() => void);
     void getCurrentWindow().onDragDropEvent(event => {
-      if (event.payload.type === 'drop') void inspect(event.payload.paths);
+      const { type } = event.payload;
+      setDragging(type === 'enter' || type === 'over');
+      if (type === 'drop') void inspect(event.payload.paths);
+      if (type === 'leave') setDragging(false);
     }).then(unlisten => { stop = unlisten; });
     return () => stop?.();
   }, [inspect]);
@@ -112,7 +147,10 @@ export function PluginsPanel() {
   };
 
   const run = async (action: () => Promise<{ message: string; output: string; success: boolean }>) => {
+    busyRef.current = true;
+    operationIdRef.current = 0;
     setBusy(true);
+    setLogs([]);
     setMessage('');
     try {
       const result = await action();
@@ -121,6 +159,7 @@ export function PluginsPanel() {
     } catch (error) {
       setMessage(String(error));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -189,7 +228,7 @@ export function PluginsPanel() {
       <button onClick={() => void refresh()} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : undefined}/>刷新状态</button>
     </div>
 
-    <button className="plugin-dropzone" onClick={() => void choose()}>
+    <button className={'plugin-dropzone' + (dragging ? ' drag-over' : '')} onClick={() => void choose()}>
       <FileArchive size={30}/>
       <strong>选择插件包，或拖拽到这里</strong>
       <span>支持 .tgz、.zip、.vsix；SHA-256 仅用于核对文件完整性，不限制插件版本</span>
@@ -201,6 +240,7 @@ export function PluginsPanel() {
         <span>{item.provider ? names[item.provider] : '未识别'} · {item.version ?? '未知版本'} · {item.format}</span>
         {item.sha256 && <small className="package-hash" title={item.sha256}>SHA-256：{item.sha256.slice(0, 16)}…（仅供核对）</small>}
         {item.error && <small className="danger">{item.error}</small>}
+        {item.warnings?.map((w, i) => <small key={i} className="warning">{w}</small>)}
       </div>
       <button disabled={busy || !item.valid} onClick={() => void install(item)}><Download size={16}/>安装</button>
     </article>)}
@@ -217,20 +257,31 @@ export function PluginsPanel() {
         </div>
         <div className="plugin-actions">
           {item ? <>
-            {item.hooksSupported && <button disabled={busy} onClick={() => void run(async () => {
-              const installing = !item.hooksInstalled;
-              const result = await api.managePluginHooks(item.provider, installing);
-              if (result.success && installing && item.provider === 'qwencode') {
-                return { ...result, message: `${result.message}\n请完全退出并重新启动 Qwen Code，当前会话不会重新加载新 Hooks。` };
-              }
-              return result;
-            })}>
-              <Wrench size={15}/>{item.hooksInstalled ? '卸载 Hooks' : '安装 Hooks'}
-            </button>}
+            {item.hooksSupported && <>
+              <button disabled={busy} onClick={() => void run(async () => {
+                const installing = !item.hooksInstalled;
+                const result = await api.managePluginHooks(item.provider, installing);
+                if (result.success && installing && item.provider === 'qwencode') {
+                  return { ...result, message: `${result.message}\n请完全退出并重新启动 Qwen Code，当前会话不会重新加载新 Hooks。` };
+                }
+                return result;
+              })}>
+                <Wrench size={15}/>{item.hooksInstalled ? '卸载 Hooks' : '安装 Hooks'}
+              </button>
+              {item.hooksInstalled && <button disabled={busy} onClick={() => void run(async () => {
+                const result = await api.repairPluginHooks(item.provider);
+                if (result.success && item.provider === 'qwencode') {
+                  return { ...result, message: `${result.message}\n请完全退出并重新启动 Qwen Code，当前会话不会重新加载新 Hooks。` };
+                }
+                return result;
+              })}>
+                <Wrench size={15}/>修复 Hooks
+              </button>}
+            </>}
             {item.configPath && <button onClick={() => void edit(item.provider)}>配置连接</button>}
             {item.installed && <button disabled={busy} onClick={() => void confirm('确认卸载该插件？', {
               title: '确认卸载', kind: 'warning',
-            }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); })}>卸载</button>}
+            }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); }).catch(() => {})}>卸载</button>}
           </> : <button disabled>检测中…</button>}
         </div>
       </article>;
@@ -274,7 +325,13 @@ export function PluginsPanel() {
       <div className="config-footer"><button onClick={() => setEditing(undefined)}>关闭</button><button className="primary" disabled={busy} onClick={() => void save()}><Save size={15}/>保存配置</button></div>
     </article>}
 
-    {busy && <p><LoaderCircle className="spin" size={16}/> 正在执行…</p>}
-    {message && <pre className="plugin-output">{message}</pre>}
+    {(busy || logs.length > 0) && <div className="plugin-logs">
+      <div className="plugin-logs-header">
+        <span>操作日志</span>
+        {busy && <button onClick={() => void api.cancelPluginOperation()}><SquareX size={15}/>取消</button>}
+      </div>
+      <pre ref={preRef} className="plugin-output">{logs.map(log => log.text).join('\n')}</pre>
+    </div>}
+    {message && !busy && logs.length === 0 && <pre className="plugin-output">{message}</pre>}
   </section>;
 }

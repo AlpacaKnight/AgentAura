@@ -12,6 +12,13 @@ import type {
   PluginProvider,
 } from './types';
 
+// 插件操作日志
+export type PluginOperationLog = {
+  operationId: number;
+  kind: 'log' | 'progress' | 'complete' | 'error' | 'cancel';
+  text: string;
+};
+
 const browserFallback: AppSnapshot = {
   version: '0.1.0-browser-preview',
   effectiveState: 'idle',
@@ -83,8 +90,10 @@ export const api = {
   installPlugin: (path: string) => call<PluginOperationResult>('install_plugin_package', { path }),
   uninstallPlugin: (provider: PluginProvider) => call<PluginOperationResult>('uninstall_managed_plugin', { provider }),
   managePluginHooks: (provider: PluginProvider, install: boolean) => call<PluginOperationResult>('manage_plugin_hooks', { provider, install }),
+  repairPluginHooks: (provider: PluginProvider) => call<PluginOperationResult>('repair_plugin_hooks', { provider }),
   loadPluginConfig: (provider: PluginProvider) => call<string>('load_plugin_config', { provider }),
   savePluginConfig: (provider: PluginProvider, config: string) => call<void>('save_plugin_config', { provider, config }),
+  cancelPluginOperation: () => call<boolean>('cancel_plugin_operation'),
 };
 
 export async function onSnapshot(callback: (snapshot: AppSnapshot) => void): Promise<UnlistenFn> {
@@ -95,4 +104,9 @@ export async function onSnapshot(callback: (snapshot: AppSnapshot) => void): Pro
 export async function onPetScalePreview(callback: (scale: number) => void): Promise<UnlistenFn> {
   if (!isTauri()) return () => undefined;
   return listen<number>('pet-scale-preview', event => callback(event.payload));
+}
+
+export async function onPluginOperationLog(callback: (log: PluginOperationLog) => void): Promise<UnlistenFn> {
+  if (!isTauri()) return () => undefined;
+  return listen<PluginOperationLog>('plugin-operation-log', event => callback(event.payload));
 }

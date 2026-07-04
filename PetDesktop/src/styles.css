@@ -187,8 +187,9 @@ body:has(.pet-window) { overflow: hidden; background: transparent; }
 }
 
 .plugins-page { display: grid; gap: 16px; }
-.plugin-dropzone { min-height: 130px; border: 1px dashed #596981; border-radius: 18px; display: grid; place-items: center; align-content: center; gap: 8px; background: #111927; color: #f2f5fb; cursor: pointer; }
+.plugin-dropzone { min-height: 130px; border: 1px dashed #596981; border-radius: 18px; display: grid; place-items: center; align-content: center; gap: 8px; background: #111927; color: #f2f5fb; cursor: pointer; transition: border-color .2s, background .2s, box-shadow .2s; }
 .plugin-dropzone:hover { border-color: #8b80ff; background: #172033; }
+.plugin-dropzone.drag-over { border-color: #6b5cff; background: #1d2545; box-shadow: inset 0 0 0 2px #6b5cff44, 0 0 20px #6b5cff22; }
 .plugin-dropzone span, .plugin-package span, .plugin-card span { color: #b1bccd; font-size: 13px; }
 .plugin-package, .plugin-card { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
 .plugin-package > div, .plugin-card > div:first-child { display: grid; gap: 5px; }
@@ -200,7 +201,12 @@ body:has(.pet-window) { overflow: hidden; background: transparent; }
 .plugins-page button:not(.plugin-dropzone):hover:not(:disabled) { border-color: #8b80ff; background: #2a3550; }
 .plugins-page button:disabled { color: #7d899b; background: #171e2a; cursor: not-allowed; opacity: .72; }
 .plugin-card .ok { color: var(--success); }
+.plugin-package .warning { display: block; color: #e8c547; font-size: 12px; margin-top: 3px; }
 .plugin-card .checking { display: inline-flex; align-items: center; gap: 6px; color: #8b95a8; }
+.plugin-logs { margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: #0e1420; overflow: hidden; }
+.plugin-logs-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #151d2b; color: #aebbd0; font-size: 13px; font-weight: 600; }
+.plugin-logs-header button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid #5c3d3d; border-radius: 6px; color: #f5a0a0; background: #2a1a1a; cursor: pointer; font-size: 12px; }
+.plugin-logs-header button:hover { background: #3d2222; }
 .config-editor { padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); display: grid; gap: 10px; }
 .config-editor code { color: #aebbd0; overflow-wrap: anywhere; }
 .config-editor textarea { width: 100%; min-height: 240px; resize: vertical; border: 1px solid #46546d; border-radius: 10px; padding: 12px; background: #090f18; color: #f0f3f8; caret-color: #9a91ff; font: 13px/1.5 ui-monospace, monospace; }

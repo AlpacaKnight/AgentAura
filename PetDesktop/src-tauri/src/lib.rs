@@ -14,12 +14,56 @@ use std::{
 
 use core::AppCore;
 use model::{AgentState, AppSettings, AppSnapshot, LogLevel};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    menu::MenuBuilder, tray::TrayIconBuilder, AppHandle, Manager, PhysicalPosition, Position,
-    State, WebviewWindow, WindowEvent,
+    menu::MenuBuilder, tray::TrayIconBuilder, AppHandle, Manager, PhysicalPosition,
+    Position, State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt;
+
+/// 管理正在进行的可取消插件操作
+struct ActiveOperation {
+    operation_id: u64,
+    cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+impl ActiveOperation {
+    fn cancel(&mut self) {
+        if let Some(tx) = self.cancel_tx.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
+fn begin_plugin_operation(
+    op: &State<'_, Mutex<Option<ActiveOperation>>>,
+    operation_id: u64,
+) -> tokio::sync::oneshot::Receiver<()> {
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let mut guard = op.lock();
+    if let Some(active) = guard.as_mut() {
+        active.cancel();
+    }
+    *guard = Some(ActiveOperation {
+        operation_id,
+        cancel_tx: Some(cancel_tx),
+    });
+    cancel_rx
+}
+
+fn finish_plugin_operation(
+    op: &State<'_, Mutex<Option<ActiveOperation>>>,
+    operation_id: u64,
+) {
+    let mut guard = op.lock();
+    if guard
+        .as_ref()
+        .is_some_and(|active| active.operation_id == operation_id)
+    {
+        *guard = None;
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredPosition {
@@ -190,38 +234,105 @@ async fn inspect_managed_plugin(
 }
 #[tauri::command]
 async fn install_plugin_package(
+    app: AppHandle,
     core: State<'_, AppCore>,
+    op: State<'_, Mutex<Option<ActiveOperation>>>,
     path: String,
 ) -> Result<plugins::PluginOperationResult, String> {
     let data_dir = core.data_dir().map_err(|error| error.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        plugins::install_package(&data_dir, Path::new(&path))
-    })
-    .await
-    .map_err(|error| format!("plugin installer failed: {error}"))?
+    let operation_id = plugins::next_operation_id();
+
+    // 先预检
+    let paths = vec![path.clone()];
+    let inspections = tauri::async_runtime::spawn_blocking(move || plugins::inspect_packages(paths))
+        .await
+        .map_err(|error| format!("plugin inspector failed: {error}"))?;
+
+    let Some(inspection) = inspections.into_iter().next() else {
+        return Err("无法检查插件包".to_string());
+    };
+    if !inspection.valid {
+        return Err(inspection.error.unwrap_or_else(|| "无效的插件包".to_string()));
+    }
+
+    plugins::emit_log(&app, operation_id, "log", format!("🔍 已识别插件: {:?} v{}", inspection.provider, inspection.version.as_deref().unwrap_or("?")));
+
+    let cancel_rx = begin_plugin_operation(&op, operation_id);
+
+    let result = plugins::install_package_streaming(&data_dir, Path::new(&path), inspection, &app, operation_id, cancel_rx).await;
+    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ 安装完成".into() } else { format!("❌ {}", result.message) });
+    finish_plugin_operation(&op, operation_id);
+    Ok(result)
 }
 #[tauri::command]
 async fn uninstall_managed_plugin(
+    app: AppHandle,
     core: State<'_, AppCore>,
+    op: State<'_, Mutex<Option<ActiveOperation>>>,
     provider: plugins::PluginProvider,
 ) -> Result<plugins::PluginOperationResult, String> {
     let data_dir = core.data_dir().map_err(|error| error.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || plugins::uninstall_plugin(&data_dir, provider))
-        .await
-        .map_err(|error| format!("plugin uninstaller failed: {error}"))?
+    let operation_id = plugins::next_operation_id();
+
+    plugins::emit_log(&app, operation_id, "log", format!("🗑️ 开始卸载 {:?}...", provider));
+
+    let cancel_rx = begin_plugin_operation(&op, operation_id);
+
+    let result = plugins::uninstall_plugin_streaming(&data_dir, provider, &app, operation_id, cancel_rx).await;
+    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ 卸载完成".into() } else { format!("❌ {}", result.message) });
+    finish_plugin_operation(&op, operation_id);
+    Ok(result)
 }
 #[tauri::command]
 async fn manage_plugin_hooks(
+    app: AppHandle,
     core: State<'_, AppCore>,
+    op: State<'_, Mutex<Option<ActiveOperation>>>,
     provider: plugins::PluginProvider,
     install: bool,
 ) -> Result<plugins::PluginOperationResult, String> {
     let data_dir = core.data_dir().map_err(|error| error.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        plugins::manage_hooks(&data_dir, provider, install)
-    })
-    .await
-    .map_err(|error| format!("hook operation failed: {error}"))?
+    let operation_id = plugins::next_operation_id();
+
+    let action_label = if install { "安装" } else { "卸载" };
+    plugins::emit_log(&app, operation_id, "log", format!("🔧 {} {:?} Hooks...", action_label, provider));
+
+    let cancel_rx = begin_plugin_operation(&op, operation_id);
+
+    let result = plugins::manage_hooks_streaming(&data_dir, provider, install, &app, operation_id, cancel_rx).await;
+    plugins::emit_log(&app, operation_id, "complete", if result.success { "✅ Hooks 操作完成".into() } else { format!("❌ {}", result.message) });
+    finish_plugin_operation(&op, operation_id);
+    Ok(result)
+}
+#[tauri::command]
+async fn repair_plugin_hooks(
+    app: AppHandle,
+    core: State<'_, AppCore>,
+    op: State<'_, Mutex<Option<ActiveOperation>>>,
+    provider: plugins::PluginProvider,
+) -> Result<plugins::PluginOperationResult, String> {
+    let data_dir = core.data_dir().map_err(|error| error.to_string())?;
+    let operation_id = plugins::next_operation_id();
+
+    plugins::emit_log(&app, operation_id, "log", format!("🔧 修复 {:?} Hooks...", provider));
+
+    let cancel_rx = begin_plugin_operation(&op, operation_id);
+
+    let result = plugins::repair_hooks_streaming(&data_dir, provider, &app, operation_id, cancel_rx).await;
+    finish_plugin_operation(&op, operation_id);
+    Ok(result)
+}
+#[tauri::command]
+fn cancel_plugin_operation(
+    op: State<'_, Mutex<Option<ActiveOperation>>>,
+) -> bool {
+    let mut guard = op.lock();
+    if let Some(active) = guard.as_mut() {
+        active.cancel();
+        true
+    } else {
+        false
+    }
 }
 #[tauri::command]
 fn load_plugin_config(provider: plugins::PluginProvider) -> Result<String, String> {
@@ -243,6 +354,7 @@ pub fn run() {
             let _ = show_window(app, "main");
         }))
         .manage(AppCore::new_uninit())
+        .manage(Mutex::new(None::<ActiveOperation>))
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let core = app.state::<AppCore>().inner().clone();
@@ -304,6 +416,8 @@ pub fn run() {
             install_plugin_package,
             uninstall_managed_plugin,
             manage_plugin_hooks,
+            repair_plugin_hooks,
+            cancel_plugin_operation,
             load_plugin_config,
             save_plugin_config,
         ])

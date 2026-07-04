@@ -127,7 +127,7 @@ export const STATE_LABELS: Record<AgentState, string> = {
 export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw';
 export type PluginPackageInspection = {
   path: string; fileName: string; sha256: string; format: string; provider?: PluginProvider;
-  version?: string; valid: boolean; error?: string;
+  version?: string; valid: boolean; error?: string; warnings: string[];
 };
 export type ManagedPluginStatus = {
   provider: PluginProvider; installed: boolean; version?: string; hooksInstalled: boolean;
