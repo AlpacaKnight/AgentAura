@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
     process::{Command, Output},
 };
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use zip::ZipArchive;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
