@@ -103,3 +103,4 @@ test-results/
 
 # code Agent
 .workbuddy/
+.mimocode/
