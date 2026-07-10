@@ -79,6 +79,9 @@ if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
+# 清理旧版本 zip（保留 index.js 前端构建产物）
+Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "$pluginId-*.zip" } | Remove-Item -Force
+
 $zipName = "$pluginId-$version.zip"
 $zipPath = Join-Path $OutDir $zipName
 if (Test-Path -LiteralPath $zipPath) {

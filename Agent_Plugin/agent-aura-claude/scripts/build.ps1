@@ -43,6 +43,9 @@ if (-not $Pack) {
 
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
+# 清理旧版本产物，避免版本迭代后残留
+Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'agent-aura-claude-*.tgz' -or $_.Name -like 'agent-aura-claude-*.zip' } | Remove-Item -Force
+
 Write-Host '=== Creating npm package ===' -ForegroundColor Cyan
 npm pack --ignore-scripts --pack-destination $OutDir
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

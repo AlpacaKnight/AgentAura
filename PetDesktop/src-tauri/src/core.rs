@@ -16,8 +16,8 @@ use crate::{
     model::{
         built_in_pet, message_expired, AgentInstance, AgentState, AppSettings, AppSnapshot,
         HardwareStatus, HardwareTransport, LogEntry, LogLevel, PetMessage, PetMessageKind,
-        PET_MESSAGE_MAX_INPUT, PET_MESSAGE_QUEUE_MAX, PET_MESSAGE_TTL_MAX_MS,
-        PET_MESSAGE_TTL_MIN_MS, AGENT_TIMEOUT_MS, APP_VERSION,
+        AGENT_TIMEOUT_MS, APP_VERSION, PET_MESSAGE_MAX_INPUT, PET_MESSAGE_QUEUE_MAX,
+        PET_MESSAGE_TTL_MAX_MS, PET_MESSAGE_TTL_MIN_MS,
     },
     pets,
 };
@@ -681,16 +681,13 @@ mod tests {
     #[test]
     fn submit_message_rejects_unknown_agent() {
         let (core, _dir) = core();
-        let result = core.submit_message(
-            "ghost",
-            PetMessageKind::Activity,
-            "hi",
-            "test",
-            None,
-            None,
-        );
+        let result =
+            core.submit_message("ghost", PetMessageKind::Activity, "hi", "test", None, None);
         assert!(matches!(result, Err(SubmitMessageError::NotFound(_))));
-        assert!(result.unwrap_err().message().contains("unknown agent instance"));
+        assert!(result
+            .unwrap_err()
+            .message()
+            .contains("unknown agent instance"));
     }
 
     #[test]
@@ -712,8 +709,15 @@ mod tests {
             state: AgentState::Running,
             session_id: Some("session-1".into()),
         });
-        core.submit_message("codex-test", PetMessageKind::Activity, "old message", "codex", None, None)
-            .unwrap();
+        core.submit_message(
+            "codex-test",
+            PetMessageKind::Activity,
+            "old message",
+            "codex",
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(core.snapshot().pet_messages.len(), 1);
 
         // 同一实例、不同 session 重新注册 → 旧消息应被清除。
@@ -725,11 +729,22 @@ mod tests {
             state: AgentState::Running,
             session_id: Some("session-2".into()),
         });
-        assert_eq!(core.snapshot().pet_messages.len(), 0, "messages should be cleared on new session");
+        assert_eq!(
+            core.snapshot().pet_messages.len(),
+            0,
+            "messages should be cleared on new session"
+        );
 
         // 同一实例、相同 session 重新注册 → 消息应保留。
-        core.submit_message("codex-test", PetMessageKind::Activity, "persist msg", "codex", None, None)
-            .unwrap();
+        core.submit_message(
+            "codex-test",
+            PetMessageKind::Activity,
+            "persist msg",
+            "codex",
+            None,
+            None,
+        )
+        .unwrap();
         core.register_agent(RegisterAgent {
             instance_id: "codex-test".into(),
             client_id: "codex".into(),
@@ -738,15 +753,26 @@ mod tests {
             state: AgentState::Running,
             session_id: Some("session-2".into()),
         });
-        assert_eq!(core.snapshot().pet_messages.len(), 1, "messages should persist on same session");
+        assert_eq!(
+            core.snapshot().pet_messages.len(),
+            1,
+            "messages should persist on same session"
+        );
     }
 
     #[test]
     fn submit_message_appears_in_snapshot_for_effective_agent() {
         let (core, _dir) = core();
         core.submit_state("a", "codex", "Codex", AgentState::Running, None);
-        core.submit_message("a", PetMessageKind::Activity, "正在运行 cargo test", "codex", None, None)
-            .unwrap();
+        core.submit_message(
+            "a",
+            PetMessageKind::Activity,
+            "正在运行 cargo test",
+            "codex",
+            None,
+            None,
+        )
+        .unwrap();
         let snap = core.snapshot();
         assert_eq!(snap.pet_messages.len(), 1);
         assert_eq!(snap.pet_messages[0].text, "正在运行 cargo test");
@@ -762,19 +788,41 @@ mod tests {
         core.submit_message("a", PetMessageKind::Activity, "same", "codex", None, None)
             .unwrap();
         let snap = core.snapshot();
-        assert_eq!(snap.pet_messages.len(), 1, "identical message within dedup window should not duplicate");
+        assert_eq!(
+            snap.pet_messages.len(),
+            1,
+            "identical message within dedup window should not duplicate"
+        );
     }
 
     #[test]
     fn submit_message_high_priority_replaces_low_tail() {
         let (core, _dir) = core();
         core.submit_state("a", "codex", "Codex", AgentState::Running, None);
-        core.submit_message("a", PetMessageKind::Activity, "running tool", "codex", Some(20), None)
-            .unwrap();
-        core.submit_message("a", PetMessageKind::Error, "error!", "codex", Some(80), None)
-            .unwrap();
+        core.submit_message(
+            "a",
+            PetMessageKind::Activity,
+            "running tool",
+            "codex",
+            Some(20),
+            None,
+        )
+        .unwrap();
+        core.submit_message(
+            "a",
+            PetMessageKind::Error,
+            "error!",
+            "codex",
+            Some(80),
+            None,
+        )
+        .unwrap();
         let snap = core.snapshot();
-        assert_eq!(snap.pet_messages.len(), 1, "high priority should replace lower tail");
+        assert_eq!(
+            snap.pet_messages.len(),
+            1,
+            "high priority should replace lower tail"
+        );
         assert_eq!(snap.pet_messages[0].text, "error!");
         assert_eq!(snap.pet_messages[0].kind, PetMessageKind::Error);
     }
@@ -796,8 +844,15 @@ mod tests {
         core.submit_state("a", "codex", "Codex", AgentState::Running, None);
         // 用不同文本绕过去重。
         for i in 0..30 {
-            core.submit_message("a", PetMessageKind::Activity, &format!("msg-{i}"), "codex", None, None)
-                .unwrap();
+            core.submit_message(
+                "a",
+                PetMessageKind::Activity,
+                &format!("msg-{i}"),
+                "codex",
+                None,
+                None,
+            )
+            .unwrap();
         }
         let snap = core.snapshot();
         assert_eq!(snap.pet_messages.len(), 20);
@@ -808,10 +863,24 @@ mod tests {
         let (core, _dir) = core();
         core.submit_state("a", "codex", "Codex", AgentState::Running, None);
         core.submit_state("b", "claude", "Claude", AgentState::Error, None);
-        core.submit_message("a", PetMessageKind::Activity, "agent-a-msg", "codex", None, None)
-            .unwrap();
-        core.submit_message("b", PetMessageKind::Error, "agent-b-msg", "claude", None, None)
-            .unwrap();
+        core.submit_message(
+            "a",
+            PetMessageKind::Activity,
+            "agent-a-msg",
+            "codex",
+            None,
+            None,
+        )
+        .unwrap();
+        core.submit_message(
+            "b",
+            PetMessageKind::Error,
+            "agent-b-msg",
+            "claude",
+            None,
+            None,
+        )
+        .unwrap();
         // Error 优先级高于 Running → effective agent 是 b。
         let snap = core.snapshot();
         assert_eq!(snap.effective_agent_id.as_deref(), Some("b"));

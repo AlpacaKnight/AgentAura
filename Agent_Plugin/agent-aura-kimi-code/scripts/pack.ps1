@@ -27,6 +27,9 @@ if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
+# 清理旧版本产物（含历史误命名的 codex 包），避免版本迭代后残留
+Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'agent-aura-kimi-code-*.tgz' -or $_.Name -like 'agent-aura-kimi-code-*.zip' -or $_.Name -like 'agent-aura-codex-*.tgz' -or $_.Name -like 'agent-aura-codex-*.zip' } | Remove-Item -Force
+
 Write-Host '=== Creating npm package ===' -ForegroundColor Cyan
 npm pack --pack-destination $OutDir
 

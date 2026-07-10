@@ -424,9 +424,17 @@ mod tests {
 
     #[test]
     fn message_kind_default_priority_ordering() {
-        assert!(PetMessageKind::Error.default_priority() > PetMessageKind::Warning.default_priority());
-        assert!(PetMessageKind::Warning.default_priority() > PetMessageKind::Activity.default_priority());
-        assert!(PetMessageKind::Success.default_priority() > PetMessageKind::Activity.default_priority());
+        assert!(
+            PetMessageKind::Error.default_priority() > PetMessageKind::Warning.default_priority()
+        );
+        assert!(
+            PetMessageKind::Warning.default_priority()
+                > PetMessageKind::Activity.default_priority()
+        );
+        assert!(
+            PetMessageKind::Success.default_priority()
+                > PetMessageKind::Activity.default_priority()
+        );
     }
 
     fn make_message(created_at: &str, ttl_ms: u64) -> PetMessage {
@@ -447,11 +455,11 @@ mod tests {
         let old = make_message("2026-01-01T00:00:00+00:00", 1_000);
         assert!(message_expired(&old, chrono::Utc::now().timestamp_millis()));
 
-        let future = make_message(
-            &chrono::Utc::now().to_rfc3339(),
-            10_000,
-        );
-        assert!(!message_expired(&future, chrono::Utc::now().timestamp_millis()));
+        let future = make_message(&chrono::Utc::now().to_rfc3339(), 10_000);
+        assert!(!message_expired(
+            &future,
+            chrono::Utc::now().timestamp_millis()
+        ));
     }
 
     #[test]

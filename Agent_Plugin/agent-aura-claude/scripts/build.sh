@@ -48,6 +48,9 @@ fi
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
+# 清理旧版本产物，避免版本迭代后残留
+rm -f "$OUT_DIR"/agent-aura-claude-*.tgz "$OUT_DIR"/agent-aura-claude-*.zip
+
 echo "=== Creating npm package ==="
 npm pack --ignore-scripts --pack-destination "$OUT_DIR"
 
