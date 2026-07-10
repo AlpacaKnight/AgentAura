@@ -18,8 +18,11 @@
     "scripts/**",
     "AGENTS.md",
     "marketplace.json",
+    ".gitignore",
+    ".npmignore",
     "agent-aura-zcode.config.example.json",
     "README.md",
+    "tsconfig.json",
     "package.json"
   ],
   "scripts": {
@@ -27,6 +30,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "bash scripts/pack.sh",
+    "package:win": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1",
     "test": "npm run compile && node --test test/*.test.js"
   },
   "keywords": [
