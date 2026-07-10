@@ -6,8 +6,8 @@
     Builds all submodules and collects artifacts into a single output directory.
 .PARAMETER SkipDesktop
     Skip PetDesktop build.
-.PARAMOnly
-    Build only the specified module.
+.PARAM Only
+    Build only the specified module (claude, codex, copilot, kimi-code, qwencode, qwenpaw, zcode, desktop).
 .PARAMETER OutDir
     Custom output directory.
 .EXAMPLE
@@ -106,6 +106,7 @@ Build-Module "copilot"   (Join-Path $PluginsDir "agent-aura-copilot")   "scripts
 Build-Module "kimi-code" (Join-Path $PluginsDir "agent-aura-kimi-code") "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-kimi-code\dist"))
 Build-Module "qwencode"  (Join-Path $PluginsDir "agent-aura-qwencode")  "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-qwencode\dist"))
 Build-Module "qwenpaw"   (Join-Path $PluginsDir "qwenpaw-plugin")       "scripts\pack.ps1"  @((Join-Path $PluginsDir "qwenpaw-plugin\dist"))
+Build-Module "zcode"     (Join-Path $PluginsDir "agent-aura-zcode")     "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-zcode\dist"))
 
 # --- PetDesktop ---
 if (-not $SkipDesktop -and (-not $Only -or $Only -eq "desktop")) {

@@ -2,12 +2,12 @@
 # Build and package agent-aura-zcode (Windows).
 param(
     [switch]$clean,
-    [switch]$noPack,
     [string]$outDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
+$PACKAGE_NAME = "agent-aura-zcode"
 $SCRIPT_DIR = Split-Path -Parent $PSCommandPath
 $PROJECT_DIR = Split-Path -Parent $SCRIPT_DIR
 if (-not $outDir) { $outDir = Join-Path $PROJECT_DIR "dist" }
@@ -29,18 +29,17 @@ if (-not (Test-Path "out/index.js")) {
 }
 Write-Host "Build complete: $PROJECT_DIR/out/index.js"
 
-if ($noPack) { exit 0 }
-
 # ── Pack .tgz ──────────────────────────────────────────
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
 
 # Remove old tarballs to avoid stale versions
-Remove-Item -Force -ErrorAction SilentlyContinue "$outDir/agent-aura-zcode-*.tgz"
+Remove-Item -Force -ErrorAction SilentlyContinue "$outDir/$PACKAGE_NAME-*.tgz"
+Remove-Item -Force -ErrorAction SilentlyContinue "$outDir/$PACKAGE_NAME-*.zip"
 
 Write-Host "=== Creating npm package ==="
 npm pack --ignore-scripts --pack-destination $outDir
 
-$TGZ = @(Get-ChildItem -Path $outDir -Filter "agent-aura-zcode-*.tgz" | Sort-Object LastWriteTime -Descending)[0]
+$TGZ = @(Get-ChildItem -Path $outDir -Filter "$PACKAGE_NAME-*.tgz" | Sort-Object LastWriteTime -Descending)[0]
 if (-not $TGZ) {
     Write-Error "Package creation failed"
     exit 1
@@ -48,10 +47,3 @@ if (-not $TGZ) {
 
 Write-Host ""
 Write-Host "Done: $($TGZ.FullName)"
-Write-Host ""
-Write-Host "Install with:"
-Write-Host "  npm install -g ""$($TGZ.FullName)"""
-Write-Host "  agent-aura-zcode plugin-path"
-Write-Host "  Then in ZCode: Settings > Plugin Management > Discover > '+' to add the plugin-path directory"
-Write-Host "  Then install agent-aura-zcode"
-Write-Host "  agent-aura-zcode configure --transport http --host 127.0.0.1 --port 47831 --auto-discover false"

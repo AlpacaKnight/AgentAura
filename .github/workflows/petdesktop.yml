@@ -75,5 +75,9 @@ jobs:
         working-directory: Agent_Plugin/agent-aura-claude
       - run: npm ci && npm run compile
         working-directory: Agent_Plugin/agent-aura-copilot
+      - run: npm ci && npm run compile
+        working-directory: Agent_Plugin/agent-aura-kimi-code
+      - run: npm ci && npm run compile
+        working-directory: Agent_Plugin/agent-aura-zcode
       - run: python -m py_compile plugin.py src/client.py src/mapper.py src/router.py
         working-directory: Agent_Plugin/qwenpaw-plugin
