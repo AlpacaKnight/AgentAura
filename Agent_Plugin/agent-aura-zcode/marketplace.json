@@ -1,0 +1,10 @@
+{
+  "name": "agent-aura-zcode",
+  "plugins": [
+    {
+      "name": "agent-aura-zcode",
+      "source": ".",
+      "description": "将 ZCode 的 7 个 hook 生命周期事件同步到 AgentAura ESP32 环形灯与 PetDesktop 桌宠桥接。支持 HTTP/UDP/串口三种传输方式，PetDesktop 注册/心跳/桌宠气泡消息。"
+    }
+  ]
+}

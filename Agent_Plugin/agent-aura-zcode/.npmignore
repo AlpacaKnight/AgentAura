@@ -1,0 +1,7 @@
+src/
+tsconfig.json
+dist/
+out/
+node_modules/
+*.tgz
+*.zip
