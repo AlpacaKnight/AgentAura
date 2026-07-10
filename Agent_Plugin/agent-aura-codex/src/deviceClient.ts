@@ -118,6 +118,66 @@ export class RingLightClient {
         }
     }
 
+    /**
+     * 发送桌宠气泡消息摘要到 PetDesktop。仅发往已注册的 PetDesktop Agent API，
+     * 不回退固件（固件环形灯不支持文字消息）。
+     */
+    async sendMessage(
+        text: string,
+        kind: 'state' | 'activity' | 'success' | 'warning' | 'error' = 'activity',
+        priority?: number,
+        ttlMs?: number,
+    ): Promise<boolean> {
+        if (!this.config.enabled || isDisabled()) {
+            return true;
+        }
+        await this.maybeAutoDiscover();
+        if (!this.isConfigured) {
+            return false;
+        }
+        const now = Date.now();
+        const runtime = loadRuntimeState();
+        if (runtime.unreachableUntil && runtime.unreachableUntil > now) {
+            return false;
+        }
+        // 仅发往 PetDesktop Agent API。
+        if (runtime.httpTarget !== 'petdesktop' || !runtime.petDesktopRegistered) {
+            return false;
+        }
+
+        const instanceId = this.agentIdentity().instanceId;
+        let result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/message`, {
+            kind,
+            text,
+            priority,
+            ttlMs,
+        });
+        // 404 时尝试重新注册一次再发。
+        if (!result.ok && result.statusCode === 404) {
+            const reRegistered = await this.registerPetDesktop(runtime.lastState || 'init', runtime.heartbeatIntervalMs || 10_000, false);
+            if (!reRegistered) {
+                return false;
+            }
+            result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/message`, {
+                kind,
+                text,
+                priority,
+                ttlMs,
+            });
+        }
+        if (!result.ok) {
+            return false;
+        }
+
+        // 刷新 lastActivityAt 以保持心跳活跃，不覆盖 lastState（消息不是状态转换）。
+        const latest = loadRuntimeState();
+        saveRuntimeState({
+            ...latest,
+            lastActivityAt: now,
+        });
+        return true;
+    }
+
     async runHeartbeatLoop(token: string, intervalMs: number): Promise<void> {
         const interval = clampHeartbeatInterval(intervalMs);
         for (;;) {

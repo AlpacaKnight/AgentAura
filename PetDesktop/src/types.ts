@@ -75,6 +75,7 @@ export type AppSettings = {
   lanEnabled: boolean;
   lanToken: string;
   hardware: HardwareConfig;
+  petBubble: PetBubbleSettings;
 };
 
 export type AppSnapshot = {
@@ -89,6 +90,7 @@ export type AppSnapshot = {
   settings: AppSettings;
   hardware: HardwareStatus;
   logs: LogEntry[];
+  petMessages: PetMessage[];
 };
 
 export type LogEntry = {
@@ -122,6 +124,42 @@ export const STATE_LABELS: Record<AgentState, string> = {
   error: '错误',
   offline: '离线',
   upgrade: '升级中',
+};
+
+/** 没有事件摘要时，按状态显示的本地化气泡模板。 */
+export const STATE_TEMPLATES: Record<AgentState, string> = {
+  init: '正在初始化…',
+  running: '正在处理任务…',
+  busy: '正在使用工具…',
+  waiting: '等待你的确认',
+  error: '操作出现错误',
+  idle: '任务已完成',
+  offline: 'Agent 已离线',
+  upgrade: '正在更新…',
+};
+
+export type PetMessageKind = 'state' | 'activity' | 'success' | 'warning' | 'error';
+
+export type PetMessage = {
+  id: string;
+  agentInstanceId?: string;
+  kind: PetMessageKind;
+  text: string;
+  source: string;
+  priority: number;
+  createdAt: string;
+  ttlMs: number;
+};
+
+export type PetBubbleMode = 'state' | 'events' | 'both';
+
+export type PetBubbleSettings = {
+  enabled: boolean;
+  mode: PetBubbleMode;
+  durationSeconds: number;
+  maxCharacters: number;
+  fontScale: number;
+  showSource: boolean;
 };
 
 export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw';

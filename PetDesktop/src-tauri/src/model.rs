@@ -6,6 +6,10 @@ pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const HTTP_PORT: u16 = 47_831;
 pub const UDP_PORT: u16 = 8_888;
 pub const AGENT_TIMEOUT_MS: i64 = 30_000;
+pub const PET_MESSAGE_MAX_INPUT: usize = 500;
+pub const PET_MESSAGE_TTL_MIN_MS: u64 = 1_500;
+pub const PET_MESSAGE_TTL_MAX_MS: u64 = 30_000;
+pub const PET_MESSAGE_QUEUE_MAX: usize = 20;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "lowercase")]
@@ -79,6 +83,62 @@ pub struct AgentInstance {
     pub connected: bool,
     pub last_seen_ms: i64,
     pub last_seen_at: String,
+}
+
+/// 桌宠气泡消息分类，决定显示样式与默认优先级。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PetMessageKind {
+    #[default]
+    State,
+    Activity,
+    Success,
+    Warning,
+    Error,
+}
+
+impl PetMessageKind {
+    /// 默认优先级：错误和等待高于普通活动消息。
+    pub fn default_priority(self) -> u16 {
+        match self {
+            Self::Error => 80,
+            Self::Warning => 60,
+            Self::Success | Self::State => 40,
+            Self::Activity => 20,
+        }
+    }
+}
+
+/// 气泡展示模式：仅状态模板 / 仅事件摘要 / 两者。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PetBubbleMode {
+    State,
+    Events,
+    #[default]
+    Both,
+}
+
+/// 单条桌宠气泡消息。历史消息仅进入运行日志，第一版不持久化完整正文。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetMessage {
+    pub id: String,
+    pub agent_instance_id: Option<String>,
+    pub kind: PetMessageKind,
+    pub text: String,
+    pub source: String,
+    pub priority: u16,
+    pub created_at: String,
+    pub ttl_ms: u64,
+}
+
+/// 判断消息是否已过期。`created_at` 采用 RFC3339（与 `now_iso` 一致）。
+pub fn message_expired(message: &PetMessage, now_ms: i64) -> bool {
+    let created_ms = chrono::DateTime::parse_from_rfc3339(&message.created_at)
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or(0);
+    created_ms + (message.ttl_ms as i64) < now_ms
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,6 +220,31 @@ impl Default for HardwareStatus {
     }
 }
 
+/// 桌宠文字气泡设置，决定是否显示、显示内容、时长与样式。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PetBubbleSettings {
+    pub enabled: bool,
+    pub mode: PetBubbleMode,
+    pub duration_seconds: u64,
+    pub max_characters: usize,
+    pub font_scale: f64,
+    pub show_source: bool,
+}
+
+impl Default for PetBubbleSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mode: PetBubbleMode::Both,
+            duration_seconds: 5,
+            max_characters: 140,
+            font_scale: 1.0,
+            show_source: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
@@ -176,6 +261,7 @@ pub struct AppSettings {
     pub lan_enabled: bool,
     pub lan_token: String,
     pub hardware: HardwareConfig,
+    pub pet_bubble: PetBubbleSettings,
 }
 
 impl Default for AppSettings {
@@ -194,6 +280,7 @@ impl Default for AppSettings {
             lan_enabled: false,
             lan_token: String::new(),
             hardware: HardwareConfig::default(),
+            pet_bubble: PetBubbleSettings::default(),
         }
     }
 }
@@ -210,6 +297,9 @@ impl AppSettings {
             };
         }
         self.hardware.baud = self.hardware.baud.clamp(1_200, 4_000_000);
+        self.pet_bubble.duration_seconds = self.pet_bubble.duration_seconds.clamp(1, 30);
+        self.pet_bubble.max_characters = self.pet_bubble.max_characters.clamp(40, 500);
+        self.pet_bubble.font_scale = self.pet_bubble.font_scale.clamp(0.75, 2.0);
     }
 }
 
@@ -245,6 +335,7 @@ pub struct AppSnapshot {
     pub settings: AppSettings,
     pub hardware: HardwareStatus,
     pub logs: Vec<LogEntry>,
+    pub pet_messages: Vec<PetMessage>,
 }
 
 pub fn default_animations() -> HashMap<String, AnimationSpec> {
@@ -293,5 +384,80 @@ pub fn built_in_pet() -> InstalledPet {
         rows: 9,
         built_in: true,
         animations: default_animations(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bubble_settings_defaults() {
+        let settings = PetBubbleSettings::default();
+        assert!(settings.enabled);
+        assert_eq!(settings.mode, PetBubbleMode::Both);
+        assert_eq!(settings.duration_seconds, 5);
+        assert_eq!(settings.max_characters, 140);
+        assert_eq!(settings.font_scale, 1.0);
+        assert!(!settings.show_source);
+    }
+
+    #[test]
+    fn bubble_settings_normalize_clamps_values() {
+        let mut settings = AppSettings::default();
+        settings.pet_bubble.duration_seconds = 0;
+        settings.pet_bubble.max_characters = 5;
+        settings.pet_bubble.font_scale = 3.0;
+        settings.normalize();
+        assert_eq!(settings.pet_bubble.duration_seconds, 1);
+        assert_eq!(settings.pet_bubble.max_characters, 40);
+        assert_eq!(settings.pet_bubble.font_scale, 2.0);
+
+        settings.pet_bubble.duration_seconds = 100;
+        settings.pet_bubble.max_characters = 9999;
+        settings.pet_bubble.font_scale = 0.1;
+        settings.normalize();
+        assert_eq!(settings.pet_bubble.duration_seconds, 30);
+        assert_eq!(settings.pet_bubble.max_characters, 500);
+        assert_eq!(settings.pet_bubble.font_scale, 0.75);
+    }
+
+    #[test]
+    fn message_kind_default_priority_ordering() {
+        assert!(PetMessageKind::Error.default_priority() > PetMessageKind::Warning.default_priority());
+        assert!(PetMessageKind::Warning.default_priority() > PetMessageKind::Activity.default_priority());
+        assert!(PetMessageKind::Success.default_priority() > PetMessageKind::Activity.default_priority());
+    }
+
+    fn make_message(created_at: &str, ttl_ms: u64) -> PetMessage {
+        PetMessage {
+            id: "test".into(),
+            agent_instance_id: None,
+            kind: PetMessageKind::Activity,
+            text: "hi".into(),
+            source: "test".into(),
+            priority: 20,
+            created_at: created_at.into(),
+            ttl_ms,
+        }
+    }
+
+    #[test]
+    fn message_expired_detects_past_ttl() {
+        let old = make_message("2026-01-01T00:00:00+00:00", 1_000);
+        assert!(message_expired(&old, chrono::Utc::now().timestamp_millis()));
+
+        let future = make_message(
+            &chrono::Utc::now().to_rfc3339(),
+            10_000,
+        );
+        assert!(!message_expired(&future, chrono::Utc::now().timestamp_millis()));
+    }
+
+    #[test]
+    fn message_expired_handles_invalid_created_at() {
+        let bad = make_message("not-a-date", 1_000);
+        // 无效时间戳按 0 处理 → 恒过期
+        assert!(message_expired(&bad, chrono::Utc::now().timestamp_millis()));
     }
 }

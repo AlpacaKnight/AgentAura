@@ -46,8 +46,17 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
         const state = mapQwenEventToAgentState(eventName, payload);
         const context: SendContext | undefined = sessionId ? { sessionId } : undefined;
         process.stderr.write(`[agentaura] hook ${eventName} -> ${state}\n`);
-        const ok = await new RingLightClient(loadConfig()).sendAgentState(state, context);
+        const client = new RingLightClient(loadConfig());
+        const ok = await client.sendAgentState(state, context);
         process.stderr.write(`[agentaura] sendAgentState result=${ok}\n`);
+        // 发送 Hook 事件摘要到桌宠气泡（失败静默，绝不打断 Qwen Code）。
+        // idle/offline 也允许发送，因为 Stop/SessionEnd 事件需要显示"任务已完成"。
+        if (ok) {
+            const message = buildQwenMessage(eventName, state, payload);
+            if (message) {
+                await client.sendMessage(message.text, context, message.kind, message.priority, message.ttlMs).catch(() => {});
+            }
+        }
         if (state === 'idle' || state === 'offline') {
             const runtime = loadRuntimeState();
             if (runtime.heartbeatToken) {
@@ -55,6 +64,13 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
             }
             if (state === 'offline') {
                 await new RingLightClient(loadConfig()).disconnectPetDesktop();
+                // 清除 PetDesktop 注册标记，避免下次 SessionStart 时因残留状态跳过注册。
+                const afterDisconnect = loadRuntimeState();
+                saveRuntimeState({
+                    ...afterDisconnect,
+                    petDesktopRegistered: false,
+                    httpTarget: undefined,
+                });
             }
         }
     } catch (e) {
@@ -99,6 +115,91 @@ export function mapQwenEventToAgentState(eventName: string, payload?: unknown): 
         return 'idle';
     }
     return 'running';
+}
+
+type BubbleKind = 'state' | 'activity' | 'success' | 'warning' | 'error';
+
+interface BubbleMessage {
+    text: string;
+    kind: BubbleKind;
+    priority?: number;
+    ttlMs?: number;
+}
+
+/** 从 Hook payload 中递归探测工具名称（深度上限 4）。 */
+export function extractToolName(payload: unknown): string | undefined {
+    return findInPayload(payload, (key, value) => {
+        if (typeof value !== 'string') return undefined;
+        const k = key.toLowerCase();
+        if (k === 'tool_name' || k === 'toolname' || k === 'tool') {
+            return value;
+        }
+        return undefined;
+    });
+}
+
+function findInPayload(payload: unknown, visitor: (key: string, value: unknown) => string | undefined, depth = 0): string | undefined {
+    if (!payload || depth > 4) return undefined;
+    if (Array.isArray(payload)) {
+        for (const item of payload) {
+            const found = findInPayload(item, visitor, depth + 1);
+            if (found) return found;
+        }
+        return undefined;
+    }
+    if (typeof payload !== 'object') return undefined;
+    for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+        const found = visitor(key, value);
+        if (found) return found;
+        if (typeof value === 'object' && value !== null) {
+            const nested = findInPayload(value, visitor, depth + 1);
+            if (nested) return nested;
+        }
+    }
+    return undefined;
+}
+
+/** 从 Hook payload 中提取错误摘要（截断清理）。
+ *  注意：不匹配 'message' 字段，因为 Qwen Code 的 payload 中 'message'
+ *  是顶层会话消息而非错误。只匹配明确与错误相关的字段名。 */
+function extractErrorSummary(payload: unknown): string | undefined {
+    const result = findInPayload(payload, (key, value) => {
+        if (typeof value !== 'string') return undefined;
+        const k = key.toLowerCase();
+        if (k === 'error' || k === 'error_message' || k === 'errormessage' || k === 'stderr' || k === 'reason' || k === 'detail' || k === 'details') {
+            return value;
+        }
+        return undefined;
+    });
+    if (!result) return undefined;
+    return result.replace(/\s+/g, ' ').trim().slice(0, 100) || undefined;
+}
+
+/** 根据 Hook 事件构建桌宠气泡消息摘要。返回 undefined 表示不发消息。 */
+export function buildQwenMessage(eventName: string, state: AgentState, payload?: unknown): BubbleMessage | undefined {
+    const normalized = eventName.trim();
+    const toolName = extractToolName(payload);
+    const tool = toolName || '工具';
+
+    switch (normalized) {
+        case 'PreToolUse':
+            return { text: `正在运行 ${tool}`, kind: 'activity' };
+        case 'PermissionRequest':
+            return { text: `${tool} 等待授权`, kind: 'warning', priority: 60 };
+        case 'PostToolUse':
+            if (payloadSignalsError(payload)) {
+                const summary = extractErrorSummary(payload);
+                return { text: summary || `${tool} 执行出错`, kind: 'error', priority: 80 };
+            }
+            return { text: `${tool} 已完成`, kind: 'success' };
+        case 'PostToolUseFailure':
+            return { text: extractErrorSummary(payload) || `${tool} 执行出错`, kind: 'error', priority: 80 };
+        case 'Stop':
+        case 'SessionEnd':
+            return { text: '任务已完成', kind: 'success' };
+        default:
+            return undefined;
+    }
 }
 
 function normalizeQwenEventName(eventArg: string, payload?: unknown): string {

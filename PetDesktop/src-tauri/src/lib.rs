@@ -443,6 +443,7 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     reaper.reap_stale_agents();
+                    reaper.reap_expired_messages();
                 }
             });
             Ok(())

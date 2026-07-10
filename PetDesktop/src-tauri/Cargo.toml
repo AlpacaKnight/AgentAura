@@ -1,6 +1,6 @@
 [package]
 name = "agentaura-pet-desktop"
-version = "0.1.0"
+version = "0.3.0"
 description = "AgentAura desktop pet and hardware bridge"
 authors = ["AgentAura contributors"]
 edition = "2021"

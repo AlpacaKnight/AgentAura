@@ -220,6 +220,48 @@ OK agent busy
 }
 ```
 
+### 4.11 `POST /api/v1/agents/{instanceId}/message`
+
+发送桌宠文字气泡消息摘要。向后兼容：旧插件不发送消息时继续正常工作，仅展示状态模板。
+
+请求体：
+
+```json
+{
+  "kind": "activity",
+  "text": "正在运行 cargo test",
+  "priority": 20,
+  "ttlMs": 5000
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|:---:|---|
+| `kind` | `string` | 是 | 消息分类：`state` / `activity` / `success` / `warning` / `error` |
+| `text` | `string` | 是 | 消息文本，最大 500 个 Unicode 字符（超出自动截断） |
+| `priority` | `number` | 否 | 优先级，数字越大越优先。未提供时按 `kind` 默认：error=80, warning=60, success/state=40, activity=20 |
+| `ttlMs` | `number` | 否 | 显示时长（毫秒），限制在 1500–30000 之间。未提供时使用气泡设置中的显示时长 |
+
+处理规则：
+
+- 必须复用现有 Agent 身份、来源限制和认证逻辑。
+- 未注册 Agent 返回 `404`。
+- LAN 模式继续遵守现有 Token 验证。
+- 同内容在 1.5 秒内去重。
+- 高优先级消息可以替换低优先级消息。
+- 每个 Agent 保留最多 20 条内存消息。
+- 消息来源从请求头 `x-agentaura-name` / `x-agentaura-client` 提取。
+
+响应体：
+
+```json
+{
+  "ok": true
+}
+```
+
 ---
 
 ## 5. UDP API
@@ -400,6 +442,7 @@ ERR unauthorized
 - `POST /api/v1/agents/register`
 - `POST /api/v1/agents/{instanceId}/heartbeat`
 - `POST /api/v1/agents/{instanceId}/state`
+- `POST /api/v1/agents/{instanceId}/message`
 - `GET /api/v1/agents`
 - `PUT /api/v1/agents/selection`
 - `DELETE /api/v1/agents/{instanceId}`

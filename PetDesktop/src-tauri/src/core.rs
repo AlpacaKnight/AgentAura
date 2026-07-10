@@ -14,8 +14,10 @@ use tokio::sync::{mpsc, watch};
 use crate::{
     hardware::HardwareMessage,
     model::{
-        built_in_pet, AgentInstance, AgentState, AppSettings, AppSnapshot, HardwareStatus,
-        HardwareTransport, LogEntry, LogLevel, AGENT_TIMEOUT_MS, APP_VERSION,
+        built_in_pet, message_expired, AgentInstance, AgentState, AppSettings, AppSnapshot,
+        HardwareStatus, HardwareTransport, LogEntry, LogLevel, PetMessage, PetMessageKind,
+        PET_MESSAGE_MAX_INPUT, PET_MESSAGE_QUEUE_MAX, PET_MESSAGE_TTL_MAX_MS,
+        PET_MESSAGE_TTL_MIN_MS, AGENT_TIMEOUT_MS, APP_VERSION,
     },
     pets,
 };
@@ -30,6 +32,7 @@ struct RuntimeModel {
     paused: bool,
     hardware: HardwareStatus,
     logs: VecDeque<LogEntry>,
+    pet_messages: HashMap<String, VecDeque<PetMessage>>,
 }
 
 #[derive(Clone)]
@@ -51,6 +54,22 @@ pub struct RegisterAgent {
     pub session_id: Option<String>,
 }
 
+/// `submit_message` 的错误类型，区分"未知实例"(404) 和"输入校验失败"(400)。
+#[derive(Debug)]
+pub enum SubmitMessageError {
+    NotFound(String),
+    BadRequest(String),
+}
+
+impl SubmitMessageError {
+    #[allow(dead_code)]
+    pub fn message(&self) -> &str {
+        match self {
+            Self::NotFound(msg) | Self::BadRequest(msg) => msg,
+        }
+    }
+}
+
 impl AppCore {
     /// Create an uninitialized core (state is registered before setup).
     pub fn new_uninit() -> Self {
@@ -64,6 +83,7 @@ impl AppCore {
                 paused: false,
                 hardware: HardwareStatus::default(),
                 logs: VecDeque::new(),
+                pet_messages: HashMap::new(),
             })),
             app_handle: Arc::new(RwLock::new(None)),
             hardware_tx: Arc::new(Mutex::new(None)),
@@ -140,6 +160,7 @@ impl AppCore {
                 .then_with(|| right.state.priority().cmp(&left.state.priority()))
                 .then_with(|| right.last_seen_ms.cmp(&left.last_seen_ms))
         });
+        let pet_messages = effective_pet_messages(&model, now_ms());
         AppSnapshot {
             version: APP_VERSION.to_string(),
             effective_state: model.effective_state,
@@ -152,6 +173,7 @@ impl AppCore {
             settings: model.settings.clone(),
             hardware: model.hardware.clone(),
             logs: model.logs.iter().cloned().collect(),
+            pet_messages,
         }
     }
 
@@ -181,7 +203,18 @@ impl AppCore {
         let now_ms = Utc::now().timestamp_millis();
         let state = registration.state;
         let instance_id = registration.instance_id.clone();
+        let session_id = registration.session_id.clone();
         let mut model = self.model.write();
+
+        // 同一实例重注册时会话发生变化时，清空上一轮的气泡消息，避免旧消息残留。
+        let session_changed = model
+            .agents
+            .get(&instance_id)
+            .is_some_and(|existing| existing.session_id != session_id && session_id.is_some());
+        if session_changed {
+            model.pet_messages.remove(&instance_id);
+        }
+
         model.agents.insert(
             registration.instance_id.clone(),
             AgentInstance {
@@ -190,7 +223,7 @@ impl AppCore {
                 display_name: registration.display_name,
                 version: registration.version,
                 state,
-                session_id: registration.session_id,
+                session_id,
                 connected: true,
                 last_seen_ms: now_ms,
                 last_seen_at: now_iso(),
@@ -370,6 +403,115 @@ impl AppCore {
         self.after_state_change(changed);
     }
 
+    /// 接收一条桌宠气泡消息。未注册 Agent 返回 `NotFound`，输入校验失败返回 `BadRequest`。
+    pub fn submit_message(
+        &self,
+        instance_id: &str,
+        kind: PetMessageKind,
+        text: &str,
+        source: &str,
+        priority: Option<u16>,
+        ttl_ms: Option<u64>,
+    ) -> Result<(), SubmitMessageError> {
+        let now_ms = Utc::now().timestamp_millis();
+        let mut model = self.model.write();
+        if !model.agents.contains_key(instance_id) {
+            return Err(SubmitMessageError::NotFound(format!(
+                "unknown agent instance: {instance_id}"
+            )));
+        }
+
+        // 拒绝空文本。
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Err(SubmitMessageError::BadRequest(
+                "message text must not be empty".to_string(),
+            ));
+        }
+
+        // 截断到 500 Unicode 字符。
+        let truncated: String = trimmed.chars().take(PET_MESSAGE_MAX_INPUT).collect();
+        let priority = priority.unwrap_or_else(|| kind.default_priority());
+        let ttl = ttl_ms
+            .unwrap_or_else(|| {
+                // 默认 TTL 使用气泡设置中的显示时长（秒 → 毫秒），夹取到合法区间。
+                (model.settings.pet_bubble.duration_seconds * 1000).max(PET_MESSAGE_TTL_MIN_MS)
+            })
+            .clamp(PET_MESSAGE_TTL_MIN_MS, PET_MESSAGE_TTL_MAX_MS);
+
+        let queue = model
+            .pet_messages
+            .entry(instance_id.to_string())
+            .or_default();
+
+        // 去重：队尾最新消息文本相同且 1.5s 内 → 跳过。
+        let dedup_window_ms = PET_MESSAGE_TTL_MIN_MS as i64;
+        if let Some(tail) = queue.back() {
+            let tail_ms = chrono::DateTime::parse_from_rfc3339(&tail.created_at)
+                .map(|dt| dt.timestamp_millis())
+                .unwrap_or(0);
+            if tail.text == truncated && now_ms - tail_ms < dedup_window_ms {
+                return Ok(());
+            }
+            // 高优先级替换：队尾优先级严格低于新消息 → 弹出。
+            if tail.priority < priority {
+                queue.pop_back();
+            }
+        }
+
+        let message = PetMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            agent_instance_id: Some(instance_id.to_string()),
+            kind,
+            text: truncated.clone(),
+            source: source.to_string(),
+            priority,
+            created_at: now_iso(),
+            ttl_ms: ttl,
+        };
+        queue.push_back(message);
+
+        // 封顶：每个 Agent 最多 20 条。
+        while queue.len() > PET_MESSAGE_QUEUE_MAX {
+            queue.pop_front();
+        }
+        drop(model);
+
+        // 历史进入运行日志（不持久化完整正文，仅内存日志）。
+        let kind_label = match kind {
+            PetMessageKind::State => "state",
+            PetMessageKind::Activity => "activity",
+            PetMessageKind::Success => "success",
+            PetMessageKind::Warning => "warning",
+            PetMessageKind::Error => "error",
+        };
+        self.log(
+            LogLevel::Info,
+            "message",
+            format!("[{instance_id}] {kind_label}: {truncated}"),
+        );
+        self.broadcast();
+        Ok(())
+    }
+
+    /// 清理所有 Agent 的过期气泡消息（在 reaper 循环中调用）。
+    pub fn reap_expired_messages(&self) {
+        let now_ms = Utc::now().timestamp_millis();
+        let mut model = self.model.write();
+        let mut changed = false;
+        for queue in model.pet_messages.values_mut() {
+            let before = queue.len();
+            queue.retain(|m| !message_expired(m, now_ms));
+            if queue.len() != before {
+                changed = true;
+            }
+        }
+        drop(model);
+        if changed {
+            self.broadcast();
+        }
+    }
+
     pub async fn forward_command(&self, command: String) -> Result<String, String> {
         let sender = self
             .hardware_tx
@@ -433,6 +575,28 @@ fn settings_path(data_dir: &Path) -> PathBuf {
     data_dir.join("settings.json")
 }
 
+/// 取生效 Agent 队列中未过期的消息，按 priority 降序、createdAt 降序排序，cap 20。
+fn effective_pet_messages(model: &RuntimeModel, now_ms: i64) -> Vec<PetMessage> {
+    let Some(agent_id) = model.effective_agent_id.as_ref() else {
+        return Vec::new();
+    };
+    let Some(queue) = model.pet_messages.get(agent_id) else {
+        return Vec::new();
+    };
+    let mut messages: Vec<PetMessage> = queue
+        .iter()
+        .filter(|m| !message_expired(m, now_ms))
+        .cloned()
+        .collect();
+    messages.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| b.created_at.cmp(&a.created_at))
+    });
+    messages.truncate(PET_MESSAGE_QUEUE_MAX);
+    messages
+}
+
 fn load_settings(data_dir: &Path) -> anyhow::Result<AppSettings> {
     let path = settings_path(data_dir);
     if !path.exists() {
@@ -458,7 +622,11 @@ fn persist_settings(data_dir: &Path, settings: &AppSettings) -> anyhow::Result<(
 }
 
 pub fn now_iso() -> String {
-    Local::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+    Local::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn now_ms() -> i64 {
+    Utc::now().timestamp_millis()
 }
 
 #[cfg(test)]
@@ -508,5 +676,146 @@ mod tests {
         core.submit_state("a", "codex", "Codex", AgentState::Offline, None);
         assert_eq!(core.snapshot().effective_state, AgentState::Offline);
         assert_eq!(core.snapshot().effective_agent_id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn submit_message_rejects_unknown_agent() {
+        let (core, _dir) = core();
+        let result = core.submit_message(
+            "ghost",
+            PetMessageKind::Activity,
+            "hi",
+            "test",
+            None,
+            None,
+        );
+        assert!(matches!(result, Err(SubmitMessageError::NotFound(_))));
+        assert!(result.unwrap_err().message().contains("unknown agent instance"));
+    }
+
+    #[test]
+    fn submit_message_rejects_empty_text() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        let result = core.submit_message("a", PetMessageKind::Activity, "   ", "codex", None, None);
+        assert!(matches!(result, Err(SubmitMessageError::BadRequest(_))));
+    }
+
+    #[test]
+    fn register_agent_clears_stale_messages_on_new_session() {
+        let (core, _dir) = core();
+        core.register_agent(RegisterAgent {
+            instance_id: "codex-test".into(),
+            client_id: "codex".into(),
+            display_name: "Codex".into(),
+            version: None,
+            state: AgentState::Running,
+            session_id: Some("session-1".into()),
+        });
+        core.submit_message("codex-test", PetMessageKind::Activity, "old message", "codex", None, None)
+            .unwrap();
+        assert_eq!(core.snapshot().pet_messages.len(), 1);
+
+        // 同一实例、不同 session 重新注册 → 旧消息应被清除。
+        core.register_agent(RegisterAgent {
+            instance_id: "codex-test".into(),
+            client_id: "codex".into(),
+            display_name: "Codex".into(),
+            version: None,
+            state: AgentState::Running,
+            session_id: Some("session-2".into()),
+        });
+        assert_eq!(core.snapshot().pet_messages.len(), 0, "messages should be cleared on new session");
+
+        // 同一实例、相同 session 重新注册 → 消息应保留。
+        core.submit_message("codex-test", PetMessageKind::Activity, "persist msg", "codex", None, None)
+            .unwrap();
+        core.register_agent(RegisterAgent {
+            instance_id: "codex-test".into(),
+            client_id: "codex".into(),
+            display_name: "Codex".into(),
+            version: None,
+            state: AgentState::Running,
+            session_id: Some("session-2".into()),
+        });
+        assert_eq!(core.snapshot().pet_messages.len(), 1, "messages should persist on same session");
+    }
+
+    #[test]
+    fn submit_message_appears_in_snapshot_for_effective_agent() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        core.submit_message("a", PetMessageKind::Activity, "正在运行 cargo test", "codex", None, None)
+            .unwrap();
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages.len(), 1);
+        assert_eq!(snap.pet_messages[0].text, "正在运行 cargo test");
+        assert_eq!(snap.pet_messages[0].agent_instance_id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn submit_message_deduplicates_identical_recent() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        core.submit_message("a", PetMessageKind::Activity, "same", "codex", None, None)
+            .unwrap();
+        core.submit_message("a", PetMessageKind::Activity, "same", "codex", None, None)
+            .unwrap();
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages.len(), 1, "identical message within dedup window should not duplicate");
+    }
+
+    #[test]
+    fn submit_message_high_priority_replaces_low_tail() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        core.submit_message("a", PetMessageKind::Activity, "running tool", "codex", Some(20), None)
+            .unwrap();
+        core.submit_message("a", PetMessageKind::Error, "error!", "codex", Some(80), None)
+            .unwrap();
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages.len(), 1, "high priority should replace lower tail");
+        assert_eq!(snap.pet_messages[0].text, "error!");
+        assert_eq!(snap.pet_messages[0].kind, PetMessageKind::Error);
+    }
+
+    #[test]
+    fn submit_message_truncates_long_text() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        let long = "A".repeat(600);
+        core.submit_message("a", PetMessageKind::Activity, &long, "codex", None, None)
+            .unwrap();
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages[0].text.chars().count(), 500);
+    }
+
+    #[test]
+    fn submit_message_queue_capped_at_max() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        // 用不同文本绕过去重。
+        for i in 0..30 {
+            core.submit_message("a", PetMessageKind::Activity, &format!("msg-{i}"), "codex", None, None)
+                .unwrap();
+        }
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages.len(), 20);
+    }
+
+    #[test]
+    fn snapshot_shows_only_effective_agent_messages() {
+        let (core, _dir) = core();
+        core.submit_state("a", "codex", "Codex", AgentState::Running, None);
+        core.submit_state("b", "claude", "Claude", AgentState::Error, None);
+        core.submit_message("a", PetMessageKind::Activity, "agent-a-msg", "codex", None, None)
+            .unwrap();
+        core.submit_message("b", PetMessageKind::Error, "agent-b-msg", "claude", None, None)
+            .unwrap();
+        // Error 优先级高于 Running → effective agent 是 b。
+        let snap = core.snapshot();
+        assert_eq!(snap.effective_agent_id.as_deref(), Some("b"));
+        assert_eq!(snap.pet_messages.len(), 1);
+        assert_eq!(snap.pet_messages[0].text, "agent-b-msg");
     }
 }

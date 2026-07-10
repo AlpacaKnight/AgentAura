@@ -2,7 +2,7 @@
   "name": "agent-aura-codex",
   "displayName": "AgentAura - Codex Ring Light",
   "description": "Sync OpenAI Codex hook lifecycle events to AgentAura ESP32 Ring Light hardware",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "AgentAura",
   "license": "MIT",
   "type": "commonjs",

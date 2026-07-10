@@ -259,9 +259,29 @@ pub fn serial_ports() -> Result<Vec<SerialPortInfo>, String> {
         .into_iter()
         .map(|port| SerialPortInfo {
             name: port.port_name,
-            port_type: format!("{:?}", port.port_type),
+            port_type: format_port_type(&port.port_type),
         })
         .collect())
+}
+
+/// 将串口类型枚举转换为简洁的可读标签，避免 `{:?}` 输出的冗长调试信息。
+fn format_port_type(port_type: &serialport::SerialPortType) -> String {
+    match port_type {
+        serialport::SerialPortType::UsbPort(info) => {
+            let vid = info.vid;
+            let pid = info.pid;
+            if let Some(product) = &info.product {
+                format!("USB · {product} ({vid:04x}:{pid:04x})")
+            } else if let Some(manufacturer) = &info.manufacturer {
+                format!("USB · {manufacturer} ({vid:04x}:{pid:04x})")
+            } else {
+                format!("USB ({vid:04x}:{pid:04x})")
+            }
+        }
+        serialport::SerialPortType::PciPort => "PCI".to_string(),
+        serialport::SerialPortType::BluetoothPort => "Bluetooth".to_string(),
+        serialport::SerialPortType::Unknown => "Unknown".to_string(),
+    }
 }
 
 fn json_string(value: &serde_json::Value, key: &str) -> Option<String> {

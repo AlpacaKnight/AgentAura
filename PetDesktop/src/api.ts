@@ -46,9 +46,18 @@ const browserFallback: AppSnapshot = {
       baud: 115200,
       autoDiscover: true,
     },
+    petBubble: {
+      enabled: true,
+      mode: 'both',
+      durationSeconds: 5,
+      maxCharacters: 140,
+      fontScale: 1,
+      showSource: false,
+    },
   },
   hardware: { connected: false, syncing: false },
   logs: [],
+  petMessages: [],
 };
 
 export const isTauri = () => '__TAURI_INTERNALS__' in window;

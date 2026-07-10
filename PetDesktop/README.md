@@ -12,6 +12,7 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 - 八种 Agent 状态及多 Agent 优先级仲裁、来源锁定和 30 秒心跳过期。
 - Codex `pet.json + spritesheet.webp` 宠物目录/ZIP 安装，资源复制到应用数据目录。
 - 透明桌宠、拖拽、位置记忆、多显示器边界约束、缩放、置顶、点击穿透和随机闲逛。
+- 桌宠文字气泡：状态模板 + Agent Hook 事件摘要，可关闭、可配置（模式、时长、字符数、字体缩放、显示来源）。
 - 系统托盘、Agent 管理、宠物管理、硬件配置、运行日志。
 - HTTP/UDP 固件兼容接口和 Agent 注册/心跳扩展接口。
 - HTTP、UDP、USB 串口硬件桥接。
@@ -156,6 +157,7 @@ npm run tauri -- build
 - Agent 注册：`POST /api/v1/agents/register`
 - 心跳：`POST /api/v1/agents/{instanceId}/heartbeat`
 - 状态：`POST /api/v1/agents/{instanceId}/state`
+- 气泡消息：`POST /api/v1/agents/{instanceId}/message`
 
 开启局域网模式后需要重启应用。访问令牌可选：留空时允许局域网客户端直接连接；设置令牌后，HTTP 请求必须携带 `Authorization: Bearer <token>`，UDP 远程命令格式为 `auth <token> <command>`。局域网发现命令始终可匿名调用。
 

@@ -23,6 +23,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { api, onSnapshot } from './api';
+import Dropdown from './Dropdown';
 import { PluginsPanel } from './PluginsPanel';
 import {
   AGENT_STATES,
@@ -279,7 +280,7 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
           <label>端口<input type="number" value={form.hardware.port} onChange={event => patchHardware({ port: Number(event.target.value) })} /></label>
         </> : null}
         {form.hardware.transport === 'serial' && <>
-          <label>串口<select value={form.hardware.serialPort} onChange={event => patchHardware({ serialPort: event.target.value })}><option value="">选择串口</option>{ports.map(port => <option key={port.name} value={port.name}>{port.name} · {port.portType}</option>)}</select></label>
+          <label>串口<Dropdown value={form.hardware.serialPort} placeholder="选择串口" options={[{ value: '', label: '选择串口' }, ...ports.map(port => ({ value: port.name, label: `${port.name} · ${port.portType}` }))]} onChange={value => patchHardware({ serialPort: value })} /></label>
           <label>波特率<input type="number" value={form.hardware.baud} onChange={event => patchHardware({ baud: Number(event.target.value) })} /></label>
         </>}
         <div className="form-actions"><button className="secondary" onClick={() => void scan()}><RefreshCw size={16} />扫描</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button></div>
@@ -338,6 +339,13 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <label>宠物缩放 <output>{Math.round(form.petScale * 100)}%</output><input type="range" min="0.5" max="2" step="0.05" value={form.petScale} onInput={event => previewScale(Number(event.currentTarget.value))} /></label>
         <label>闲逛间隔（秒）<input type="number" min="10" max="600" value={form.roamIntervalSeconds} onChange={event => patch({ roamIntervalSeconds: Number(event.target.value) })} /></label>
         <label>闲逛速度<input type="number" min="20" max="300" value={form.roamSpeed} onChange={event => patch({ roamSpeed: Number(event.target.value) })} /></label>
+        <div className="panel-divider" />
+        <Toggle label="桌宠文字气泡" checked={form.petBubble.enabled} set={enabled => patch({ petBubble: { ...form.petBubble, enabled } })} />
+        <label>气泡内容模式<Dropdown value={form.petBubble.mode} options={[{ value: 'both', label: '状态 + 事件' }, { value: 'state', label: '仅状态' }, { value: 'events', label: '仅事件' }]} onChange={value => patch({ petBubble: { ...form.petBubble, mode: value } })} /></label>
+        <label>气泡显示时长（秒）<output>{form.petBubble.durationSeconds}</output><input type="range" min="1" max="30" step="1" value={form.petBubble.durationSeconds} onInput={event => patch({ petBubble: { ...form.petBubble, durationSeconds: Number(event.currentTarget.value) } })} /></label>
+        <label>最大字符数<input type="number" min="40" max="500" value={form.petBubble.maxCharacters} onChange={event => patch({ petBubble: { ...form.petBubble, maxCharacters: Number(event.target.value) } })} /></label>
+        <label>气泡字体缩放 <output>{Math.round(form.petBubble.fontScale * 100)}%</output><input type="range" min="0.75" max="2" step="0.05" value={form.petBubble.fontScale} onInput={event => patch({ petBubble: { ...form.petBubble, fontScale: Number(event.currentTarget.value) } })} /></label>
+        <Toggle label="气泡显示来源" checked={form.petBubble.showSource} set={showSource => patch({ petBubble: { ...form.petBubble, showSource } })} />
       </article>
       <article className="panel settings-form">
         <div className="panel-title"><div><p className="eyebrow">SERVICE</p><h2>服务与启动</h2></div></div>
