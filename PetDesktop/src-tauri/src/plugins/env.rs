@@ -388,7 +388,9 @@ pub fn hook_present(p: PluginProvider) -> bool {
             return false;
         };
         let a = h.join(".zcode/cli/config.json");
-        return fs::read_to_string(a).ok().is_some_and(|s| s.contains("agent-aura-zcode"));
+        return fs::read_to_string(a)
+            .ok()
+            .is_some_and(|s| s.contains("agent-aura-zcode"));
     }
     let Some(h) = home() else {
         return false;

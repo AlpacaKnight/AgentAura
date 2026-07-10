@@ -2,11 +2,48 @@
 
 ## 1. 文档状态
 
-- 状态：待实施
+- 状态：<span style="color:orange">部分实施</span>
+- 整体完成度：约 91%
 - 目标版本：后续 PetDesktop 功能版本
 - 适用平台：Windows、Linux、macOS
 - 涉及模块：`PetDesktop`、AgentAura 各 Agent 插件
-- 上次更新：2026-07-05
+- 上次更新：2026-07-10
+
+## 2. 实施进度概览
+
+| 模块 | 完成度 | 说明 |
+|:---|:---:|:---|
+| PetDesktop 前端（气泡组件/设置/样式） | 100% | PetBubble.tsx、消息队列、设置类型、CSS 已就绪 |
+| PetDesktop 后端（API/队列/数据结构） | 100% | server.rs 消息路由、core.rs 队列管理、model.rs 数据结构 |
+| agent-aura-codex 插件 | 100% | hooks.ts 中 buildCodexMessage() 已实现 |
+| agent-aura-qwencode 插件 | 100% | hooks.ts 中 buildQwenMessage() 已实现 |
+| agent-aura-claude 插件 | 0% | 缺失气泡消息生成和发送逻辑 |
+| agent-aura-kimi-code 插件 | 0% | 缺失 sendMessage() 及消息生成逻辑 |
+
+### 2.1 已完成功能
+
+- 数据模型（Rust `PetMessage` / TypeScript `PetMessage` 类型定义）
+- `PetBubble` React 组件及消息队列、优先级、去重、TTL 逻辑
+- `PetBubbleSettings` 配置项（enabled / mode / duration / maxCharacters / fontScale / showSource）
+- 气泡 CSS 样式（包含动画、箭头、文本换行）
+- Pet.tsx 中集成气泡渲染
+- `POST /api/v1/agents/{instance_id}/message` API 路由及鉴权
+- Core 层消息队列（保留 20 条、高优先级替换、去重）
+- Codex 插件：发送工具开始/完成/授权/失败事件摘要
+- Qwen Code 插件：发送工具事件 + 会话结束消息
+
+### 2.2 待完成功能
+
+- Claude 插件：实现气泡消息生成（参考 codex 模式）
+- Kimi Code 插件：deviceClient 增加 sendMessage() 方法，实现消息生成
+
+### 2.3 不涉及插件
+
+| 插件 | 原因 |
+|:---|---|
+| agent-aura-zcode | 通过 ZCode 应用内插件市场安装，hooks 由 ZCode 自动管理，不涉及气泡消息协议 |
+| agent-aura-copilot | VS Code 扩展，无 hooks 生命周期，无消息事件摘要 |
+| qwenpaw-plugin | 通过 QwenPaw 插件系统安装，无消息事件摘要 |
 
 ## 2. 背景与结论
 
@@ -44,6 +81,8 @@ Codex App 宠物的内部文字实现没有公开扩展接口，因此本项目�
 - AgentAura Kimi Code
 - AgentAura Qwen Code
 - AgentAura QwenPaw
+
+> 注：以上为计划制定时的首批插件列表。后续新增的 AgentAura ZCode 插件因通过 ZCode 应用内插件机制安装，hooks 由 ZCode 自动管理，不涉及此协议，因此不在气泡计划范围内。
 
 ## 4. 当前架构基础
 

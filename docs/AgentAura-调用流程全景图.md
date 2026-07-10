@@ -17,6 +17,8 @@ flowchart LR
     CODEX["Codex CLI<br/>命令型 hooks<br/>SessionStart / PreToolUse / PermissionRequest / PostToolUse / Stop"]:::host
     CLAUDE["Claude Code<br/>Marketplace 插件 + hooks.json<br/>会话 / 工具 / 审批 / 停止事件"]:::host
     KIMI["Kimi Code CLI<br/>config.toml [[hooks]]<br/>stdin JSON 生命周期事件"]:::host
+    ZCODE["ZCode<br/>插件内 hooks.json<br/>7 个 hook 生命周期事件"]:::host
+    QWENCODE["Qwen Code CLI<br/>扩展系统 hooks<br/>会话 / 工具 / 审批事件"]:::host
     COPILOT["VS Code + GitHub Copilot Chat<br/>transcript + 终端 / 会话观察"]:::host
     QWEN["QwenPaw<br/>AgentRunner + ApprovalService<br/>查询 / 工具 / 审批事件"]:::host
     USER["用户 / 管理界面<br/>手动状态、灯效、连接配置"]:::host
@@ -27,6 +29,8 @@ flowchart LR
     PCODEX["agent-aura-codex<br/>hooks.ts → DeviceClient"]:::plugin
     PCLAUDE["agent-aura-claude<br/>hooks.js → RingLightClient<br/>另有 /agent-aura-claude:aura"]:::plugin
     PKIMI["agent-aura-kimi-code<br/>hooks.ts → DeviceClient"]:::plugin
+    PZCODE["agent-aura-zcode<br/>hooks → RingLightClient<br/>HTTP/UDP/Serial 桥接"]:::plugin
+    PQWENCODE["agent-aura-qwencode<br/>hooks.ts → DeviceClient<br/>另含 Qwen Code 扩展安装"]:::plugin
     PCOPILOT["agent-aura-copilot<br/>CopilotWatcher / TranscriptWatcher<br/>→ StateMapper → DeviceClient"]:::plugin
     PQWEN["qwenpaw-plugin<br/>runner.py + approval.py<br/>→ mapper.py → client.py"]:::plugin
     CANON["统一状态 / 文本命令<br/>agent init | running | busy | waiting<br/>idle | error | offline | upgrade<br/>以及 rgb / effect / brightness / speed / power / reset"]:::core
@@ -35,11 +39,15 @@ flowchart LR
   CODEX --> PCODEX
   CLAUDE --> PCLAUDE
   KIMI --> PKIMI
+  ZCODE --> PZCODE
+  QWENCODE --> PQWENCODE
   COPILOT --> PCOPILOT
   QWEN --> PQWEN
   PCODEX --> CANON
   PCLAUDE --> CANON
   PKIMI --> CANON
+  PZCODE --> CANON
+  PQWENCODE --> CANON
   PCOPILOT --> CANON
   PQWEN --> CANON
 
@@ -57,6 +65,7 @@ flowchart LR
   PCODEX -. autoDiscover .-> DISC
   PCLAUDE -. autoDiscover .-> DISC
   PKIMI -. autoDiscover .-> DISC
+  PZCODE -. autoDiscover .-> DISC
   PCOPILOT -. 设备扫描 .-> DISC
   PQWEN -. autoDiscover .-> DISC
 
@@ -117,7 +126,7 @@ flowchart LR
 
 | 发起方 | 接收方 | 调用方式 | 主要载荷 / 用途 |
 |---|---|---|---|
-| Codex / Claude / Kimi 插件 | PetDesktop 或 ESP32 | HTTP、UDP、USB Serial | `agent <state>`、灯控文本命令 |
+| Codex / Claude / Kimi / ZCode / Qwen Code 插件 | PetDesktop 或 ESP32 | HTTP、UDP、USB Serial | `agent <state>`、灯控文本命令 |
 | Copilot VS Code 扩展 | PetDesktop 或 ESP32 | HTTP、UDP、USB Serial | transcript/终端事件映射后的状态 |
 | QwenPaw 插件 | PetDesktop 或 ESP32 | HTTP、UDP、USB Serial | AgentRunner/ApprovalService 事件映射后的状态 |
 | 各插件 | PetDesktop / ESP32 | UDP 广播 `:8888` | `discover`，返回设备 JSON；随后通常切为 HTTP |
