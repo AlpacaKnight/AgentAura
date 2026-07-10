@@ -162,7 +162,7 @@ export type PetBubbleSettings = {
   showSource: boolean;
 };
 
-export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw';
+export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw' | 'zcode';
 export type PluginPackageInspection = {
   path: string; fileName: string; sha256: string; format: string; provider?: PluginProvider;
   version?: string; valid: boolean; error?: string; warnings: string[];

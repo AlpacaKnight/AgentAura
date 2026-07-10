@@ -10,6 +10,8 @@ pub enum PluginProvider {
     KimiCode,
     Qwencode,
     Qwenpaw,
+    #[serde(rename = "zcode")]
+    ZCode,
 }
 
 impl PluginProvider {
@@ -20,6 +22,7 @@ impl PluginProvider {
             Self::Codex => Some("agent-aura-codex"),
             Self::KimiCode => Some("agent-aura-kimi-code"),
             Self::Qwencode => Some("agent-aura-qwencode"),
+            Self::ZCode => Some("agent-aura-zcode"),
             _ => None,
         }
     }
@@ -31,6 +34,7 @@ impl PluginProvider {
             Self::Codex => Some("agent-aura-codex"),
             Self::KimiCode => Some("agent-aura-kimi-code"),
             Self::Qwencode => Some("agent-aura-qwencode"),
+            Self::ZCode => Some("agent-aura-zcode"),
             _ => None,
         }
     }

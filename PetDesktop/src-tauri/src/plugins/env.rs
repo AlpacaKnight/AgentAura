@@ -128,9 +128,24 @@ pub fn qwencode_config_path() -> Option<PathBuf> {
     qwencode_config_path_with(&env_lookup)
 }
 
+pub fn zcode_config_path_with(get: &impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(v) = nonempty(get("AGENTAURA_ZCODE_CONFIG")) {
+        return Some(PathBuf::from(v));
+    }
+    let home = nonempty(get("USERPROFILE")).or_else(|| nonempty(get("HOME")))?;
+    Some(PathBuf::from(home).join(".zcode/agent-aura-zcode.json"))
+}
+
+pub fn zcode_config_path() -> Option<PathBuf> {
+    zcode_config_path_with(&env_lookup)
+}
+
 pub fn config(p: PluginProvider) -> Option<PathBuf> {
     if let PluginProvider::Qwencode = p {
         return qwencode_config_path();
+    }
+    if let PluginProvider::ZCode = p {
+        return zcode_config_path();
     }
     let h = home()?;
     Some(match p {
@@ -367,6 +382,13 @@ pub fn hook_present(p: PluginProvider) -> bool {
         return fs::read_to_string(path)
             .ok()
             .is_some_and(|s| has_managed_qwen_hook(&s));
+    }
+    if let PluginProvider::ZCode = p {
+        let Some(h) = home() else {
+            return false;
+        };
+        let a = h.join(".zcode/cli/config.json");
+        return fs::read_to_string(a).ok().is_some_and(|s| s.contains("agent-aura-zcode"));
     }
     let Some(h) = home() else {
         return false;

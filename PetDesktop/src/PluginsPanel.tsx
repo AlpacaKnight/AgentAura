@@ -29,9 +29,10 @@ const names: Record<PluginProvider, string> = {
   'kimi-code': 'Kimi Code',
   qwencode: 'Qwen Code',
   qwenpaw: 'QwenPaw',
+  zcode: 'ZCode',
 };
 
-const PROVIDERS: PluginProvider[] = ['claude', 'codex', 'copilot', 'kimi-code', 'qwencode', 'qwenpaw'];
+const PROVIDERS: PluginProvider[] = ['claude', 'codex', 'copilot', 'kimi-code', 'qwencode', 'qwenpaw', 'zcode'];
 
 const sourceLabel = (item: ManagedPluginStatus) => {
   const parts: string[] = [];
@@ -59,9 +60,9 @@ const defaults = (provider: PluginProvider): PluginConfig => ({
   debounceMs: 500,
   cooldownMs: 3000,
   timeoutMs: 650,
-  ...(provider === 'codex' ? { idleFallbackMs: 5000 } : {}),
+  ...(provider === 'codex' || provider === 'zcode' ? { idleFallbackMs: 5000 } : {}),
   autoDiscover: false,
-  ...(['codex', 'kimi-code', 'qwencode'].includes(provider) ? { authToken: '' } : {}),
+  ...(['codex', 'kimi-code', 'qwencode', 'zcode'].includes(provider) ? { authToken: '' } : {}),
 });
 
 export function PluginsPanel() {

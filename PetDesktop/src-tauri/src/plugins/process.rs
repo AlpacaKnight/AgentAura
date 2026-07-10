@@ -75,6 +75,7 @@ pub fn list_plugins(data: &Path) -> Result<Vec<ManagedPluginStatus>, String> {
         PluginProvider::KimiCode,
         PluginProvider::Qwencode,
         PluginProvider::Qwenpaw,
+        PluginProvider::ZCode,
     ]
     .into_iter()
     .map(|p| list_plugin_status(data, p))
