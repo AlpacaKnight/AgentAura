@@ -107,30 +107,25 @@ if [[ "$SKIP_DESKTOP" == false && (-z "$ONLY" || "$ONLY" == "desktop") ]]; then
         desktop_failed=true
     fi
 
-    # Collect installers
+    # Collect installers — 每种格式只复制最新的文件，避免旧版本残留
     BUNDLE="$ROOT_DIR/PetDesktop/src-tauri/target/release/bundle"
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/msi" ]]; then
-        cp -f "$BUNDLE/msi/"*.msi "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/nsis" ]]; then
-        cp -f "$BUNDLE/nsis/"*.exe "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/deb" ]]; then
-        cp -f "$BUNDLE/deb/"*.deb "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/rpm" ]]; then
-        cp -f "$BUNDLE/rpm/"*.rpm "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    if [[ "$desktop_failed" == false && (-d "$BUNDLE/appimage" || -d "$BUNDLE/AppImage") ]]; then
-        cp -f "$BUNDLE/appimage/"*.AppImage "$DESKTOP_OUT/" 2>/dev/null || true
-        cp -f "$BUNDLE/AppImage/"*.AppImage "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/dmg" ]]; then
-        cp -f "$BUNDLE/dmg/"*.dmg "$DESKTOP_OUT/" 2>/dev/null || true
-    fi
-    # Portable zip
-    if [[ "$desktop_failed" == false && -d "$BUNDLE/portable" ]]; then
-        cp -f "$BUNDLE/portable/"*.zip "$DESKTOP_OUT/" 2>/dev/null || true
+    collect_latest() {
+        local src_dir="$1"
+        local pattern="$2"
+        [[ -d "$src_dir" ]] || return 0
+        local latest
+        latest="$(ls -1t "$src_dir"/$pattern 2>/dev/null | head -1)"
+        [[ -n "$latest" ]] && cp -f "$latest" "$DESKTOP_OUT/"
+    }
+    if [[ "$desktop_failed" == false ]]; then
+        collect_latest "$BUNDLE/msi" "*.msi"
+        collect_latest "$BUNDLE/nsis" "*.exe"
+        collect_latest "$BUNDLE/deb" "*.deb"
+        collect_latest "$BUNDLE/rpm" "*.rpm"
+        collect_latest "$BUNDLE/appimage" "*.AppImage"
+        collect_latest "$BUNDLE/AppImage" "*.AppImage"
+        collect_latest "$BUNDLE/dmg" "*.dmg"
+        collect_latest "$BUNDLE/portable" "*.zip"
     fi
 
     if [[ "$desktop_failed" == false ]]; then
