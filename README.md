@@ -134,6 +134,24 @@ uv run pio run -e esp32c6
 
 ---
 
+## 固件编译与烧录
+
+两个 ESP32 固件共用仓库根目录的 `uv` 环境。完整的环境准备、COM 口识别、编译、烧录、串口监视和常见错误处理，请参阅：[固件开发与烧录指南](docs/固件开发与烧录.md)。
+
+快速命令：
+
+```powershell
+uv sync
+
+# AMOLED：ESP32-C6-Touch-AMOLED-1.8
+cd Arduino_ESP32_AMOLED_Pet
+uv run pio run -e esp32c6
+uv run pio run -e esp32c6 -t upload --upload-port COM4
+
+# RingLight：ESP32-C3
+cd ..\Arduino_ESP32_RingLight\ESP32_RingLight_Firmware
+uv run pio run -t upload --upload-port COM3
+```
 ## 许可证
 
 本项目代码可自由用于个人学习和二次开发。

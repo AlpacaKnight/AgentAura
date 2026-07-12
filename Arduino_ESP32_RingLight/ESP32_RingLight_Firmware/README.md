@@ -4,6 +4,44 @@
 
 ---
 
+## 固件编译与烧录
+
+本固件使用仓库根目录的 `uv` 环境管理 PlatformIO，不需要在本目录单独安装工具链。
+
+### 1. 准备环境
+
+```powershell
+cd C:\workspace\project\AgentAura
+uv sync
+uv run pio --version
+cd Arduino_ESP32_RingLight\ESP32_RingLight_Firmware
+```
+
+### 2. 编译、查找串口、烧录
+
+```powershell
+# 编译
+uv run pio run
+
+# 查看已连接设备
+uv run pio device list
+
+# 烧录（将 COM3 替换为实际端口）
+uv run pio run -t upload --upload-port COM3
+
+# 查看串口日志
+uv run pio device monitor -p COM3 -b 115200
+```
+
+如果上传超时，按住 `BOOT`，短按一次 `RESET` 或重新插拔 USB，松开 `BOOT` 后重新上传。烧录前请关闭其他串口监视器。设备重新插拔后 COM 口可能变化。
+
+### 3. PlatformIO 环境说明
+
+- 固件目标为 ESP32-C3，使用本目录的 `platformio.ini`。
+- 依赖来源为仓库根目录 `pyproject.toml`，通过 `uv run pio` 执行。
+- `huge_app` 分区没有 OTA 空间，升级固件需要重新通过 USB 烧录。
+
+---
 ## 一、硬件确认
 
 | 项目 | 规格 |
