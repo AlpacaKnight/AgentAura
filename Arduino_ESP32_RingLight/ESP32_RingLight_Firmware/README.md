@@ -49,7 +49,7 @@
 ```
 ESP32_RingLight_Firmware/
 ├── platformio.ini              # C3 配置 + huge_app 分区 + 固件库依赖
-├── pyproject.toml              # uv Python 依赖管理 (platformio)
+├── pyproject.toml              # 使用仓库根目录 uv 配置
 ├── src/
 │   ├── main.cpp                 # setup()/loop() 入口
 │   ├── config.h                 # 硬件/默认/网络/BLE/NVS 常量
@@ -69,13 +69,13 @@ ESP32_RingLight_Firmware/
 └── README.md                    # 本文档
 ```
 
-> 活跃固件代码全部在 `src/` 目录下。PlatformIO 直接编译 `src/`；Arduino IDE 打开根目录 `.ino` 后也会自动编译 `src/` 子目录。`pyproject.toml` 用 uv 管理 PlatformIO 的 Python 依赖，Arduino IDE 不需要它。
+本固件使用仓库根目录的 pyproject.toml 管理 PlatformIO 依赖。
 
 ---
 
 ## 四、编译与烧录
 
-本项目支持 **PlatformIO**（推荐）和 **Arduino IDE** 两种工具链编译，编译同一份 `src/` 代码，互不冲突。PlatformIO 的 Python 依赖由 **uv** 管理（见 `pyproject.toml`）。
+本固件使用仓库根目录的 pyproject.toml 管理 PlatformIO 依赖。
 
 > 根目录 `ESP32_RingLight_Firmware.ino` 是 Arduino IDE 的 sketch 入口标识（纯 stub，不含 setup/loop，实际逻辑在 `src/main.cpp`）。两套工具链都不会重复编译。
 
@@ -90,7 +90,7 @@ ESP32_RingLight_Firmware/
 | PubSubClient | ^2.8 | MQTT 客户端 | `platformio.ini` 自动安装 | 库管理器搜 `PubSubClient` |
 | NimBLE-Arduino | ^2.3 | BLE（NimBLE 协议栈） | `platformio.ini` 自动安装 | 库管理器搜 `NimBLE-Arduino` |
 
-**PlatformIO Python 依赖**（见 `pyproject.toml`）：
+本固件使用仓库根目录的 pyproject.toml 管理 PlatformIO 依赖。
 
 | 包 | 版本 | 用途 |
 |:---|:-----|:-----|
@@ -179,7 +179,7 @@ uv run pio device monitor
 
 | | PlatformIO（uv） | Arduino IDE |
 |:--|:-----------------|:------------|
-| 依赖管理 | `pyproject.toml` + `platformio.ini` 全自动 | 手动装板包 + 4 个库 |
+| 依赖管理 | 仓库根目录 pyproject.toml + platformio.ini | 手动安装板卡包和库 |
 | 编译命令 | `uv run pio run` | 点上传按钮 |
 | 库版本锁定 | `platformio.ini` 指定版本 | 取决于库管理器装的版本 |
 | 编辑器 | VS Code（可选） | Arduino IDE |

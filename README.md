@@ -84,7 +84,7 @@
 ```text
 AgentAura/
 ├── main.py                              # Python 入口（预留）
-├── pyproject.toml                       # uv 依赖管理（firmware 组: platformio）
+├── pyproject.toml                       # uv 依赖管理（包含 PlatformIO）
 ├── README.md                            # 本文件
 ├── scripts/
 │   ├── build.ps1                        # Windows 全量构建脚本
@@ -126,8 +126,8 @@ AgentAura/
 # 安装 uv 后同步依赖
 uv sync
 
-# 编译固件需要同步 platformio
-uv sync --group firmware
+# 使用已同步的 PlatformIO 编译固件
+uv run pio run -e esp32c6
 ```
 
 各子项目可能有额外的依赖与构建工具，请参阅对应目录下的 README。

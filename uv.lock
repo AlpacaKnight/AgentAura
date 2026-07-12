@@ -6,16 +6,12 @@ requires-python = ">=3.13"
 name = "agentaura"
 version = "0.1.0"
 source = { virtual = "." }
-
-[package.dev-dependencies]
-firmware = [
+dependencies = [
     { name = "platformio" },
 ]
 
 [package.metadata]
-
-[package.metadata.requires-dev]
-firmware = [{ name = "platformio", specifier = ">=6.1.19" }]
+requires-dist = [{ name = "platformio", specifier = ">=6.1.19" }]
 
 [[package]]
 name = "ajsonrpc"
