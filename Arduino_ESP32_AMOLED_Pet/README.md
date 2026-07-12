@@ -1,0 +1,122 @@
+# ESP32-C6-Touch-AMOLED-1.8 固件
+
+AgentAura AMOLED 宠物固件，适用于 Waveshare `ESP32-C6-Touch-AMOLED-1.8`，使用 SH8601 QSPI AMOLED、FT3168 触摸和 Arduino-ESP32。
+
+## 一、环境准备
+
+在仓库根目录执行一次：
+
+```powershell
+cd C:\workspace\project\AgentAura
+uv sync
+uv run pio --version
+```
+
+本项目使用仓库根目录的 `uv` 环境，不需要单独创建项目级 `pyproject.toml`。首次编译会自动下载 ESP32-C6 平台、编译器和依赖库。
+
+设备应使用支持数据传输的 USB 线，并关闭占用串口的串口工具。
+
+## 二、编译
+
+```powershell
+cd C:\workspace\project\AgentAura\Arduino_ESP32_AMOLED_Pet
+uv run pio run -e esp32c6
+```
+
+成功后生成：
+
+```text
+.pio\build\esp32c6\firmware.bin
+.pio\build\esp32c6\firmware.factory.bin
+```
+
+当前验证结果：RAM 使用率约 23%，Flash 使用率约 60%，编译结果为 `SUCCESS`。
+
+## 三、查找设备串口
+
+```powershell
+uv run pio device list
+```
+
+记录设备对应的端口，例如 `COM4`。设备重新插拔后端口号可能变化。
+
+## 四、烧录固件
+
+自动选择端口：
+
+```powershell
+uv run pio run -e esp32c6 -t upload
+```
+
+指定端口：
+
+```powershell
+uv run pio run -e esp32c6 -t upload --upload-port COM4
+```
+
+如果上传超时或找不到设备：
+
+1. 按住板上的 `BOOT`。
+2. 短按一次 `RESET`，或重新插拔 USB。
+3. 松开 `BOOT`。
+4. 重新执行上传命令。
+
+## 五、查看串口日志
+
+```powershell
+uv run pio device monitor -e esp32c6 -p COM4 -b 115200
+```
+
+也可以使用：
+
+```powershell
+uv run pio run -e esp32c6 -t monitor --upload-port COM4
+```
+
+烧录完成后按一次 `RESET`，正常情况下可以看到启动 Banner 和初始化日志。
+
+## 六、硬件配置
+
+本项目已经按 ESP32-C6-Touch-AMOLED-1.8 配置：
+
+| 功能 | 引脚 |
+|---|---:|
+| AMOLED QSPI SCLK / CS | GPIO0 / GPIO5 |
+| AMOLED QSPI SDIO0~3 | GPIO1 / GPIO2 / GPIO3 / GPIO4 |
+| 触摸 I2C SDA / SCL | GPIO8 / GPIO7 |
+| 触摸中断 | GPIO15 |
+| 音频 I2S MCK/BCK/DI/WS/DO | GPIO19 / GPIO20 / GPIO21 / GPIO22 / GPIO23 |
+| 屏幕分辨率 | 368 × 448 |
+
+不要使用 RingLight 的 `esp32c3` 配置烧录此设备。
+
+## 七、常见问题
+
+### `UnknownPackageError: pioarduino/tool-esptoolpy`
+
+不要在 `platformio.ini` 中强制指定不存在的 `pioarduino/tool-esptoolpy` 版本。当前配置使用稳定版 pioarduino 平台自动选择烧录工具。
+
+### `Network.h: No such file or directory`
+
+请从仓库根目录同步 uv 环境，并使用本项目的 `uv run pio` 命令，不要混用其他全局 PlatformIO。
+
+### 找不到 COM 口
+
+确认 USB 线支持数据传输，关闭串口监视器，重新执行 `uv run pio device list`。必要时按住 `BOOT` 后短按 `RESET` 进入下载模式。
+
+### 屏幕没有显示
+
+先按 `RESET` 并查看串口日志，确认烧录的是 `esp32c6` 环境和本项目固件。
+
+## 八、项目命令速查
+
+```powershell
+# 编译
+uv run pio run -e esp32c6
+
+# 烧录
+uv run pio run -e esp32c6 -t upload --upload-port COM4
+
+# 监视串口
+uv run pio device monitor -e esp32c6 -p COM4 -b 115200
+```
