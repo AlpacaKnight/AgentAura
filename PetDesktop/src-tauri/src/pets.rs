@@ -124,9 +124,8 @@ fn find_pet_root(stage: &Path) -> anyhow::Result<PathBuf> {
 
 fn validate_pet_dir(root: &Path) -> anyhow::Result<InstalledPet> {
     let manifest_path = root.join("pet.json");
-    let content = fs::read(&manifest_path).map_err(|error| {
-        anyhow::anyhow!("cannot read {}: {error}", manifest_path.display())
-    })?;
+    let content = fs::read(&manifest_path)
+        .map_err(|error| anyhow::anyhow!("cannot read {}: {error}", manifest_path.display()))?;
     // Strip UTF-8 BOM (\u{FEFF}) if present, since serde_json does not handle it
     let content = if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
         &content[3..]
