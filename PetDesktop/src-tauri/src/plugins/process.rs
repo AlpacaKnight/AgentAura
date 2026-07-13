@@ -40,6 +40,7 @@ pub fn list_plugin_status(data: &Path, p: PluginProvider) -> ManagedPluginStatus
         .clone()
         .or(global_version.clone())
         .or(external_version.clone());
+    let import_path = resolve_import_path(data, p, managed_installed, global_installed);
     let preferred_source = if managed_installed {
         Some("managed".to_string())
     } else if global_installed {
@@ -53,6 +54,7 @@ pub fn list_plugin_status(data: &Path, p: PluginProvider) -> ManagedPluginStatus
         provider: p,
         installed: managed_installed || global_installed || external_installed,
         version,
+        import_path,
         hooks_installed: hook_present(p),
         hooks_supported: p.hooks(),
         config_path: config(p).map(|v| v.display().to_string()),
@@ -64,6 +66,33 @@ pub fn list_plugin_status(data: &Path, p: PluginProvider) -> ManagedPluginStatus
         global_version,
         external_version,
     }
+}
+
+fn resolve_import_path(
+    data: &Path,
+    provider: PluginProvider,
+    managed_installed: bool,
+    global_installed: bool,
+) -> Option<String> {
+    if provider != PluginProvider::ZCode {
+        return None;
+    }
+
+    if managed_installed {
+        let package_path = pkg(data, provider.package()?);
+        if package_path.join(".zcode-plugin/plugin.json").exists() {
+            return Some(package_path.display().to_string());
+        }
+    }
+
+    if global_installed {
+        let package_path = global_node_package_path(provider.package()?)?;
+        if package_path.join(".zcode-plugin/plugin.json").exists() {
+            return Some(package_path.display().to_string());
+        }
+    }
+
+    None
 }
 
 /// Status for all known plugin providers.
@@ -347,6 +376,21 @@ fn global_node_package_version(package: &str) -> Option<String> {
         .get("version")?
         .as_str()
         .map(str::to_owned)
+}
+
+fn global_node_package_path(package: &str) -> Option<PathBuf> {
+    let mut npm = npm_command().ok()?;
+    let output = run(npm.arg("root").arg("-g")).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let output_text = String::from_utf8_lossy(&output.stdout);
+    let root = output_text
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    Some(PathBuf::from(root).join(package))
 }
 
 fn global_node_package_installed(package: &str) -> bool {

@@ -166,6 +166,31 @@ export function PluginsPanel() {
     }
   };
 
+  const copyText = async (text: string): Promise<void> => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  };
+
+  const copyInstallPath = async (provider: PluginProvider, installPath?: string) => {
+    if (provider !== 'zcode' || !installPath) return;
+    try {
+      await copyText(installPath);
+      setMessage(`已复制 ZCode 安装地址:\n${installPath}`);
+    } catch (error) {
+      setMessage(`复制失败: ${String(error)}`);
+    }
+  };
+
   const install = async (item: PluginPackageInspection) => {
     if (!item.valid || !item.provider) return;
     const accepted = await confirm('将调用对应平台的 CLI 安装此插件包，是否继续？', {
@@ -281,6 +306,9 @@ export function PluginsPanel() {
               </button>}
             </>}
             {item.configPath && <button onClick={() => void edit(item.provider)}>配置连接</button>}
+            {item.provider === 'zcode' && item.importPath && (
+              <button onClick={() => void copyInstallPath(item.provider, item.importPath)}>复制安装地址</button>
+            )}
             {item.installed && <button disabled={busy} onClick={() => void confirm('确认卸载该插件？', {
               title: '确认卸载', kind: 'warning',
             }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); }).catch(() => {})}>卸载</button>}

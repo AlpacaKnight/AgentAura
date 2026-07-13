@@ -171,6 +171,7 @@ export type PluginPackageInspection = {
 export type ManagedPluginStatus = {
   provider: PluginProvider; installed: boolean; version?: string; hooksInstalled: boolean;
   hooksSupported: boolean; configPath?: string;
+  importPath?: string;
   managedInstalled: boolean; globalInstalled: boolean; externalInstalled: boolean;
   preferredSource?: 'managed' | 'global' | 'external';
   managedVersion?: string; globalVersion?: string; externalVersion?: string;

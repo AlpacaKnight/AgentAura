@@ -88,6 +88,7 @@ pub struct ManagedPluginStatus {
     pub provider: PluginProvider,
     pub installed: bool,
     pub version: Option<String>,
+    pub import_path: Option<String>,
     pub hooks_installed: bool,
     pub hooks_supported: bool,
     pub config_path: Option<String>,
