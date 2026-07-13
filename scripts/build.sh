@@ -88,7 +88,7 @@ build_module "copilot"  "$PLUGINS_DIR/agent-aura-copilot"  "scripts/pack.sh"   "
 build_module "kimi-code" "$PLUGINS_DIR/agent-aura-kimi-code" "scripts/pack.sh" "$PLUGINS_DIR/agent-aura-kimi-code/dist"
 build_module "qwencode" "$PLUGINS_DIR/agent-aura-qwencode" "scripts/pack.sh"   "$PLUGINS_DIR/agent-aura-qwencode/dist"
 build_module "qwenpaw"  "$PLUGINS_DIR/qwenpaw-plugin"      "scripts/pack.sh"   "$PLUGINS_DIR/qwenpaw-plugin/dist"
-build_module "zcode"    "$PLUGINS_DIR/agent-aura-zcode"     "scripts/pack.sh"   "$PLUGINS_DIR/agent-aura-zcode/dist"
+build_module "zcode"    "$PLUGINS_DIR/agent-aura-zcode"     "scripts/pack.sh"   --out-dir "$PLUGINS_DIR/agent-aura-zcode/dist"
 
 # --- PetDesktop ---
 if [[ "$SKIP_DESKTOP" == false && (-z "$ONLY" || "$ONLY" == "desktop") ]]; then
