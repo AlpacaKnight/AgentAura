@@ -124,10 +124,16 @@ fn find_pet_root(stage: &Path) -> anyhow::Result<PathBuf> {
 
 fn validate_pet_dir(root: &Path) -> anyhow::Result<InstalledPet> {
     let manifest_path = root.join("pet.json");
-    let raw: Value =
-        serde_json::from_slice(&fs::read(&manifest_path).map_err(|error| {
-            anyhow::anyhow!("cannot read {}: {error}", manifest_path.display())
-        })?)?;
+    let content = fs::read(&manifest_path).map_err(|error| {
+        anyhow::anyhow!("cannot read {}: {error}", manifest_path.display())
+    })?;
+    // Strip UTF-8 BOM (\u{FEFF}) if present, since serde_json does not handle it
+    let content = if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        &content[3..]
+    } else {
+        &content
+    };
+    let raw: Value = serde_json::from_slice(content)?;
     let object = raw
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("pet.json must contain a JSON object"))?;
