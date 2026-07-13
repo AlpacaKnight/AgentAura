@@ -160,8 +160,14 @@ pub struct InstalledPet {
     pub frame_height: u32,
     pub columns: u32,
     pub rows: u32,
+    #[serde(default = "default_sprite_version")]
+    pub sprite_version: u32,
     pub built_in: bool,
     pub animations: HashMap<String, AnimationSpec>,
+}
+
+pub fn default_sprite_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -338,10 +344,15 @@ pub struct AppSnapshot {
     pub pet_messages: Vec<PetMessage>,
 }
 
-pub fn default_animations() -> HashMap<String, AnimationSpec> {
+pub fn default_animations(sprite_version: u32) -> HashMap<String, AnimationSpec> {
     let mut animations = HashMap::new();
-    let rows = [
-        ("idle", 0, vec![280, 110, 110, 140, 140, 320]),
+    let idle_durations = if sprite_version >= 2 {
+        vec![280, 110, 110, 140, 140, 140, 320]
+    } else {
+        vec![280, 110, 110, 140, 140, 320]
+    };
+    let mut rows: Vec<(&str, u32, Vec<u64>)> = vec![
+        ("idle", 0, idle_durations),
         (
             "running-right",
             1,
@@ -359,6 +370,14 @@ pub fn default_animations() -> HashMap<String, AnimationSpec> {
         ("running", 7, vec![120, 120, 120, 120, 120, 220]),
         ("review", 8, vec![150, 150, 150, 150, 150, 280]),
     ];
+    if sprite_version >= 2 {
+        rows.push(("look", 9, vec![200, 200, 200, 200, 200, 200, 200, 300]));
+        rows.push((
+            "directions",
+            10,
+            vec![180, 180, 180, 180, 180, 180, 180, 260],
+        ));
+    }
     for (name, row, durations_ms) in rows {
         animations.insert(
             name.to_string(),
@@ -382,8 +401,9 @@ pub fn built_in_pet() -> InstalledPet {
         frame_height: 208,
         columns: 8,
         rows: 9,
+        sprite_version: 1,
         built_in: true,
-        animations: default_animations(),
+        animations: default_animations(1),
     }
 }
 

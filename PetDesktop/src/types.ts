@@ -38,6 +38,7 @@ export type InstalledPet = {
   frameHeight: number;
   columns: number;
   rows: number;
+  spriteVersion: number;
   builtIn: boolean;
   animations: Record<string, AnimationSpec>;
 };

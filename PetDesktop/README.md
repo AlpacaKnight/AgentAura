@@ -143,7 +143,12 @@ npm run tauri -- build
 }
 ```
 
-图集为 8 列 × 9 行 WebP。各行依次为 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。导入器拒绝路径穿越、符号链接、超大压缩包和无效图集。
+图集支持两种版本，自动按 `pet.json` 的 `spriteVersion` 字段识别（缺省为 1，兼容 `spriteVersionNumber`）：
+
+- **V1（`spriteVersion` 缺省或 `1`）**：8 列 × 9 行 WebP，各行依次为 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。
+- **V2（`spriteVersion: 2`）**：8 列 × 11 行 WebP，在 V1 九行基础上追加 `look`（第 9 行）与 `directions`（第 10 行），且 `idle` 扩展为 7 帧。
+
+导入器拒绝路径穿越、符号链接、超大压缩包和无效图集。
 
 ## 本地接口
 

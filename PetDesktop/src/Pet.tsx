@@ -14,6 +14,8 @@ const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
   waiting: { row: 6, frames: 6, durationsMs: [150, 150, 150, 150, 150, 260] },
   running: { row: 7, frames: 6, durationsMs: [120, 120, 120, 120, 120, 220] },
   review: { row: 8, frames: 6, durationsMs: [150, 150, 150, 150, 150, 280] },
+  look: { row: 9, frames: 8, durationsMs: [200, 200, 200, 200, 200, 200, 200, 300] },
+  directions: { row: 10, frames: 8, durationsMs: [180, 180, 180, 180, 180, 180, 180, 260] },
 };
 
 const STATE_ANIMATION: Record<string, string> = {
@@ -60,7 +62,13 @@ export default function Pet() {
   }, []);
 
   const animationName = moving ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
-  const animation = snapshot?.selectedPet?.animations[animationName] ?? DEFAULT_ANIMATIONS[animationName] ?? DEFAULT_ANIMATIONS.idle;
+  // 回退时校验目标行不超出当前宠物的实际行数，避免 V1 宠物渲染越界（空白帧）。
+  const petRows = snapshot?.selectedPet?.rows ?? 9;
+  const fallbackAnimation = DEFAULT_ANIMATIONS[animationName];
+  const animation =
+    snapshot?.selectedPet?.animations[animationName] ??
+    (fallbackAnimation && fallbackAnimation.row < petRows ? fallbackAnimation : undefined) ??
+    DEFAULT_ANIMATIONS.idle;
   const scale = previewScale ?? snapshot?.settings.petScale ?? 1;
 
   useEffect(() => {
