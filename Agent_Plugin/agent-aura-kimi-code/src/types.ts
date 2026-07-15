@@ -35,6 +35,11 @@ export interface RuntimeState {
     unreachableUntil?: number;
     lastError?: string;
     lastSessionId?: string;
+    lastActivityAt?: number;
+    httpTarget?: 'petdesktop' | 'firmware';
+    petDesktopRegistered?: boolean;
+    heartbeatToken?: string;
+    heartbeatIntervalMs?: number;
 }
 
 export interface DiscoveredDevice {
