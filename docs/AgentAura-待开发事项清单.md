@@ -215,6 +215,21 @@ Agent 生命周期事件
 - **目标**：前端支持多 Agent 气泡切换/轮播/分组展示
 - **影响文件**：`PetDesktop/src-tauri/src/core.rs`、`PetDesktop/src/PetBubble.tsx`、`PetDesktop/src/Pet.tsx`
 
+#### 4.5.3 启用 Codex 宠物 v2 新增动画
+
+- **背景**：提交 `d11a392`（`feat: 支持codex宠物v2图集`）为精灵图新增了两个动画行 `look`（row 9，8 帧）和 `directions`（row 10，8 帧），并将 `idle` 扩展到 7 帧。v2 精灵图为 8×11 布局（v1 为 8×9）。
+- **问题**：`Pet.tsx:21-30` 的 `STATE_ANIMATION` 映射表中没有任何 `AgentState` 指向 `look` 或 `directions`，两个新动画行处于孤立状态，永远不会被触发。
+- **说明**：新增的 `look` / `directions` 是**行为动画**而非状态动画，不属于 `AgentState` 枚举（`init/running/busy/waiting/error/idle/offline/upgrade` 8 个值未变）。插件无需改动——它们仍发送原有的 8 个状态值，PetDesktop 的 `AgentState::from_str` 也只接受这 8 个值。需要做的是在 PetDesktop 前端决定何时触发这两个动画。
+- **可能的触发方案**（需确认产品意图）：
+  - `look`：Agent 处于 `idle` 状态时以一定概率随机播放（原地张望），增加生动感
+  - `directions`：拖拽宠物或闲逛换方向时播放（方向指示），作为过渡动画
+- **相关状态**：
+  - v1 兼容：`Pet.tsx:65-71` 已有回退保护，`fallbackAnimation.row < petRows`，避免 v1 精灵图渲染越界
+  - 验证：`pets.rs:172-176` 已根据 `spriteVersion` 区分 v1（9 行）/ v2（11 行）
+  - 配置：`model.rs:163-164` 新增 `sprite_version` 字段，`model.rs:347-380` 的 `default_animations` 在 v2 时追加 `look`/`directions`
+- **目标**：确定 `look`/`directions` 的触发条件并实现，让 v2 精灵图的两个新动画行不再孤立
+- **影响文件**：`PetDesktop/src/Pet.tsx`（`STATE_ANIMATION` 映射或动画调度逻辑）、`PetDesktop/src/Pet.test.ts`（补充 v2 动画测试）
+
 ### 4.6 低优先级 — 固件
 
 #### 4.6.1 修复 ESP32 RingLight BLE
@@ -237,19 +252,13 @@ Agent 生命周期事件
 
 ### 4.7 低优先级 — 文档
 
-#### 4.7.1 更新气泡开发计划文档
-
-- **问题**：`docs/PetDesktop-桌宠文字气泡开发计划.md:20-21` 仍标注 Claude 0%、Kimi 0%，但二者已 100% 实现
-- **目标**：更新为 100%，移除"待完成功能"小节
-- **影响文件**：`docs/PetDesktop-桌宠文字气泡开发计划.md`
-
-#### 4.7.2 更新 README 插件状态表
+#### 4.7.1 更新 README 插件状态表
 
 - **问题**：Root `README.md` 插件状态表未反映气泡支持情况
 - **目标**：在状态列中标注气泡支持（如新增"气泡"列）
 - **影响文件**：`README.md`
 
-#### 4.7.3 AMOLED 固件 API 文档
+#### 4.7.2 AMOLED 固件 API 文档
 
 - **问题**：AMOLED 固件只有构建指南，无协议/API 文档（RingLight 有 `doc/API.md`）
 - **目标**：编写 AMOLED 通信协议文档
@@ -272,12 +281,13 @@ Agent 生命周期事件
 | 9 | 补充气泡消息单元测试 | 中 | #1, #2 |
 | 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 |
 | 11 | PetDesktop hooks() 纳入 Claude/ZCode | 小 | #10 |
-| 12 | 更新过时文档 | 小 | #1-#7 |
-| 13 | （长期）气泡持久化 | 大 | 无 |
-| 14 | （长期）多 Agent 气泡展示 | 大 | 无 |
-| 15 | （长期）修复 ESP32 BLE | 中 | 硬件调试 |
-| 16 | （长期）AMOLED Apps 页面 | 中 | 无 |
-| 17 | （长期）三平台 CI 产物验证 | 中 | 无 |
+| 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 |
+| 13 | 更新过时文档 | 小 | #1-#7 |
+| 14 | （长期）气泡持久化 | 大 | 无 |
+| 15 | （长期）多 Agent 气泡展示 | 大 | 无 |
+| 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 |
+| 17 | （长期）AMOLED Apps 页面 | 中 | 无 |
+| 18 | （长期）三平台 CI 产物验证 | 中 | 无 |
 
 ---
 
