@@ -24,3 +24,7 @@ export function isAgentState(value: unknown): value is AgentState {
 export function isTransportName(value: unknown): value is Transport {
   return (TRANSPORTS as readonly string[]).includes(value as string);
 }
+
+export interface SendContext {
+  sessionId?: string;
+}

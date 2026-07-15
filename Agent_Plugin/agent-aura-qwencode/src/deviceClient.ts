@@ -121,10 +121,10 @@ export class RingLightClient {
      */
     async sendMessage(
         text: string,
-        context?: SendContext,
         kind: 'state' | 'activity' | 'success' | 'warning' | 'error' = 'activity',
         priority?: number,
         ttlMs?: number,
+        context?: SendContext,
     ): Promise<boolean> {
         if (!this.config.enabled || isDisabled()) {
             return true;

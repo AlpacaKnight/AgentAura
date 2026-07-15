@@ -3,7 +3,7 @@
 ## 1. 文档状态
 
 - 状态：待开发
-- 上次更新：2026-07-15
+- 上次更新：2026-07-16
 - 涵盖范围：AgentAura 全项目（PetDesktop、Agent 插件、ESP32 固件、CI/CD、文档）
 
 ## 2. 桌宠文字气泡闭环状态
@@ -38,10 +38,10 @@ Agent 生命周期事件
 
 | 特性 | Claude | Kimi | Codex | Qwen | ZCode |
 |------|:------:|:----:|:-----:|:----:|:-----:|
-| Hook 事件数 | **18** | 15 | 8 | 12 | 7 |
-| 气泡事件数 | 4 | 4 | 3 | **6** | 5 |
-| 任务完成气泡 | ❌ | ❌ | ❌ | ✅ | ✅ |
-| Session ID | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Hook 事件数 | **18** | 15 | 9 | 12 | 7 |
+| 气泡事件数 | 5 | 5 | 4 | **6** | 5 |
+| 任务完成气泡 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Session ID | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 心跳循环 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Idle fallback | ❌ | ❌ | ✅ | ❌ | ❌ |
 | Hook 抑制 | ✅ | ❌ | ❌ | ❌ | ⚠️ 死代码 |
@@ -68,7 +68,7 @@ Agent 生命周期事件
 | TaskCompleted | ✅ | ❌ | ❌ | ❌ | ❌ |
 | PreCompact | ✅ | ✅ | ✅ | ✅ | ❌ |
 | PostCompact | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Stop | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Stop | ✅ | ✅ | ✅ | ✅ | ✅ |
 | StopFailure | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Interrupt | ❌ | ✅ | ❌ | ❌ | ❌ |
 | SessionEnd | ✅ | ✅ | ❌ | ✅ | ❌ |
@@ -82,18 +82,20 @@ Agent 生命周期事件
 | PostToolUse (成功) → "X 已完成" | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PostToolUse (失败) → 错误摘要 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PostToolUseFailure → "X 执行出错" | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Stop → "任务已完成" | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Stop → "任务已完成" | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SessionEnd → "任务已完成" | ❌ | ❌ | ❌ | ✅ | ❌ |
 
-### 3.3 sendMessage 签名不一致
+### 3.3 sendMessage / sendAgentState 签名（已统一 ✅）
+
+五个插件现均使用统一签名 `sendMessage(text, kind, priority?, ttlMs?, context?)` 与 `sendAgentState(state, context?)`，context 始终位于末尾并贯穿 HTTP / command 两条路径（含 firmware 上报与 404 重注册）。
 
 | 插件 | 签名 | context 位置 |
 |------|------|-------------|
-| Claude | `sendMessage(text, kind, priority?, ttlMs?)` | 无 |
-| Codex | `sendMessage(text, kind, priority?, ttlMs?)` | 无 |
+| Claude | `sendMessage(text, kind, priority?, ttlMs?, context?)` | 最后 |
+| Codex | `sendMessage(text, kind, priority?, ttlMs?, context?)` | 最后 |
 | Kimi | `sendMessage(text, kind, priority?, ttlMs?, context?)` | 最后 |
-| Qwen | `sendMessage(text, context?, kind, priority?, ttlMs?)` | 第二 |
-| ZCode | `sendMessage(text, context?, kind, priority?, ttlMs?)` | 第二 |
+| Qwen | `sendMessage(text, kind, priority?, ttlMs?, context?)` | 最后 |
+| ZCode | `sendMessage(text, kind, priority?, ttlMs?, context?)` | 最后 |
 
 ---
 
@@ -102,6 +104,8 @@ Agent 生命周期事件
 ### 4.1 高优先级 — 插件一致性
 
 #### 4.1.1 统一 sendMessage / sendAgentState 签名
+
+> ✅ 已完成（2026-07-16）：五个插件的 `sendMessage` 已统一为 `sendMessage(text, kind, priority?, ttlMs?, context?)`，`sendAgentState` 统一为 `sendAgentState(state, context?)`；Claude/Codex 补齐 context 参数，Qwen/ZCode 将 context 由第二位调整到末尾，并修复 firmware/command 路径此前未透传 session 头的问题。
 
 - **目标**：统一为 `sendMessage(text, kind, priority?, ttlMs?, context?)` 和 `sendAgentState(state, context?)`
 - **范围**：Claude、Codex 缺 context 参数；Kimi 的 context 在末尾（已符合目标）；Qwen/ZCode 的 context 在第二位需调整
@@ -114,11 +118,15 @@ Agent 生命周期事件
 
 #### 4.1.2 为 Claude / Codex 补 Session ID 支持
 
+> ✅ 已完成（2026-07-16）：Claude 与 Codex 均已实现 `extractSessionId`、`SendContext` 透传、`httpHeaders()` 的 `x-agentaura-session` 头，并将 session 持久化到 runtime（Claude 复用 index signature，Codex 在 `RuntimeState` 新增 `lastSessionId`），HTTP / command 两条路径均带上该头。
+
 - **问题**：Claude 和 Codex 不提取 session ID，不发送 `x-agentaura-session` 头，服务端无法在 session 切换时清空旧气泡（`core.rs:210-216`）
 - **目标**：在 `hooks.ts` 中添加 `extractSessionId`，在 `deviceClient.ts` 的 `httpHeaders()` 中添加 `x-agentaura-session` 头
 - **参考**：Kimi `hooks.ts:215-222`、`deviceClient.ts:563-578`
 
 #### 4.1.3 统一气泡事件覆盖 — 补"任务完成"气泡
+
+> ✅ 已完成（2026-07-16）：Claude、Kimi、Codex 的 `buildXxxMessage` 均已补 `Stop` → `{ text: "任务已完成", kind: 'success' }` 分支，五个插件现已全部支持"任务已完成"气泡。
 
 - **问题**：Claude、Kimi、Codex 在 `Stop` 时不发"任务已完成"气泡，Qwen/ZCode 发
 - **目标**：在各插件的 `buildXxxMessage` 中添加 `Stop` 分支 → `{ text: "任务已完成", kind: 'success' }`
@@ -128,6 +136,8 @@ Agent 生命周期事件
   - `agent-aura-codex/src/hooks.ts` → `buildCodexMessage`
 
 #### 4.1.4 为 Codex 补 PostToolUseFailure 事件
+
+> 🟡 部分完成（2026-07-16）：已补 `Stop` 事件（`CODEX_HOOK_EVENTS` 新增 `Stop`，映射为 `idle`）。`PostToolUseFailure`、`StopFailure`、`SessionEnd` 仍缺失，待后续补齐。
 
 - **问题**：`CODEX_HOOK_EVENTS` 只有 8 个事件，缺 `PostToolUseFailure`、`Stop`、`StopFailure`、`SessionEnd`
 - **目标**：在 `CODEX_HOOK_EVENTS` 和 `CODEX_EVENT_TO_AGENT_STATE` 中补充缺失事件
@@ -288,6 +298,8 @@ Agent 生命周期事件
 | 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 |
 | 17 | （长期）AMOLED Apps 页面 | 中 | 无 |
 | 18 | （长期）三平台 CI 产物验证 | 中 | 无 |
+
+> 进度更新（2026-07-16）：#1 统一签名、#2 Session ID、#3 任务完成气泡 已完成；#4 Codex 事件仅补 `Stop`（PostToolUseFailure / StopFailure / SessionEnd 仍待补）。上述改动详见提交 `feat: 统一插件签名并补全 Claude/Codex 的 Session ID 与 Stop 任务完成气泡`。
 
 ---
 

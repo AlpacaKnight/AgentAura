@@ -309,6 +309,8 @@ export function buildKimiMessage(eventName: string, state: AgentState, payload?:
             return { text: `${tool} 已完成`, kind: 'success' };
         case 'PostToolUseFailure':
             return { text: `${tool} 执行出错`, kind: 'error', priority: 80 };
+        case 'Stop':
+            return { text: '任务已完成', kind: 'success' };
         default:
             return undefined;
     }

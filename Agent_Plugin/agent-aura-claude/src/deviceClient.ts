@@ -8,6 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { isDisabled, loadRuntimeState, saveConfig, saveRuntimeState, type Config, type RuntimeState } from './config';
 import { discoverFirst, type DiscoveredDevice } from './discovery';
+import { SendContext } from './types';
 
 const DEFAULT_PETDESKTOP_HEARTBEAT_MS = 10_000;
 const MIN_PETDESKTOP_HEARTBEAT_MS = 500;
@@ -50,7 +51,7 @@ export class RingLightClient {
     return this.config.host.length > 0;
   }
 
-  async sendAgentState(state: string): Promise<boolean> {
+  async sendAgentState(state: string, context?: SendContext): Promise<boolean> {
     if (!this.config.enabled || isDisabled()) {
       return true;
     }
@@ -70,8 +71,8 @@ export class RingLightClient {
     }
 
     const ok = this.config.transport === 'http'
-      ? await this.sendHttpAgentState(state, runtime)
-      : await this.sendCommand(`agent ${state}`);
+      ? await this.sendHttpAgentState(state, runtime, context)
+      : await this.sendCommand(`agent ${state}`, context);
 
     const latest = loadRuntimeState();
     if (ok) {
@@ -102,6 +103,7 @@ export class RingLightClient {
     kind: 'state' | 'activity' | 'success' | 'warning' | 'error' = 'activity',
     priority?: number,
     ttlMs?: number,
+    context?: SendContext,
   ): Promise<boolean> {
     if (!this.config.enabled || isDisabled()) {
       return true;
@@ -126,10 +128,10 @@ export class RingLightClient {
       text,
       priority,
       ttlMs,
-    });
+    }, context);
     // 404 时尝试重新注册一次再发。
     if (!result.ok && result.statusCode === 404) {
-      const reRegistered = await this.registerPetDesktop(runtime.lastState || 'init', runtime.heartbeatIntervalMs || 10_000, false);
+      const reRegistered = await this.registerPetDesktop(runtime.lastState || 'init', runtime.heartbeatIntervalMs || 10_000, false, context);
       if (!reRegistered) {
         return false;
       }
@@ -138,7 +140,7 @@ export class RingLightClient {
         text,
         priority,
         ttlMs,
-      });
+    }, context);
     }
     if (!result.ok) {
       return false;
@@ -187,7 +189,7 @@ export class RingLightClient {
     }
   }
 
-  async sendCommand(command: string): Promise<boolean> {
+  async sendCommand(command: string, context?: SendContext): Promise<boolean> {
     if (!this.config.enabled || isDisabled()) {
       return true;
     }
@@ -199,7 +201,7 @@ export class RingLightClient {
 
     switch (this.config.transport) {
       case 'http':
-        return this.httpPost('/api/cmd', command);
+        return this.httpPost('/api/cmd', command, context);
       case 'udp': {
         const body = await this.udpExchange(command, this.config.timeoutMs);
         return body !== null && (body === '' || body.startsWith('OK') || body.startsWith('{'));
@@ -279,12 +281,14 @@ export class RingLightClient {
     });
   }
 
-  httpPost(requestPath: string, body: string): Promise<boolean> {
+  httpPost(requestPath: string, body: string, context?: SendContext): Promise<boolean> {
     return new Promise((resolve) => {
       const headers: Record<string, string | number> = {
         'Content-Type': 'text/plain',
         'Content-Length': Buffer.byteLength(body),
       };
+      const sessionId = context?.sessionId || (loadRuntimeState().lastSessionId as string | undefined);
+      if (sessionId) headers['x-agentaura-session'] = sessionId;
       if (this.config.authToken) {
         headers.authorization = `Bearer ${this.config.authToken}`;
       }
@@ -455,31 +459,31 @@ export class RingLightClient {
     return this.config.port || (transport === 'udp' ? 8888 : 80);
   }
 
-  private async sendHttpAgentState(state: string, runtime: RuntimeState): Promise<boolean> {
+  private async sendHttpAgentState(state: string, runtime: RuntimeState, context?: SendContext): Promise<boolean> {
     if (runtime.httpTarget === 'firmware') {
-      return await this.sendFirmwareState(state) || await this.sendPetDesktopState(state, runtime);
+      return await this.sendFirmwareState(state, context) || await this.sendPetDesktopState(state, runtime, context);
     }
     if (runtime.httpTarget === 'petdesktop') {
-      return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state);
+      return await this.sendPetDesktopState(state, runtime, context) || await this.sendFirmwareState(state, context);
     }
-    return await this.sendPetDesktopState(state, runtime) || await this.sendFirmwareState(state);
+    return await this.sendPetDesktopState(state, runtime, context) || await this.sendFirmwareState(state, context);
   }
 
-  private async sendPetDesktopState(state: string, runtime: RuntimeState): Promise<boolean> {
+  private async sendPetDesktopState(state: string, runtime: RuntimeState, context?: SendContext): Promise<boolean> {
     const interval = clampHeartbeatInterval(runtime.heartbeatIntervalMs);
-    const registered = await this.ensurePetDesktopRegistration(state, interval, runtime);
+    const registered = await this.ensurePetDesktopRegistration(state, interval, runtime, context);
     if (!registered) {
       return false;
     }
 
     const instanceId = this.agentIdentity().instanceId;
-    let result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state });
+    let result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state }, context);
     if (!result.ok && result.statusCode === 404) {
-      const reRegistered = await this.registerPetDesktop(state, interval, false);
+      const reRegistered = await this.registerPetDesktop(state, interval, false, context);
       if (!reRegistered) {
         return false;
       }
-      result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state });
+      result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/state`, { state }, context);
     }
     if (!result.ok) {
       return false;
@@ -494,8 +498,8 @@ export class RingLightClient {
     return true;
   }
 
-  private async sendFirmwareState(state: string): Promise<boolean> {
-    const ok = await this.httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '');
+  private async sendFirmwareState(state: string, context?: SendContext): Promise<boolean> {
+    const ok = await this.httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '', context);
     if (!ok) {
       return false;
     }
@@ -510,22 +514,22 @@ export class RingLightClient {
     return true;
   }
 
-  private async ensurePetDesktopRegistration(state: string, intervalMs: number, runtime: RuntimeState): Promise<boolean> {
+  private async ensurePetDesktopRegistration(state: string, intervalMs: number, runtime: RuntimeState, context?: SendContext): Promise<boolean> {
     if (runtime.httpTarget === 'petdesktop' && runtime.petDesktopRegistered) {
       this.ensureHeartbeatProcess(intervalMs, runtime);
       return true;
     }
-    return this.registerPetDesktop(state, intervalMs, true);
+    return this.registerPetDesktop(state, intervalMs, true, context);
   }
 
-  private async registerPetDesktop(state: string, intervalMs: number, allowSpawn: boolean): Promise<boolean> {
+  private async registerPetDesktop(state: string, intervalMs: number, allowSpawn: boolean, context?: SendContext): Promise<boolean> {
     const identity = this.agentIdentity();
     const result = await this.httpJsonRequest('POST', '/api/v1/agents/register', {
       clientId: 'claude',
       instanceId: identity.instanceId,
       displayName: 'Claude Code',
       state,
-    });
+    }, context);
     if (!result.ok) {
       return false;
     }
@@ -591,7 +595,7 @@ export class RingLightClient {
     });
   }
 
-  private httpJsonRequest(method: string, requestPath: string, body?: unknown): Promise<JsonRequestResult> {
+  private httpJsonRequest(method: string, requestPath: string, body?: unknown, context?: SendContext): Promise<JsonRequestResult> {
     const text = body === undefined ? '' : JSON.stringify(body);
     return new Promise((resolve) => {
       const req = http.request({
@@ -601,7 +605,7 @@ export class RingLightClient {
         method,
         timeout: Math.max(this.config.timeoutMs, 1200),
         headers: {
-          ...this.httpHeaders(),
+          ...this.httpHeaders(context),
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(text),
         },
@@ -638,13 +642,15 @@ export class RingLightClient {
     });
   }
 
-  private httpHeaders(): http.OutgoingHttpHeaders {
+  private httpHeaders(context?: SendContext): http.OutgoingHttpHeaders {
     const identity = this.agentIdentity();
     const headers: http.OutgoingHttpHeaders = {
       'x-agentaura-client': 'claude',
       'x-agentaura-instance': identity.instanceId,
       'x-agentaura-name': 'Claude Code',
     };
+    const sessionId = context?.sessionId || (loadRuntimeState().lastSessionId as string | undefined);
+    if (sessionId) headers['x-agentaura-session'] = sessionId;
     if (this.config.authToken) {
       headers.authorization = `Bearer ${this.config.authToken}`;
     }

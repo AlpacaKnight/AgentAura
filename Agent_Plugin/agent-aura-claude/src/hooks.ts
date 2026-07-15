@@ -1,8 +1,8 @@
 'use strict';
 
-import { clearHookSuppression, hooksSuppressed, loadConfig, suppressHooks } from './config';
+import { clearHookSuppression, hooksSuppressed, loadConfig, loadRuntimeState, saveRuntimeState, suppressHooks } from './config';
 import { RingLightClient } from './deviceClient';
-import { isAgentState, type AgentState } from './types';
+import { isAgentState, type AgentState, type SendContext } from './types';
 
 const STDIN_READ_TIMEOUT_MS = 1000;
 
@@ -57,13 +57,19 @@ export async function runClaudeHook(eventArg: string): Promise<void> {
       return;
     }
     const state = mapClaudeEventToAgentState(eventName, payload);
+    const sessionId = extractSessionId(payload);
+    if (sessionId) {
+      const runtime = loadRuntimeState();
+      saveRuntimeState({ ...runtime, lastSessionId: sessionId });
+    }
+    const context: SendContext | undefined = sessionId ? { sessionId } : undefined;
     const client = new RingLightClient(loadConfig());
-    const ok = await client.sendAgentState(state);
+    const ok = await client.sendAgentState(state, context);
     if (ok) {
       // 发送 Hook 事件摘要到桌宠气泡（失败静默，绝不打断 Claude Code）。
       const message = buildClaudeMessage(eventName, state, payload);
       if (message) {
-        await client.sendMessage(message.text, message.kind, message.priority, message.ttlMs).catch(() => {});
+        await client.sendMessage(message.text, message.kind, message.priority, message.ttlMs, context).catch(() => {});
       }
     }
   } catch {
@@ -372,7 +378,19 @@ export function buildClaudeMessage(eventName: string, state: AgentState, payload
       return { text: `${tool} 已完成`, kind: 'success' };
     case 'PostToolUseFailure':
       return { text: `${tool} 执行出错`, kind: 'error', priority: 80 };
+    case 'Stop':
+      return { text: '任务已完成', kind: 'success' };
     default:
       return undefined;
   }
+}
+
+function extractSessionId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  for (const key of ['session_id', 'sessionId']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
 }

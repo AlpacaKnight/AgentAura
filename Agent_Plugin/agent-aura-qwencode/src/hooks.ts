@@ -54,7 +54,7 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
         if (ok) {
             const message = buildQwenMessage(eventName, state, payload);
             if (message) {
-                await client.sendMessage(message.text, context, message.kind, message.priority, message.ttlMs).catch(() => {});
+                await client.sendMessage(message.text, message.kind, message.priority, message.ttlMs, context).catch(() => {});
             }
         }
         if (state === 'idle' || state === 'offline') {
