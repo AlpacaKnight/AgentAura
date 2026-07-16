@@ -24,15 +24,15 @@
 
 ## 插件状态一览
 
-| 插件 | Agent 平台 | 安装方式 | 状态获取 | Hook 支持 | 配置页 | 状态 |
-|------|-----------|----------|----------|-----------|--------|------|
-| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 | AgentRunner API | 原生 | ✅ | ✅ 完善 |
-| **agent-aura-claude** | Claude Code | Marketplace / 托管 | Hooks + CLI | 原生 | ✅ | ✅ 完善 |
-| **agent-aura-codex** | Codex ~/.codex 配置 | 托管 | hooks.json 命令型 | `SessionStart`, `PreToolUse`, `PermissionRequest`, `PostToolUse` | ✅ | ✅ 完善 |
-| **agent-aura-kimi-code** | Kimi Code | 托管 | config.toml [[hooks]] | `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `Stop` | ✅ | ✅ 完善 |
-| **agent-aura-qwencode** | Qwen Code | 托管 + Qwen 扩展 | Hooks + 扩展事件 | 原生 + `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `Stop` | ✅ | ✅ 完善 |
-| **agent-aura-zcode** | ZCode | ZCode 插件市场 / 本地目录 | 原生插件 hooks | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `Stop` | ✅ | ✅ 完善 |
-| **agent-aura-copilot** | VS Code Copilot | VSIX 扩展 | Transcript 监听 | 无原生 hook，体验不稳定 | ❌ | ⚠️ 实验性 |
+| 插件 | Agent 平台 | 安装方式 | 状态获取 | Hook 支持 | 气泡 | 配置页 | 状态 |
+|------|-----------|----------|----------|-----------|:----:|--------|------|
+| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 | AgentRunner API | 原生 | ❌ | ✅ | ✅ 完善 |
+| **agent-aura-claude** | Claude Code | Marketplace / 托管 | Hooks + CLI | 原生 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-codex** | Codex ~/.codex 配置 | 托管 | hooks.json 命令型 | 官方 10 事件 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-kimi-code** | Kimi Code | 托管 | config.toml [[hooks]] | 15 事件 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-qwencode** | Qwen Code | 托管 + Qwen 扩展 | Hooks + 扩展事件 | 12 事件 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-zcode** | ZCode | ZCode 插件市场 / 本地目录 | 原生插件 hooks | 7 事件 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-copilot** | VS Code Copilot | VSIX 扩展 | Transcript 监听 | 无原生 hook | ❌ | ❌ | ⚠️ 实验性 |
 
 > **备注**：
 > - **PetDesktop 托管安装** 指在桌面应用的"插件"面板中一键安装；**外部安装**指通过各平台自带的包管理（npm、VSIX、Marketplace）手动安装。

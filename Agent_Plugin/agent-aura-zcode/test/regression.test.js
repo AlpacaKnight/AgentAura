@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const { loadConfig, saveConfig, loadRuntimeState, saveRuntimeState } = require('../out/config');
 const { RingLightClient } = require('../out/deviceClient');
-const { mapZcodeEventToAgentState, ZCODE_HOOK_EVENTS, ZCODE_EVENT_TO_AGENT_STATE } = require('../out/hooks');
+const { buildZcodeMessage, mapZcodeEventToAgentState, ZCODE_HOOK_EVENTS, ZCODE_EVENT_TO_AGENT_STATE } = require('../out/hooks');
 const { installZcodeHooks, uninstallZcodeHooks, buildHookCommand } = require('../out/installHooks');
 
 const ENV_KEYS = [
@@ -230,4 +230,20 @@ test('RingLightClient is not configured when host is empty', () => {
       assert.equal(client.isConfigured, false);
     });
   });
+});
+
+test('buildZcodeMessage builds bubble text for tool events', () => {
+  const tool = { tool_name: 'Bash' };
+  assert.deepEqual(buildZcodeMessage('PreToolUse', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
+  assert.deepEqual(buildZcodeMessage('PermissionRequest', 'waiting', tool), { text: 'Bash 等待授权', kind: 'warning', priority: 60 });
+  assert.deepEqual(buildZcodeMessage('PostToolUse', 'running', tool), { text: 'Bash 已完成', kind: 'success' });
+  assert.deepEqual(buildZcodeMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false }), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildZcodeMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false, error: 'command failed' }), { text: 'command failed', kind: 'error', priority: 80 });
+  assert.deepEqual(buildZcodeMessage('PostToolUseFailure', 'error', { tool_name: 'Bash', error: 'timeout' }), { text: 'timeout', kind: 'error', priority: 80 });
+  assert.deepEqual(buildZcodeMessage('PostToolUseFailure', 'error', tool), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildZcodeMessage('Stop', 'idle'), { text: '任务已完成', kind: 'success' });
+  assert.deepEqual(buildZcodeMessage('PreToolUse', 'busy', {}), { text: '正在运行 工具', kind: 'activity' });
+  assert.equal(buildZcodeMessage('Unknown', 'running'), undefined);
+  assert.equal(buildZcodeMessage('SessionEnd', 'offline'), undefined);
+  assert.deepEqual(buildZcodeMessage('  PreToolUse  ', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
 });

@@ -151,11 +151,7 @@ Agent 生命周期事件
 - **目标**：实现 Claude 插件的 PetDesktop 托管安装逻辑
 - **影响文件**：`PetDesktop/src-tauri/src/plugins/process.rs`
 
-#### 4.2.2 PetDesktop hooks() 纳入 Claude 和 ZCode
-
-- **问题**：`PetDesktop/src-tauri/src/plugins/model.rs:43-45` 的 `hooks()` 只对 Codex/Kimi/Qwen 返回 true，Claude（18 个事件）和 ZCode（有 `installHooks.ts`）被排除
-- **目标**：将 Claude 和 ZCode 纳入 PetDesktop 管理的 Hook 安装/卸载流程
-- **影响文件**：`PetDesktop/src-tauri/src/plugins/model.rs`、`PetDesktop/src-tauri/src/plugins/process.rs`
+> 说明：ZCode 和 Claude 均从插件包自动加载 `hooks/hooks.json`（通过 `${ZCODE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}` 变量），无需手动编辑配置文件。真正需要配置文件编辑的只有 Codex、Kimi、Qwen 三个插件，已正确在 `hooks()` 中。PetDesktop 无需为 ZCode/Claude 管理 Hooks。
 
 ### 4.3 中优先级 — 代码质量
 
@@ -197,20 +193,26 @@ Agent 生命周期事件
 
 #### 4.4.1 Qwen Code 接入 CI
 
+> ✅ 已完成（2026-07-16）：`agent-aura-qwencode` 已加入 `.github/workflows/petdesktop.yml` plugins job，执行 `npm ci && npm test`。
+
 - **问题**：`agent-aura-qwencode` 完全不在 `.github/workflows/petdesktop.yml` 的 plugins job 中
 - **目标**：添加 `npm ci && npm test` 步骤
 - **影响文件**：`.github/workflows/petdesktop.yml`
 
 #### 4.4.2 Kimi / ZCode / Copilot 在 CI 中启用测试
 
+> ✅ 已完成（2026-07-16）：Kimi 和 ZCode 的 CI 步骤从 `npm run compile` 改为 `npm test`。Copilot 保持 `npm run compile`（无测试文件）。
+
 - **问题**：CI 对 Kimi/ZCode/Copilot 只运行 `npm run compile`，跳过 `npm test`
-- **目标**：改为 `npm ci && npm test`
+- **目标**：改为 `npm ci && npm test`（Copilot 除外，无测试文件）
 - **影响文件**：`.github/workflows/petdesktop.yml`
 
 #### 4.4.3 补充气泡消息单元测试
 
-- **问题**：`buildClaudeMessage`、`buildKimiMessage`、`sendMessage`、`runHeartbeatLoop` 未被直接测试
-- **目标**：为各插件的 `buildXxxMessage` 和 `sendMessage` 添加回归测试
+> ✅ 已完成（2026-07-16）：五个插件的 `buildXxxMessage` 均已添加单元测试，覆盖 PreToolUse/PermissionRequest/PostToolUse(成功+失败+错误摘要)/PostToolUseFailure/Stop/SessionEnd(Qwen)/无工具名/未知事件/eventName trim 等场景。测试总数从 51 增至 60，全部通过。
+
+- **问题**：`buildClaudeMessage`、`buildKimiMessage` 等气泡消息构建函数未被直接测试
+- **目标**：为各插件的 `buildXxxMessage` 添加回归测试
 - **影响文件**：各插件 `test/regression.test.js`
 
 #### 4.4.4 三平台安装包产物验证
@@ -295,10 +297,9 @@ Agent 生命周期事件
 | 5 | 清理 Qwen / ZCode 调试日志 | 极小 | 无 | ✅ 已完成 |
 | 6 | 修复 ZCode Hook 抑制死代码 | 极小 | 无 | ✅ 已完成 |
 | 7 | 修复 Claude build 脚本 + 版本对齐 0.3.0 | 极小 | 无 | ✅ 已完成 |
-| 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 | 待开发 |
-| 9 | 补充气泡消息单元测试 | 中 | #1, #2 | 待开发 |
+| 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 | ✅ 已完成 |
+| 9 | 补充气泡消息单元测试 | 中 | #1, #2 | ✅ 已完成 |
 | 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 | 暂不做 |
-| 11 | PetDesktop hooks() 纳入 Claude/ZCode | 小 | #10 | 待开发 |
 | 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 | 暂不做 |
 | 13 | 更新过时文档 | 小 | #1-#7 | 待开发 |
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
@@ -313,8 +314,10 @@ Agent 生命周期事件
 > - #5 清理 Qwen/ZCode 调试日志 已完成
 > - #6 修复 ZCode Hook 抑制死代码 已完成
 > - #7 修复 Claude build 脚本 + 版本对齐 0.3.0 已完成
+> - #8 Qwen 接入 CI + Kimi/ZCode 启用测试 已完成（Copilot 除外，无测试文件）
+> - #9 五插件 `buildXxxMessage` 单元测试 已完成（测试总数 51→60，全部通过）
 > - #10 Claude 自动安装、#12 v2 动画 用户确认暂不做
-> - 剩余：#8 CI 测试、#9 气泡单元测试、#11 PetDesktop hooks() 纳入 ZCode、#13 文档、#14-#18 长期项
+> - 剩余：#13 文档、#14-#18 长期项
 
 ---
 
