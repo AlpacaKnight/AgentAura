@@ -83,6 +83,10 @@ String handleText(const String& cmd) {
       else if (val == "error") setPetState(PetState::ERROR);
       else if (val == "sleep") setPetState(PetState::SLEEP);
       else if (val == "offline") setPetState(PetState::OFFLINE);
+      else if (val == "running_right" || val == "right") setPetState(PetState::RUNNING_RIGHT);
+      else if (val == "running_left" || val == "left") setPetState(PetState::RUNNING_LEFT);
+      else if (val == "jumping" || val == "jump") setPetState(PetState::JUMPING);
+      else if (val == "waiting" || val == "wait") setPetState(PetState::WAITING);
       else return "ERR: unknown pet state";
       return "OK: pet state -> " + getPetStateString(state.pet_state);
     }
@@ -93,7 +97,7 @@ String handleText(const String& cmd) {
       return "OK: pet says \"" + val + "\"";
     }
 
-    return "ERR: usage: pet state [idle|running|thinking|speaking|error|sleep|offline]";
+    return "ERR: usage: pet state [idle|running|thinking|speaking|error|sleep|offline|running_right|running_left|jumping|waiting]";
   }
 
   // ---- agent 命令 ----

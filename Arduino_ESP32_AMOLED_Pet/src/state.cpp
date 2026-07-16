@@ -19,6 +19,10 @@ String getPetStateString(PetState ps) {
     case PetState::ERROR:    return "error";
     case PetState::SLEEP:    return "sleep";
     case PetState::OFFLINE:  return "offline";
+    case PetState::RUNNING_RIGHT: return "running_right";
+    case PetState::RUNNING_LEFT:  return "running_left";
+    case PetState::JUMPING:       return "jumping";
+    case PetState::WAITING:       return "waiting";
     default:                 return "unknown";
   }
 }

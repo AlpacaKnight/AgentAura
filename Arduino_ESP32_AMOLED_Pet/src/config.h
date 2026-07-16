@@ -44,7 +44,11 @@ enum class PetState : uint8_t {
   SPEAKING,
   ERROR,
   SLEEP,
-  OFFLINE
+  OFFLINE,
+  RUNNING_RIGHT,
+  RUNNING_LEFT,
+  JUMPING,
+  WAITING
 };
 
 enum class AgentType : uint8_t {

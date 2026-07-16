@@ -101,6 +101,9 @@ crash-reports/
 playwright-report/
 test-results/
 
+# Generated pet visual QA artifacts
+Arduino_ESP32_AMOLED_Pet/qa/
+
 # code Agent
 .workbuddy/
 .mimocode/

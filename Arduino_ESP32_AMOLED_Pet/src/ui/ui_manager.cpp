@@ -11,6 +11,7 @@
 #include "hal/touch.h"
 #include "pin_config.h"
 #include "state.h"
+#include "ui/tiquan_v2_idle.h"
 #include <Arduino.h>
 #include <lvgl.h>
 #include <esp_timer.h>
@@ -32,10 +33,16 @@ static lv_color_t* s_buf2 = nullptr;
 // LVGL 驱动
 static lv_disp_drv_t s_disp_drv;
 static lv_indev_drv_t s_indev_drv;
-static esp_timer_handle_t s_lvgl_tick_timer = nullptr;
+static uint32_t s_last_lvgl_tick_ms = 0;
 
 // 全局 UI 对象 (主界面)
 static lv_obj_t* s_screen_main = nullptr;
+static lv_obj_t* s_pet_image = nullptr;
+static lv_obj_t* s_pet_face = nullptr;
+static lv_obj_t* s_pet_eye_left = nullptr;
+static lv_obj_t* s_pet_eye_right = nullptr;
+static lv_obj_t* s_home_status_label = nullptr;
+static lv_obj_t* s_home_hint_label = nullptr;
 static lv_obj_t* s_pet_label = nullptr;
 static lv_obj_t* s_msg_label = nullptr;
 static lv_obj_t* s_hp_bar = nullptr;
@@ -63,6 +70,223 @@ enum class ActivePage : uint8_t {
   APPS
 };
 static ActivePage s_active_page = ActivePage::PET;
+static bool s_touch_tracking = false;
+static bool s_swipe_triggered = false;
+static int16_t s_touch_start_x = 0;
+static int16_t s_touch_start_y = 0;
+static uint32_t s_last_swipe_ms = 0;
+static uint8_t s_pet_frame_index = 0;
+static lv_timer_t* s_idle_anim_timer = nullptr;
+static uint32_t s_last_pet_frame_ms = 0;
+static bool s_ui_dirty = false;
+static PetState s_displayed_pet_state = PetState::IDLE;
+static const void* s_pet_frames[TIQUAN_IDLE_FRAME_COUNT] = {
+  &tiquan_idle_frames[0], &tiquan_idle_frames[1], &tiquan_idle_frames[2],
+  &tiquan_idle_frames[3], &tiquan_idle_frames[4], &tiquan_idle_frames[5],
+  &tiquan_idle_frames[6]
+};
+
+static void _idle_anim_timer_cb(lv_timer_t*) {
+  if (!s_pet_image || s_active_page != ActivePage::PET) return;
+  s_pet_frame_index = (s_pet_frame_index + 1) % TIQUAN_IDLE_FRAME_COUNT;
+  lv_img_set_src(s_pet_image, s_pet_frames[s_pet_frame_index]);
+  lv_obj_invalidate(s_pet_image);
+}
+
+#if 0 // External LittleFS animation decoder: disabled until independently validated.
+static bool s_pet_assets_ready = false;
+static bool s_pet_decode_active = false;
+static uint8_t s_pet_decode_failures = 0;
+static uint32_t s_pet_decode_remaining = 0;
+static uint32_t s_pet_decode_output = 0;
+static uint16_t s_pet_decode_run = 0;
+static uint16_t s_pet_decode_color = 0;
+static File s_pet_decode_file;
+static uint8_t s_pet_frame_buffer[TIQUAN_FRAME_BYTES];
+static lv_img_dsc_t s_pet_frame_dsc = {
+  { LV_IMG_CF_TRUE_COLOR, 0, 0, TIQUAN_FRAME_WIDTH, TIQUAN_FRAME_HEIGHT },
+  TIQUAN_FRAME_BYTES,
+  s_pet_frame_buffer
+};
+
+static uint8_t _animation_for_state(PetState pet_state) {
+  switch (pet_state) {
+    case PetState::IDLE:          return 0;
+    case PetState::RUNNING_RIGHT: return 1;
+    case PetState::RUNNING_LEFT:  return 2;
+    case PetState::SPEAKING:      return 3;
+    case PetState::JUMPING:       return 4;
+    case PetState::ERROR:         return 5;
+    case PetState::WAITING:       return 6;
+    case PetState::RUNNING:       return 7;
+    case PetState::THINKING:      return 8;
+    case PetState::OFFLINE:       return 9;
+    case PetState::SLEEP:         return 10;
+    default:                       return 0;
+  }
+}
+
+static bool _begin_pet_frame(PetState pet_state, uint8_t frame) {
+  if (!s_pet_assets_ready || !s_pet_image) return false;
+  uint8_t animation = _animation_for_state(pet_state);
+  uint8_t frame_count = tiquan_frame_counts[animation];
+  if (frame_count == 0) return false;
+  frame %= frame_count;
+  const TiquanFrameIndex& index = tiquan_frame_index[animation][frame];
+  s_pet_decode_file.close();
+  s_pet_decode_file = LittleFS.open("/pets/tiquan-v2/sprites.rle", FILE_READ);
+  if (!s_pet_decode_file || !s_pet_decode_file.seek(index.offset)) return false;
+  s_pet_decode_remaining = index.length;
+  s_pet_decode_output = 0;
+  s_pet_decode_run = 0;
+  s_pet_decode_active = true;
+  return true;
+}
+
+static void _service_pet_decode() {
+  if (!s_pet_decode_active) return;
+  uint16_t budget = 1024;
+  while (budget && s_pet_decode_active) {
+    if (s_pet_decode_run == 0) {
+      uint8_t record[4];
+      if (s_pet_decode_remaining < 4 || s_pet_decode_file.read(record, 4) != 4) goto failed;
+      s_pet_decode_remaining -= 4;
+      s_pet_decode_run = uint16_t(record[0]) | (uint16_t(record[1]) << 8);
+      s_pet_decode_color = uint16_t(record[2]) | (uint16_t(record[3]) << 8);
+    }
+    uint16_t pixels = min(s_pet_decode_run, budget);
+    if (s_pet_decode_output + uint32_t(pixels) * 2 > TIQUAN_FRAME_BYTES) goto failed;
+    for (uint16_t i = 0; i < pixels; ++i) {
+      s_pet_frame_buffer[s_pet_decode_output++] = s_pet_decode_color & 0xff;
+      s_pet_frame_buffer[s_pet_decode_output++] = s_pet_decode_color >> 8;
+    }
+    s_pet_decode_run -= pixels;
+    budget -= pixels;
+    if (s_pet_decode_output == TIQUAN_FRAME_BYTES) {
+      s_pet_decode_file.close();
+      s_pet_decode_active = false;
+      s_pet_decode_failures = 0;
+      lv_img_set_src(s_pet_image, &s_pet_frame_dsc);
+      lv_obj_invalidate(s_pet_image);
+    }
+  }
+  return;
+failed:
+  s_pet_decode_file.close();
+  s_pet_decode_active = false;
+  if (++s_pet_decode_failures >= 3) s_pet_assets_ready = false;
+  Serial.println(F("[pet] frame decode failed"));
+}
+#endif
+
+static void _enable_gesture_bubble(lv_obj_t* obj) {
+  if (!obj) return;
+  lv_obj_add_flag(obj, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  uint32_t child_count = lv_obj_get_child_cnt(obj);
+  for (uint32_t i = 0; i < child_count; ++i) {
+    _enable_gesture_bubble(lv_obj_get_child(obj, (int32_t)i));
+  }
+}
+static void _switch_page_by_swipe(int16_t dx, int16_t dy) {
+  if (abs(dx) < 55 || abs(dx) <= abs(dy)) return;
+  // 仅识别明显的横向滑动，避免普通点击和上下滚动触发页面切换。
+  if (abs(dx) < 55 || abs(dx) <= abs(dy)) return;
+  uint32_t now = millis();
+  if (now - s_last_swipe_ms < 400) return;
+  s_last_swipe_ms = now;
+
+  if (dx < 0) {
+    switch (s_active_page) {
+      case ActivePage::PET:      ui_show_apps(); break;
+      case ActivePage::APPS:     ui_show_settings(); break;
+      case ActivePage::SETTINGS: ui_show_pet(); break;
+    }
+  } else {
+    switch (s_active_page) {
+      case ActivePage::PET:      ui_show_settings(); break;
+      case ActivePage::SETTINGS: ui_show_apps(); break;
+      case ActivePage::APPS:     ui_show_pet(); break;
+    }
+  }
+  touchActivity();
+  return;
+
+#if 0
+
+  if (dx < 0) {  // 向左：进入下一页
+    switch (s_active_page) {
+      case ActivePage::PET:      ui_show_apps(); break;
+      case ActivePage::APPS:     ui_show_settings(); break;
+      case ActivePage::SETTINGS: ui_show_pet(); break;
+    }
+  } else {        // 向右：返回上一页
+    switch (s_active_page) {
+      case ActivePage::PET:      ui_show_settings(); break;
+      case ActivePage::SETTINGS: ui_show_apps(); break;
+      case ActivePage::APPS:     ui_show_pet(); break;
+    }
+  }
+  touchActivity();
+}
+
+#endif
+}
+
+static void _screen_gesture_cb(lv_event_t* e) {
+  (void)e;
+  lv_indev_t* indev = lv_indev_get_act();
+  if (!indev) return;
+
+  lv_dir_t dir = lv_indev_get_gesture_dir(indev);
+  if (dir == LV_DIR_LEFT) {
+    _switch_page_by_swipe(-100, 0);
+  } else if (dir == LV_DIR_RIGHT) {
+    _switch_page_by_swipe(100, 0);
+  }
+}
+
+static void _set_pet_visual(PetState pet_state) {
+  if (!s_pet_face || !s_pet_eye_left || !s_pet_eye_right) return;
+
+  lv_color_t face_color = lv_color_hex(0x243B53);
+  lv_color_t accent_color = lv_color_hex(0x38BDF8);
+  switch (pet_state) {
+    case PetState::RUNNING:  face_color = lv_color_hex(0x164E63); accent_color = lv_color_hex(0x22D3EE); break;
+    case PetState::THINKING: face_color = lv_color_hex(0x312E81); accent_color = lv_color_hex(0xA78BFA); break;
+    case PetState::SPEAKING: face_color = lv_color_hex(0x14532D); accent_color = lv_color_hex(0x4ADE80); break;
+    case PetState::ERROR:    face_color = lv_color_hex(0x7F1D1D); accent_color = lv_color_hex(0xFB7185); break;
+    case PetState::SLEEP:    face_color = lv_color_hex(0x334155); accent_color = lv_color_hex(0x94A3B8); break;
+    case PetState::OFFLINE:  face_color = lv_color_hex(0x3F3F46); accent_color = lv_color_hex(0xA1A1AA); break;
+    case PetState::RUNNING_RIGHT:
+    case PetState::RUNNING_LEFT: face_color = lv_color_hex(0x164E63); accent_color = lv_color_hex(0x22D3EE); break;
+    case PetState::JUMPING:  face_color = lv_color_hex(0x4C1D95); accent_color = lv_color_hex(0xC084FC); break;
+    case PetState::WAITING:  face_color = lv_color_hex(0x713F12); accent_color = lv_color_hex(0xFACC15); break;
+    case PetState::IDLE:
+    default: break;
+  }
+
+  lv_obj_set_style_bg_color(s_pet_face, face_color, 0);
+  lv_obj_set_style_border_color(s_pet_face, accent_color, 0);
+  lv_obj_set_style_bg_color(s_pet_eye_left, accent_color, 0);
+  lv_obj_set_style_bg_color(s_pet_eye_right, accent_color, 0);
+}
+
+static const char* _pet_state_text(PetState pet_state) {
+  switch (pet_state) {
+    case PetState::IDLE:          return "IDLE";
+    case PetState::RUNNING:       return "RUNNING";
+    case PetState::THINKING:      return "THINKING";
+    case PetState::SPEAKING:      return "SPEAKING";
+    case PetState::ERROR:         return "ERROR";
+    case PetState::SLEEP:         return "SLEEP";
+    case PetState::OFFLINE:       return "OFFLINE";
+    case PetState::RUNNING_RIGHT: return "RUN RIGHT";
+    case PetState::RUNNING_LEFT:  return "RUN LEFT";
+    case PetState::JUMPING:       return "JUMPING";
+    case PetState::WAITING:       return "WAITING";
+    default:                       return "READY";
+  }
+}
 
 // ==================== 显示驱动刷新回调 ====================
 static void disp_flush_cb(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p) {
@@ -74,27 +298,39 @@ static void disp_flush_cb(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t
   lv_disp_flush_ready(disp);
 }
 
-static void example_increase_lvgl_tick(void* arg) {
-  (void)arg;
-  lv_tick_inc(EXAMPLE_LVGL_TICK_PERIOD_MS);
-}
-
 // ==================== 触摸输入驱动 ====================
 static void touch_read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
   (void)drv;
   int16_t x = 0, y = 0;
 
   if (!hal::touch_available()) {
+    s_touch_tracking = false;
+    s_swipe_triggered = false;
     data->state = LV_INDEV_STATE_REL;
     return;
   }
 
   if (hal::touch_read(&x, &y)) {
+    if (!s_touch_tracking) {
+      s_touch_start_x = x;
+      s_touch_start_y = y;
+      s_touch_tracking = true;
+      s_swipe_triggered = false;
+    } else if (!s_swipe_triggered) {
+      int16_t dx = x - s_touch_start_x;
+      int16_t dy = y - s_touch_start_y;
+      if (abs(dx) >= 55 && abs(dx) > abs(dy)) {
+        _switch_page_by_swipe(dx, dy);
+        s_swipe_triggered = true;
+      }
+    }
     data->point.x = x;
     data->point.y = y;
     data->state = LV_INDEV_STATE_PR;
     touchActivity();
   } else {
+    s_touch_tracking = false;
+    s_swipe_triggered = false;
     data->state = LV_INDEV_STATE_REL;
   }
 }
@@ -111,16 +347,8 @@ void ui_init() {
   lv_init();
 
   // 参考官方教程：使用 esp_timer 为 LVGL 提供稳定 tick
-  if (s_lvgl_tick_timer == nullptr) {
-    const esp_timer_create_args_t lvgl_tick_timer_args = {
-      .callback = &example_increase_lvgl_tick,
-      .arg = nullptr,
-      .dispatch_method = ESP_TIMER_TASK,
-      .name = "lvgl_tick"
-    };
-    esp_timer_create(&lvgl_tick_timer_args, &s_lvgl_tick_timer);
-    esp_timer_start_periodic(s_lvgl_tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000);
-  }
+  s_last_lvgl_tick_ms = millis();
+  Serial.println(F("[ui] refresh clock: main-loop"));
 
   // 4. 配置显示缓冲区 (使用 PSRAM)
   size_t buf_size = LCD_WIDTH * 40 * sizeof(lv_color_t);
@@ -150,12 +378,16 @@ void ui_init() {
 
   // 7. 创建主界面
   s_screen_main = lv_obj_create(NULL);
+  lv_obj_add_event_cb(s_screen_main, _screen_gesture_cb, LV_EVENT_GESTURE, nullptr);
   lv_scr_load(s_screen_main);
 
   // 8. 初始化所有页面
   _ui_init_pet_screen();
   _ui_init_settings_screen();
   _ui_init_apps_screen();
+  _enable_gesture_bubble(s_screen_main);
+  _enable_gesture_bubble(s_screen_settings);
+  _enable_gesture_bubble(s_screen_apps);
 }
 
 // ==================== 创建桌宠主界面 ====================
@@ -163,12 +395,74 @@ static void _ui_init_pet_screen() {
   // 背景色 (深色主题)
   lv_obj_set_style_bg_color(s_screen_main, lv_color_hex(0x1a1a2e), 0);
 
-  // 宠物表情标签 (居中, 大号)
+  // 首页标题
+  lv_obj_t* title = lv_label_create(s_screen_main);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(0x38BDF8), 0);
+  lv_label_set_text(title, "AgentAura");
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 14);
+
+  // 使用 LVGL 原生图形绘制桌宠，避免没有图片资源时首页只剩占位文字。
+  s_pet_face = lv_obj_create(s_screen_main);
+  lv_obj_set_size(s_pet_face, 178, 178);
+  lv_obj_align(s_pet_face, LV_ALIGN_CENTER, 0, -18);
+  lv_obj_set_style_radius(s_pet_face, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(s_pet_face, lv_color_hex(0x243B53), 0);
+  lv_obj_set_style_border_width(s_pet_face, 4, 0);
+  lv_obj_set_style_border_color(s_pet_face, lv_color_hex(0x38BDF8), 0);
+  lv_obj_set_style_pad_all(s_pet_face, 0, 0);
+  lv_obj_clear_flag(s_pet_face, LV_OBJ_FLAG_SCROLLABLE);
+
+  s_pet_eye_left = lv_obj_create(s_pet_face);
+  lv_obj_set_size(s_pet_eye_left, 25, 36);
+  lv_obj_align(s_pet_eye_left, LV_ALIGN_CENTER, -34, -20);
+  lv_obj_set_style_radius(s_pet_eye_left, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(s_pet_eye_left, lv_color_hex(0x38BDF8), 0);
+  lv_obj_set_style_border_width(s_pet_eye_left, 0, 0);
+  lv_obj_set_style_pad_all(s_pet_eye_left, 0, 0);
+
+  s_pet_eye_right = lv_obj_create(s_pet_face);
+  lv_obj_set_size(s_pet_eye_right, 25, 36);
+  lv_obj_align(s_pet_eye_right, LV_ALIGN_CENTER, 34, -20);
+  lv_obj_set_style_radius(s_pet_eye_right, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(s_pet_eye_right, lv_color_hex(0x38BDF8), 0);
+  lv_obj_set_style_border_width(s_pet_eye_right, 0, 0);
+  lv_obj_set_style_pad_all(s_pet_eye_right, 0, 0);
+
+  lv_obj_t* mouth = lv_obj_create(s_pet_face);
+  lv_obj_set_size(mouth, 58, 10);
+  lv_obj_align(mouth, LV_ALIGN_CENTER, 0, 38);
+  lv_obj_set_style_radius(mouth, 5, 0);
+  lv_obj_set_style_bg_color(mouth, lv_color_hex(0x38BDF8), 0);
+  lv_obj_set_style_border_width(mouth, 0, 0);
+  lv_obj_set_style_pad_all(mouth, 0, 0);
+
+  // 使用指定的 Codex 缇犬 v2 idle 图集作为默认桌宠。
+  lv_obj_add_flag(s_pet_face, LV_OBJ_FLAG_HIDDEN);
+  s_pet_image = lv_img_create(s_screen_main);
+  lv_obj_set_size(s_pet_image, TIQUAN_IDLE_FRAME_WIDTH, TIQUAN_IDLE_FRAME_HEIGHT);
+  lv_obj_align(s_pet_image, LV_ALIGN_CENTER, 0, -18);
+  lv_img_set_src(s_pet_image, s_pet_frames[0]);
+  s_idle_anim_timer = lv_timer_create(_idle_anim_timer_cb, 500, nullptr);
+
+  // 状态文字放在图像下方，不再用 AURA 作为唯一首页内容。
   s_pet_label = lv_label_create(s_screen_main);
-  lv_obj_set_style_text_font(s_pet_label, &lv_font_montserrat_48, 0);
+  lv_obj_set_style_text_font(s_pet_label, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_color(s_pet_label, lv_color_hex(0xFFFFFF), 0);
-  lv_label_set_text(s_pet_label, "AURA");  // 默认占位文本，确保 ASCII 字体可见
-  lv_obj_center(s_pet_label);
+  lv_label_set_text(s_pet_label, "IDLE");
+  lv_obj_align(s_pet_label, LV_ALIGN_CENTER, 0, 92);
+
+  s_home_status_label = lv_label_create(s_screen_main);
+  lv_obj_set_style_text_font(s_home_status_label, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(s_home_status_label, lv_color_hex(0x94A3B8), 0);
+  lv_label_set_text(s_home_status_label, "Ready  |  USB / WiFi / BLE");
+  lv_obj_align(s_home_status_label, LV_ALIGN_TOP_MID, 0, 42);
+
+  s_home_hint_label = lv_label_create(s_screen_main);
+  lv_obj_set_style_text_font(s_home_hint_label, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(s_home_hint_label, lv_color_hex(0x64748B), 0);
+  lv_label_set_text(s_home_hint_label, "Hold BOOT for Apps");
+  lv_obj_align(s_home_hint_label, LV_ALIGN_BOTTOM_LEFT, 8, -6);
 
   // 消息气泡 (宠物的说话内容)
   s_msg_label = lv_label_create(s_screen_main);
@@ -183,6 +477,8 @@ static void _ui_init_pet_screen() {
   lv_obj_set_style_text_color(s_battery_label, lv_color_hex(0x22C55E), 0);
   lv_obj_align(s_battery_label, LV_ALIGN_BOTTOM_RIGHT, -5, -5);
   lv_label_set_text(s_battery_label, "BAT 100%");
+
+  _set_pet_visual(state.pet_state);
 
   // 倒计时标签 (5小时额度耗尽时显示)
   s_countdown_label = lv_label_create(s_screen_main);
@@ -215,11 +511,16 @@ static void _ui_init_pet_screen() {
 
 // ==================== UI 循环 ====================
 void ui_loop() {
+  uint32_t now = millis();
+  uint32_t tick_delta = now - s_last_lvgl_tick_ms;
+  if (tick_delta > 0) {
+    lv_tick_inc(tick_delta);
+    s_last_lvgl_tick_ms = now;
+  }
   lv_timer_handler();
 
   // 更新 UI 数据 (简单状态同步，后续可优化)
   static uint32_t s_last_update = 0;
-  uint32_t now = millis();
 
   if (now - s_last_update > 500) {  // 每500ms更新一次
     s_last_update = now;
@@ -231,16 +532,26 @@ void ui_loop() {
              state.battery_percent);
     lv_label_set_text(s_battery_label, batt);
 
-    // 更新宠物表情
-    switch (state.pet_state) {
-      case PetState::IDLE:     lv_label_set_text(s_pet_label, "IDLE"); break;
-      case PetState::RUNNING:  lv_label_set_text(s_pet_label, "RUN "); break;
-      case PetState::THINKING: lv_label_set_text(s_pet_label, "THNK"); break;
-      case PetState::SPEAKING: lv_label_set_text(s_pet_label, "TALK"); break;
-      case PetState::ERROR:    lv_label_set_text(s_pet_label, "ERR!"); break;
-      case PetState::SLEEP:    lv_label_set_text(s_pet_label, "SLP "); break;
-      case PetState::OFFLINE:  lv_label_set_text(s_pet_label, "OFF "); break;
-      default:                 lv_label_set_text(s_pet_label, "AURA"); break;
+    if (state.pet_state != s_displayed_pet_state) {
+
+    // 更新桌宠图形和状态文字
+    if (state.pet_state != s_displayed_pet_state) {
+      s_displayed_pet_state = state.pet_state;
+      s_pet_frame_index = 0;
+    }
+    lv_label_set_text(s_pet_label, _pet_state_text(state.pet_state));
+    _set_pet_visual(state.pet_state);
+    char connection[48];
+    snprintf(connection, sizeof(connection), "%s  |  %s  |  %s",
+             state.usb_connected ? "USB" : "USB -",
+             state.wifi_connected ? "WiFi" : "WiFi -",
+             state.ble_connected ? "BLE" : "BLE -");
+    lv_label_set_text(s_home_status_label, connection);
+
+    static PetState s_last_logged_pet_state = PetState::OFFLINE;
+    if (state.pet_state != s_last_logged_pet_state) {
+      Serial.printf("[ui] render pet state: %s\n", _pet_state_text(state.pet_state));
+      s_last_logged_pet_state = state.pet_state;
     }
 
     // 更新消息气泡
@@ -318,11 +629,25 @@ void ui_loop() {
       }
     }
   }
+
+#if 0
+
+  // 立即刷新本轮状态或动画变更，避免屏幕停留在启动首帧。
+  if (s_ui_dirty) {
 }
 
 // ==================== 创建设置页面 ====================
+}
+
+}
+
+#endif
+}
+}
+
 static void _ui_init_settings_screen() {
   s_screen_settings = lv_obj_create(NULL);
+  lv_obj_add_event_cb(s_screen_settings, _screen_gesture_cb, LV_EVENT_GESTURE, nullptr);
 
   // 背景色
   lv_obj_set_style_bg_color(s_screen_settings, lv_color_hex(0x1a1a2e), 0);
@@ -390,6 +715,7 @@ static void _ui_init_settings_screen() {
 // ==================== 创建 App 启动器页面 ====================
 static void _ui_init_apps_screen() {
   s_screen_apps = lv_obj_create(NULL);
+  lv_obj_add_event_cb(s_screen_apps, _screen_gesture_cb, LV_EVENT_GESTURE, nullptr);
 
   // 背景色
   lv_obj_set_style_bg_color(s_screen_apps, lv_color_hex(0x1a1a2e), 0);
