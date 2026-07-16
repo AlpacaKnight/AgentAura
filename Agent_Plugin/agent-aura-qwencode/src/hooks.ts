@@ -45,10 +45,8 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
         }
         const state = mapQwenEventToAgentState(eventName, payload);
         const context: SendContext | undefined = sessionId ? { sessionId } : undefined;
-        process.stderr.write(`[agentaura] hook ${eventName} -> ${state}\n`);
         const client = new RingLightClient(loadConfig());
         const ok = await client.sendAgentState(state, context);
-        process.stderr.write(`[agentaura] sendAgentState result=${ok}\n`);
         // 发送 Hook 事件摘要到桌宠气泡（失败静默，绝不打断 Qwen Code）。
         // idle/offline 也允许发送，因为 Stop/SessionEnd 事件需要显示"任务已完成"。
         if (ok) {
@@ -73,8 +71,8 @@ export async function runQwenHook(eventArg?: string): Promise<void> {
                 });
             }
         }
-    } catch (e) {
-        process.stderr.write(`[agentaura] hook error: ${e}\n`);
+    } catch {
+        // Hook commands must never break Qwen Code execution.
     }
 }
 

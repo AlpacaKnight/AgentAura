@@ -155,6 +155,7 @@ test('installCodexHooks installs only Codex-supported hook events', () => {
 
     const document = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
     assert.ok(document.hooks.SessionStart);
+    assert.ok(document.hooks.UserPromptSubmit);
     assert.ok(document.hooks.PreToolUse);
     assert.ok(document.hooks.PermissionRequest);
     assert.ok(document.hooks.PostToolUse);
@@ -162,14 +163,18 @@ test('installCodexHooks installs only Codex-supported hook events', () => {
     assert.ok(document.hooks.PostCompact);
     assert.ok(document.hooks.SubagentStart);
     assert.ok(document.hooks.SubagentStop);
+    assert.ok(document.hooks.Stop);
+    assert.equal(document.hooks.PostToolUseFailure, undefined);
+    assert.equal(document.hooks.StopFailure, undefined);
+    assert.equal(document.hooks.SessionEnd, undefined);
     assert.equal(document.hooks.Notification, undefined);
     assert.equal(document.hooks.PermissionDenied, undefined);
-    assert.equal(document.hooks.SessionEnd, undefined);
   }));
 });
 
 test('Codex supported hook events map to stable agent states', () => {
   assert.equal(mapCodexEventToAgentState('SessionStart'), 'init');
+  assert.equal(mapCodexEventToAgentState('UserPromptSubmit'), 'running');
   assert.equal(mapCodexEventToAgentState('PermissionRequest'), 'waiting');
   assert.equal(mapCodexEventToAgentState('PreToolUse', { permission_mode: 'ask', tool_name: 'Bash' }), 'busy');
   assert.equal(mapCodexEventToAgentState('PostToolUse', { permission_mode: 'ask', tool_name: 'Bash' }), 'running');
@@ -177,6 +182,7 @@ test('Codex supported hook events map to stable agent states', () => {
   assert.equal(mapCodexEventToAgentState('PostCompact'), 'running');
   assert.equal(mapCodexEventToAgentState('SubagentStart'), 'busy');
   assert.equal(mapCodexEventToAgentState('SubagentStop'), 'running');
+  assert.equal(mapCodexEventToAgentState('Stop'), 'idle');
 });
 
 test('idle fallback arms only after recoverable running states', () => {

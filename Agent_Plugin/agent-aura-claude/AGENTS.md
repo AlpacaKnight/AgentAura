@@ -39,13 +39,12 @@ agent-aura-claude/
 ## Build and Test Commands
 
 ```bash
-npm run build        # Runs lint + test:unit (the full CI check)
-npm run lint         # Syntax-checks all JS files via `node --check`
-npm run test:unit    # Runs test/regression.test.js via `node --test`
-npm test             # Alias for test:unit
+npm run build        # Compiles TypeScript and runs the regression tests
+npm run compile      # Compiles TypeScript only
+npm test             # Compiles TypeScript and runs the regression tests
 ```
 
-- **Lint**: `node --check` is run on `bin/agent-aura-claude.js`, every file in `src/`, and `test/regression.test.js`. There is no ESLint or Prettier configuration — the lint step is purely a syntax check.
+- **Lint**: There is no dedicated lint script or ESLint/Prettier configuration; `npm run build` performs TypeScript compilation and the Node.js regression tests.
 - **Tests**: Uses Node.js built-in test runner (`node:test` + `node:assert/strict`). Tests are in `test/regression.test.js`. Tests use isolated temp directories and env var snapshots to avoid side effects.
 
 ## Architecture and Module Division

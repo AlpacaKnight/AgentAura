@@ -10,6 +10,7 @@ const IDLE_FALLBACK_ARMING_EVENTS = new Set(['SessionStart', 'PostToolUse', 'Pos
 
 export const CODEX_HOOK_EVENTS = [
     'SessionStart',
+    'UserPromptSubmit',
     'PreToolUse',
     'PermissionRequest',
     'PostToolUse',
@@ -22,6 +23,7 @@ export const CODEX_HOOK_EVENTS = [
 
 export const CODEX_EVENT_TO_AGENT_STATE: Record<string, AgentState> = {
     SessionStart: 'init',
+    UserPromptSubmit: 'running',
     PreToolUse: 'busy',
     PermissionRequest: 'waiting',
     PostToolUse: 'running',

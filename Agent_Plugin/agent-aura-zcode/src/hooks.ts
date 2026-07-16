@@ -1,4 +1,4 @@
-import { loadConfig, loadRuntimeState, saveRuntimeState } from './config';
+import { clearHookSuppression, hooksSuppressed, loadConfig, loadRuntimeState, saveRuntimeState, suppressHooks } from './config';
 import { RingLightClient } from './deviceClient';
 import { AgentState, SendContext, isAgentState } from './types';
 
@@ -42,10 +42,8 @@ export async function runZcodeHook(eventArg?: string): Promise<void> {
         }
         const state = mapZcodeEventToAgentState(eventName, payload);
         const context: SendContext | undefined = sessionId ? { sessionId } : undefined;
-        process.stderr.write(`[agentaura] hook ${eventName} -> ${state}\n`);
         const client = new RingLightClient(loadConfig());
         const ok = await client.sendAgentState(state, context);
-        process.stderr.write(`[agentaura] sendAgentState result=${ok}\n`);
         // 发送 Hook 事件摘要到桌宠气泡（失败静默，绝不打断 ZCode）。
         // idle 也允许发送，因为 Stop 事件需要显示"任务已完成"。
         if (ok) {
@@ -54,17 +52,22 @@ export async function runZcodeHook(eventArg?: string): Promise<void> {
                 await client.sendMessage(message.text, message.kind, message.priority, message.ttlMs, context).catch(() => {});
             }
         }
-    } catch (e) {
-        process.stderr.write(`[agentaura] hook error: ${e}\n`);
+    } catch {
+        // Hook commands must never break ZCode execution.
     }
 }
 
 export function shouldSkipZcodeHook(eventName: string, payload: unknown): boolean {
     if (payloadContainsAgentAuraCommand(payload)) {
+        suppressHooks(undefined, 'agent-aura slash command');
         return true;
     }
     if (eventName === 'SessionStart' || eventName === 'UserPromptSubmit') {
+        clearHookSuppression();
         return false;
+    }
+    if (hooksSuppressed()) {
+        return true;
     }
     return false;
 }

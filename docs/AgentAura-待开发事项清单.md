@@ -38,22 +38,22 @@ Agent 生命周期事件
 
 | 特性 | Claude | Kimi | Codex | Qwen | ZCode |
 |------|:------:|:----:|:-----:|:----:|:-----:|
-| Hook 事件数 | **18** | 15 | 9 | 12 | 7 |
+| Hook 事件数 | **18** | 15 | 10 | 12 | 7 |
 | 气泡事件数 | 5 | 5 | 4 | **6** | 5 |
 | 任务完成气泡 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Session ID | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 心跳循环 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Idle fallback | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Hook 抑制 | ✅ | ❌ | ❌ | ❌ | ⚠️ 死代码 |
+| Hook 抑制 | ✅ | ❌ | ❌ | ❌ | ✅ |
 | PetDesktop 管理安装 | ❌ | ✅ | ✅ | ✅ | ❌ |
-| 残留调试日志 | ❌ | ❌ | ❌ | ⚠️ | ⚠️ |
+| 残留调试日志 | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### 3.1 Hook 事件覆盖矩阵
 
 | 事件 | Claude | Kimi | Codex | Qwen | ZCode |
 |------|:------:|:----:|:-----:|:----:|:-----:|
 | SessionStart | ✅ | ✅ | ✅ | ✅ | ✅ |
-| UserPromptSubmit | ✅ | ✅ | ❌ | ✅ | ✅ |
+| UserPromptSubmit | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PreToolUse | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PermissionRequest | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PermissionDenied | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -137,11 +137,11 @@ Agent 生命周期事件
 
 #### 4.1.4 为 Codex 补 PostToolUseFailure 事件
 
-> 🟡 部分完成（2026-07-16）：已补 `Stop` 事件（`CODEX_HOOK_EVENTS` 新增 `Stop`，映射为 `idle`）。`PostToolUseFailure`、`StopFailure`、`SessionEnd` 仍缺失，待后续补齐。
+> ✅ 已完成（2026-07-16）：已补官方支持的 `UserPromptSubmit` 事件（映射为 `running`），`CODEX_HOOK_EVENTS` 现覆盖官方全部 10 个事件。经查证 Codex CLI 官方文档（config-reference），`PostToolUseFailure`、`StopFailure`、`SessionEnd` **不在官方支持的 hook 事件列表中**——官方仅支持 10 个事件：SessionStart、UserPromptSubmit、PreToolUse、PermissionRequest、PostToolUse、PreCompact、PostCompact、SubagentStart、SubagentStop、Stop。故不纳入 `CODEX_HOOK_EVENTS`，避免安装 Codex 不会触发的无效 hook。工具失败已由 `PostToolUse` + `payloadSignalsError` 覆盖，无需 `PostToolUseFailure`。
 
-- **问题**：`CODEX_HOOK_EVENTS` 只有 8 个事件，缺 `PostToolUseFailure`、`Stop`、`StopFailure`、`SessionEnd`
-- **目标**：在 `CODEX_HOOK_EVENTS` 和 `CODEX_EVENT_TO_AGENT_STATE` 中补充缺失事件
-- **影响文件**：`agent-aura-codex/src/hooks.ts`、`agent-aura-codex/src/installHooks.ts`
+- **问题**：`CODEX_HOOK_EVENTS` 缺 `UserPromptSubmit`（官方支持）
+- **目标**：补 `UserPromptSubmit` 事件；`PostToolUseFailure`/`StopFailure`/`SessionEnd` 经查证非官方事件，不纳入
+- **影响文件**：`agent-aura-codex/src/hooks.ts`、`agent-aura-codex/test/regression.test.js`
 
 ### 4.2 高优先级 — PetDesktop 插件管理
 
@@ -161,6 +161,8 @@ Agent 生命周期事件
 
 #### 4.3.1 清理 Qwen / ZCode 残留调试日志
 
+> ✅ 已完成（2026-07-16）：Qwen 和 ZCode 的 `hooks.ts` 中 3 处 `process.stderr.write` 已删除，catch 块改为空 `catch {}`，与 Claude/Kimi/Codex 一致。
+
 - **问题**：Qwen `hooks.ts:48,51,77` 和 ZCode `hooks.ts:45,48,58` 每次 hook 触发都写 stderr
 - **目标**：移除或改为受 `debugEnabled()` 控制
 - **影响文件**：
@@ -169,17 +171,23 @@ Agent 生命周期事件
 
 #### 4.3.2 修复 ZCode Hook 抑制死代码
 
+> ✅ 已完成（2026-07-16）：`shouldSkipZcodeHook` 已参照 Claude 的 `shouldSkipClaudeHook` 重写：检测到 slash 命令时调用 `suppressHooks()`，SessionStart/UserPromptSubmit 时调用 `clearHookSuppression()`，并检查 `hooksSuppressed()` 实现时间窗口抑制。import 已补充三个抑制函数。
+
 - **问题**：ZCode 的 `config.ts` 定义了 `suppressHooks`/`clearHookSuppression`/`hooksSuppressed`，`index.ts` 调用了 `suppressHooks()`，但 `shouldSkipZcodeHook`（`hooks.ts:62-70`）从不读取 `hooksSuppressed()`，两个分支都 `return false`
 - **目标**：参照 Claude 的 `shouldSkipClaudeHook`（`hooks.ts:74-87`），在 `shouldSkipZcodeHook` 中加入 `hooksSuppressed()` 检查
 - **影响文件**：`agent-aura-zcode/src/hooks.ts`
 
 #### 4.3.3 修复 Claude build 脚本异常
 
-- **问题**：Claude `package.json` 的 `"build": "npm test"`，其他插件是 `"build": "npm run compile"`
-- **目标**：改为 `"build": "npm run compile"` 并添加 `package` 脚本
+> ✅ 已完成（2026-07-16）：Claude 新增 `"package": "bash scripts/build.sh --pack"`；`"build"` 保持为 `"npm test"`，因此构建流程会编译并运行回归测试。
+
+- **问题**：Claude 的打包脚本需要复用 `build.sh --pack`，同时构建不能跳过回归测试
+- **目标**：保留 `"build": "npm test"` 并添加 `"package": "bash scripts/build.sh --pack"`
 - **影响文件**：`Agent_Plugin/agent-aura-claude/package.json`
 
 #### 4.3.4 插件版本对齐
+
+> ✅ 已完成（2026-07-16）：Claude 和 Kimi 的 `version` 从 `0.1.0` 升至 `0.3.0`，与 Codex、Qwen、ZCode 对齐。
 
 - **问题**：Claude `0.1.0`、Kimi `0.1.0` 落后；Codex、Qwen、ZCode 已是 `0.3.0`
 - **目标**：Claude 和 Kimi 升版本至 `0.3.0`
@@ -278,28 +286,35 @@ Agent 生命周期事件
 
 ## 5. 建议开发顺序
 
-| 顺序 | 事项 | 工作量 | 依赖 |
-|:----:|------|:------:|:----:|
-| 1 | 统一 sendMessage / sendAgentState 签名 | 中 | 无 |
-| 2 | Claude / Codex 补 Session ID 支持 | 小 | #1 |
-| 3 | 统一气泡事件覆盖（补"任务完成"气泡） | 小 | 无 |
-| 4 | Codex 补 PostToolUseFailure / Stop 等事件 | 小 | 无 |
-| 5 | 清理 Qwen / ZCode 调试日志 | 极小 | 无 |
-| 6 | 修复 ZCode Hook 抑制死代码 | 极小 | 无 |
-| 7 | 修复 Claude build 脚本 + 版本对齐 | 极小 | 无 |
-| 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 |
-| 9 | 补充气泡消息单元测试 | 中 | #1, #2 |
-| 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 |
-| 11 | PetDesktop hooks() 纳入 Claude/ZCode | 小 | #10 |
-| 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 |
-| 13 | 更新过时文档 | 小 | #1-#7 |
-| 14 | （长期）气泡持久化 | 大 | 无 |
-| 15 | （长期）多 Agent 气泡展示 | 大 | 无 |
-| 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 |
-| 17 | （长期）AMOLED Apps 页面 | 中 | 无 |
-| 18 | （长期）三平台 CI 产物验证 | 中 | 无 |
+| 顺序 | 事项 | 工作量 | 依赖 | 状态 |
+|:----:|------|:------:|:----:|:----:|
+| 1 | 统一 sendMessage / sendAgentState 签名 | 中 | 无 | ✅ 已完成 |
+| 2 | Claude / Codex 补 Session ID 支持 | 小 | #1 | ✅ 已完成 |
+| 3 | 统一气泡事件覆盖（补"任务完成"气泡） | 小 | 无 | ✅ 已完成 |
+| 4 | Codex 补 UserPromptSubmit（官方 10 事件对齐） | 小 | 无 | ✅ 已完成 |
+| 5 | 清理 Qwen / ZCode 调试日志 | 极小 | 无 | ✅ 已完成 |
+| 6 | 修复 ZCode Hook 抑制死代码 | 极小 | 无 | ✅ 已完成 |
+| 7 | 修复 Claude build 脚本 + 版本对齐 0.3.0 | 极小 | 无 | ✅ 已完成 |
+| 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 | 待开发 |
+| 9 | 补充气泡消息单元测试 | 中 | #1, #2 | 待开发 |
+| 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 | 暂不做 |
+| 11 | PetDesktop hooks() 纳入 Claude/ZCode | 小 | #10 | 待开发 |
+| 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 | 暂不做 |
+| 13 | 更新过时文档 | 小 | #1-#7 | 待开发 |
+| 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
+| 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |
+| 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | 待开发 |
+| 17 | （长期）AMOLED Apps 页面 | 中 | 无 | 待开发 |
+| 18 | （长期）三平台 CI 产物验证 | 中 | 无 | 待开发 |
 
-> 进度更新（2026-07-16）：#1 统一签名、#2 Session ID、#3 任务完成气泡 已完成；#4 Codex 事件仅补 `Stop`（PostToolUseFailure / StopFailure / SessionEnd 仍待补）。上述改动详见提交 `feat: 统一插件签名并补全 Claude/Codex 的 Session ID 与 Stop 任务完成气泡`。
+> 进度更新（2026-07-16）：
+> - #1 统一签名、#2 Session ID、#3 任务完成气泡 已完成
+> - #4 Codex 补 `UserPromptSubmit`，覆盖官方全部 10 个事件已完成；`PostToolUseFailure`/`StopFailure`/`SessionEnd` 经查证非官方 Codex 事件，不纳入
+> - #5 清理 Qwen/ZCode 调试日志 已完成
+> - #6 修复 ZCode Hook 抑制死代码 已完成
+> - #7 修复 Claude build 脚本 + 版本对齐 0.3.0 已完成
+> - #10 Claude 自动安装、#12 v2 动画 用户确认暂不做
+> - 剩余：#8 CI 测试、#9 气泡单元测试、#11 PetDesktop hooks() 纳入 ZCode、#13 文档、#14-#18 长期项
 
 ---
 
