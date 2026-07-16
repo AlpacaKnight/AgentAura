@@ -4,6 +4,9 @@
  * ============================================================
  */
 #include "ui/ui_manager.h"
+#include "comm/comm_manager.h"
+#include "comm/wifi_manager.h"
+#include "comm/ble_server.h"
 #include "hal/display.h"
 #include "hal/touch.h"
 #include "pin_config.h"
@@ -46,6 +49,8 @@ static lv_obj_t* s_screen_settings = nullptr;
 
 // App 启动器页面
 static lv_obj_t* s_screen_apps = nullptr;
+static lv_obj_t* s_apps_wifi_label = nullptr;
+static lv_obj_t* s_apps_ble_label = nullptr;
 
 // 审批回调
 static void (*s_approval_on_confirm)(void) = nullptr;
@@ -300,6 +305,18 @@ void ui_loop() {
         ui_hide_approval();
       }
     }
+
+    // Apps 页面: 刷新 WiFi/蓝牙开关标签
+    if (s_active_page == ActivePage::APPS) {
+      if (s_apps_wifi_label) {
+        lv_label_set_text(s_apps_wifi_label,
+          state.wifi_enabled == RadioState::ON ? "WiFi: ON" : "WiFi: OFF");
+      }
+      if (s_apps_ble_label) {
+        lv_label_set_text(s_apps_ble_label,
+          state.ble_enabled == RadioState::ON ? "BLE: ON" : "BLE: OFF");
+      }
+    }
   }
 }
 
@@ -360,9 +377,14 @@ static void _ui_init_settings_screen() {
   lv_obj_align(back_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
   lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x0EA5E9), 0);
   lv_obj_t* back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, "返回");
+  lv_label_set_text(back_lbl, "Back");
   lv_obj_center(back_lbl);
   lv_obj_set_style_text_color(back_lbl, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_add_event_cb(back_btn, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    ui_show_pet();
+  }, LV_EVENT_CLICKED, NULL);
 }
 
 // ==================== 创建 App 启动器页面 ====================
@@ -379,12 +401,59 @@ static void _ui_init_apps_screen() {
   lv_label_set_text(title, "Apps");
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 15);
 
-  // 占位提示
-  lv_obj_t* placeholder = lv_label_create(s_screen_apps);
-  lv_obj_set_style_text_font(placeholder, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(placeholder, lv_color_hex(0x64748B), 0);
-  lv_label_set_text(placeholder, "Apps (WIP)");
-  lv_obj_center(placeholder);
+  // 滚动列表
+  lv_obj_t* list = lv_list_create(s_screen_apps);
+  lv_obj_set_size(list, LCD_WIDTH - 40, LCD_HEIGHT - 130);
+  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 50);
+  lv_obj_set_style_bg_color(list, lv_color_hex(0x1a1a2e), 0);
+  lv_obj_set_style_border_width(list, 0, 0);
+  lv_obj_set_style_pad_row(list, 4, 0);
+
+  // 导航: 设置
+  lv_obj_t* btn_settings = lv_list_add_btn(list, nullptr, "Settings");
+  lv_obj_set_style_bg_color(btn_settings, lv_color_hex(0x2a2a3e), 0);
+  lv_obj_set_style_text_color(btn_settings, lv_color_hex(0xcbd5e1), 0);
+  lv_obj_add_event_cb(btn_settings, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    ui_show_settings();
+  }, LV_EVENT_CLICKED, NULL);
+
+  // 导航: 桌宠主页
+  lv_obj_t* btn_pet = lv_list_add_btn(list, nullptr, "Pet");
+  lv_obj_set_style_bg_color(btn_pet, lv_color_hex(0x2a2a3e), 0);
+  lv_obj_set_style_text_color(btn_pet, lv_color_hex(0xcbd5e1), 0);
+  lv_obj_add_event_cb(btn_pet, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    ui_show_pet();
+  }, LV_EVENT_CLICKED, NULL);
+
+  // 快捷开关: WiFi
+  lv_obj_t* btn_wifi = lv_list_add_btn(list, nullptr, "");
+  s_apps_wifi_label = lv_label_create(btn_wifi);
+  lv_obj_set_style_text_font(s_apps_wifi_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_apps_wifi_label, lv_color_hex(0xcbd5e1), 0);
+  lv_obj_center(s_apps_wifi_label);
+  lv_obj_set_style_bg_color(btn_wifi, lv_color_hex(0x2a2a3e), 0);
+  lv_obj_add_event_cb(btn_wifi, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    comm::wifi_toggle(state.wifi_enabled != RadioState::ON);
+  }, LV_EVENT_CLICKED, NULL);
+
+  // 快捷开关: 蓝牙
+  lv_obj_t* btn_ble = lv_list_add_btn(list, nullptr, "");
+  s_apps_ble_label = lv_label_create(btn_ble);
+  lv_obj_set_style_text_font(s_apps_ble_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_apps_ble_label, lv_color_hex(0xcbd5e1), 0);
+  lv_obj_center(s_apps_ble_label);
+  lv_obj_set_style_bg_color(btn_ble, lv_color_hex(0x2a2a3e), 0);
+  lv_obj_add_event_cb(btn_ble, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    comm::ble_toggle(state.ble_enabled != RadioState::ON);
+  }, LV_EVENT_CLICKED, NULL);
 
   // 返回按钮
   lv_obj_t* back_btn = lv_btn_create(s_screen_apps);
@@ -392,9 +461,14 @@ static void _ui_init_apps_screen() {
   lv_obj_align(back_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
   lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x0EA5E9), 0);
   lv_obj_t* back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, "返回");
+  lv_label_set_text(back_lbl, "Back");
   lv_obj_center(back_lbl);
   lv_obj_set_style_text_color(back_lbl, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_add_event_cb(back_btn, [](lv_event_t* e) {
+    (void)e;
+    touchActivity();
+    ui_show_pet();
+  }, LV_EVENT_CLICKED, NULL);
 }
 
 // ==================== 页面切换 ====================

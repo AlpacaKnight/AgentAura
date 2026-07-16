@@ -404,8 +404,8 @@ uv run pio device monitor -e esp32c6 -p /dev/ttyACM0 -b 115200
 | WebSocket | `state.h` 有 `ws_connected` 标志，但未实现 |
 | 屏幕常亮 | `SCREEN_ALWAYS_ON=1`，调试模式下禁用自动息屏（dim/off 超时不生效） |
 | `pet.emotion` | 占位字段，始终为空字符串 |
-| Apps 页面 | `screen apps` 切换到 App 启动器，当前为占位（WIP） |
-| BOOT 长按 | 短按切换语音，长按功能待定 |
+| Apps 页面 | `screen apps` 切换到 App 启动器，已实现页面导航（设置、桌宠主页）和快捷开关（WiFi、蓝牙） |
+| BOOT 长按 | 短按切换语音，长按 1s 切换到 Apps 页面 |
 
 ---
 

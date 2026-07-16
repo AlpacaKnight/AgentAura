@@ -76,8 +76,9 @@ static void on_boot_short() {
 }
 
 static void on_boot_long() {
-  Serial.println(F("[event] BOOT long press"));
-  // TODO: 待定功能
+  Serial.println(F("[event] BOOT long press -> Apps"));
+  touchActivity();
+  ui::ui_show_apps();
 }
 
 static void on_pwr_short() {

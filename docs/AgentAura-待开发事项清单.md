@@ -260,9 +260,11 @@ Agent 生命周期事件
 
 #### 4.6.2 AMOLED 桌宠 Apps 页面
 
+> ✅ 已完成（2026-07-16）：Apps 页面从 `"Apps (WIP)"` 占位重写为功能完整的 App 启动器（页面导航 + 快捷开关）。使用 `lv_list_create` 滚动列表，包含 Settings、Pet 导航项和 WiFi、蓝牙快捷开关（点击切换状态，500ms 刷新标签文字）。修复了 Settings 和 Apps 页面 Back 按钮无事件回调的死按钮问题。Boot 长按（1s）从空 TODO 实现为切换到 Apps 页面。编译验证通过（RAM 23%、Flash 60%）。
+
 - **问题**：`ui_manager.cpp:386` — `"Apps (WIP)"` 占位；`main.cpp:80` — `// TODO: 待定功能` 长按未实现
 - **目标**：实现 Apps 页面内容和长按功能
-- **影响文件**：`Arduino_ESP32_AMOLED_Pet/src/ui/ui_manager.cpp`、`Arduino_ESP32_AMOLED_Pet/src/main.cpp`
+- **影响文件**：`Arduino_ESP32_AMOLED_Pet/src/ui/ui_manager.cpp`、`Arduino_ESP32_AMOLED_Pet/src/main.cpp`、`Arduino_ESP32_AMOLED_Pet/doc/API.md`
 
 #### 4.6.3 固件测试接入 CI
 
@@ -309,7 +311,7 @@ Agent 生命周期事件
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
 | 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |
 | 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | 待开发 |
-| 17 | （长期）AMOLED Apps 页面 | 中 | 无 | 待开发 |
+| 17 | （长期）AMOLED Apps 页面 | 中 | 无 | ✅ 已完成 |
 | 18 | （长期）三平台 CI 产物验证 | 中 | 无 | 待开发 |
 
 > 进度更新（2026-07-16）：
@@ -322,7 +324,8 @@ Agent 生命周期事件
 > - #9 五插件 `buildXxxMessage` 单元测试 已完成（测试总数 51→60，全部通过）
 > - #10 Claude 自动安装、#12 v2 动画 用户确认暂不做
 > - #13 README 气泡列 + AMOLED API 文档 已完成
-> - 剩余：#14-#18 长期项（气泡持久化、多 Agent 展示、ESP32 BLE、AMOLED Apps、三平台 CI）
+> - #17 AMOLED Apps 页面 + Boot 长按 已完成（App 启动器：页面导航 + 快捷开关，编译通过）
+> - 剩余：#14 气泡持久化、#15 多 Agent 展示、#16 ESP32 BLE、#18 三平台 CI
 
 ---
 
