@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1450" viewBox="0 0 1920 1450">
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1500" viewBox="0 0 1920 1500">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#10192b"/></linearGradient>
     <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -12,85 +12,86 @@
       .line{fill:none;stroke:#7dd3fc;stroke-width:2.4;marker-end:url(#arrow)}.amber{fill:none;stroke:#fbbf24;stroke-width:2.6;marker-end:url(#arrowAmber)}.dash{stroke-dasharray:8 7}
     </style>
   </defs>
-  <rect width="1920" height="1450" fill="url(#bg)"/>
+  <rect width="1920" height="1500" fill="url(#bg)"/>
   <text x="60" y="68" class="title">AgentAura 完整调用流程</text>
-  <text x="60" y="101" class="sub">Agent / IDE 事件 → 插件状态映射 → 多协议传输 → PetDesktop 仲裁 / ESP32 固件 → 桌宠动画与 WS2812B 灯效</text>
+  <text x="60" y="101" class="sub">Agent / IDE 事件 → 插件状态映射 + 气泡摘要 → 多协议传输 → PetDesktop 仲裁 / 气泡队列 / ESP32 固件 → 桌宠动画与 WS2812B 灯效</text>
 
   <!-- lanes -->
-  <rect x="45" y="135" width="310" height="1190" rx="20" class="lane"/><text x="70" y="175" class="laneTitle">① Agent / IDE 事件源</text>
-  <rect x="375" y="135" width="320" height="1190" rx="20" class="lane"/><text x="400" y="175" class="laneTitle">② AgentAura 插件层</text>
-  <rect x="715" y="135" width="290" height="1190" rx="20" class="lane"/><text x="740" y="175" class="laneTitle">③ 调用方式</text>
-  <rect x="1025" y="135" width="430" height="1190" rx="20" class="lane"/><text x="1050" y="175" class="laneTitle">④ App / 固件处理</text>
-  <rect x="1475" y="135" width="400" height="1190" rx="20" class="lane"/><text x="1500" y="175" class="laneTitle">⑤ 输出 / 外部入口</text>
+  <rect x="45" y="135" width="310" height="1240" rx="20" class="lane"/><text x="70" y="175" class="laneTitle">① Agent / IDE 事件源</text>
+  <rect x="375" y="135" width="320" height="1240" rx="20" class="lane"/><text x="400" y="175" class="laneTitle">② AgentAura 插件层</text>
+  <rect x="715" y="135" width="290" height="1240" rx="20" class="lane"/><text x="740" y="175" class="laneTitle">③ 调用方式</text>
+  <rect x="1025" y="135" width="430" height="1240" rx="20" class="lane"/><text x="1050" y="175" class="laneTitle">④ App / 固件处理</text>
+  <rect x="1475" y="135" width="400" height="1240" rx="20" class="lane"/><text x="1500" y="175" class="laneTitle">⑤ 输出 / 外部入口</text>
 
   <!-- sources -->
-  <g><rect x="70" y="210" width="260" height="105" class="box agent"/><text x="90" y="242" class="h">Codex CLI Hooks</text><text x="90" y="270" class="t">SessionStart · PreToolUse</text><text x="90" y="294" class="t">Permission · PostToolUse · Stop</text></g>
+  <g><rect x="70" y="210" width="260" height="105" class="box agent"/><text x="90" y="242" class="h">Codex CLI Hooks</text><text x="90" y="270" class="t">SessionStart · PreToolUse</text><text x="90" y="294" class="t">Permission · PostToolUse</text></g>
   <g><rect x="70" y="335" width="260" height="105" class="box agent"/><text x="90" y="367" class="h">Claude Code Hooks</text><text x="90" y="395" class="t">Marketplace + hooks.json</text><text x="90" y="419" class="t">会话 · 工具 · 审批 · 停止</text></g>
-  <g><rect x="70" y="460" width="260" height="105" class="box agent"/><text x="90" y="492" class="h">Kimi Code Hooks</text><text x="90" y="520" class="t">config.toml [[hooks]]</text><text x="90" y="544" class="t">stdin JSON 生命周期事件</text></g>
-  <g><rect x="70" y="585" width="260" height="105" class="box agent"/><text x="90" y="617" class="h">ZCode Hooks</text><text x="90" y="645" class="t">插件内 hooks.json</text><text x="90" y="669" class="t">7 个 hook 生命周期事件</text></g>
+  <g><rect x="70" y="460" width="260" height="105" class="box agent"/><text x="90" y="492" class="h">Kimi Code Hooks</text><text x="90" y="520" class="t">config.toml [[hooks]]</text><text x="90" y="544" class="t">SessionStart · 工具 · 停止等</text></g>
+  <g><rect x="70" y="585" width="260" height="105" class="box agent"/><text x="90" y="617" class="h">ZCode Hooks</text><text x="90" y="645" class="t">插件内 hooks.json</text><text x="90" y="669" class="t">SessionStart · 工具 · 停止等</text></g>
   <g><rect x="70" y="710" width="260" height="105" class="box agent"/><text x="90" y="742" class="h">Qwen Code CLI Hooks</text><text x="90" y="770" class="t">扩展系统 hooks</text><text x="90" y="794" class="t">会话 · 工具 · 审批事件</text></g>
   <g><rect x="70" y="835" width="260" height="105" class="box agent"/><text x="90" y="867" class="h">VS Code Copilot</text><text x="90" y="895" class="t">Chat transcript</text><text x="90" y="919" class="t">终端 / 会话观察</text></g>
   <g><rect x="70" y="960" width="260" height="105" class="box agent"/><text x="90" y="992" class="h">QwenPaw</text><text x="90" y="1020" class="t">AgentRunner</text><text x="90" y="1044" class="t">ApprovalService</text></g>
   <g><rect x="70" y="1110" width="260" height="120" class="box out"/><text x="90" y="1144" class="h">用户 / 管理界面</text><text x="90" y="1174" class="t">手动状态与灯效</text><text x="90" y="1200" class="t">连接配置 / Agent 锁定</text></g>
 
   <!-- plugins -->
-  <g><rect x="400" y="210" width="270" height="105" class="box agent"/><text x="420" y="242" class="h">agent-aura-codex</text><text x="420" y="272" class="t">hooks.ts → DeviceClient</text></g>
-  <g><rect x="400" y="335" width="270" height="105" class="box agent"/><text x="420" y="367" class="h">agent-aura-claude</text><text x="420" y="397" class="t">hooks.js → RingLightClient</text><text x="420" y="421" class="tiny">/agent-aura-claude:aura</text></g>
-  <g><rect x="400" y="460" width="270" height="105" class="box agent"/><text x="420" y="492" class="h">agent-aura-kimi-code</text><text x="420" y="522" class="t">hooks.ts → DeviceClient</text></g>
-  <g><rect x="400" y="585" width="270" height="105" class="box agent"/><text x="420" y="617" class="h">agent-aura-zcode</text><text x="420" y="647" class="t">hooks → RingLightClient</text><text x="420" y="671" class="tiny">HTTP/UDP/Serial 桥接</text></g>
-  <g><rect x="400" y="710" width="270" height="105" class="box agent"/><text x="420" y="742" class="h">agent-aura-qwencode</text><text x="420" y="772" class="t">hooks.ts → DeviceClient</text><text x="420" y="796" class="tiny">含 Qwen Code 扩展安装</text></g>
-  <g><rect x="400" y="835" width="270" height="105" class="box agent"/><text x="420" y="867" class="h">agent-aura-copilot</text><text x="420" y="897" class="t">Watcher → StateMapper</text><text x="420" y="921" class="tiny">→ DeviceClient</text></g>
-  <g><rect x="400" y="960" width="270" height="105" class="box agent"/><text x="420" y="992" class="h">qwenpaw-plugin</text><text x="420" y="1022" class="t">runner / approval → mapper</text><text x="420" y="1046" class="tiny">→ client.py</text></g>
-  <g filter="url(#glow)"><rect x="400" y="1100" width="270" height="190" class="box desk"/><text x="420" y="1134" class="h">统一状态映射</text><text x="420" y="1168" class="t">init · running · busy</text><text x="420" y="1196" class="t">waiting · idle · error</text><text x="420" y="1224" class="t">offline · upgrade</text><text x="420" y="1260" class="tiny">去抖 / 失败冷却 / fire-and-forget</text></g>
+  <g><rect x="400" y="210" width="270" height="125" class="box agent"/><text x="420" y="242" class="h">agent-aura-codex</text><text x="420" y="272" class="t">hooks.ts → DeviceClient</text><text x="420" y="296" class="tiny">buildCodexMessage → sendMessage</text><text x="420" y="318" class="tiny">idle-fallback 定时器</text></g>
+  <g><rect x="400" y="350" width="270" height="125" class="box agent"/><text x="420" y="382" class="h">agent-aura-claude</text><text x="420" y="412" class="t">hooks.ts → RingLightClient</text><text x="420" y="436" class="tiny">buildClaudeMessage → sendMessage</text><text x="420" y="458" class="tiny">/agent-aura-claude:aura</text></g>
+  <g><rect x="400" y="490" width="270" height="125" class="box agent"/><text x="420" y="522" class="h">agent-aura-kimi-code</text><text x="420" y="552" class="t">hooks.ts → DeviceClient</text><text x="420" y="576" class="tiny">buildKimiMessage → sendMessage</text></g>
+  <g><rect x="400" y="630" width="270" height="125" class="box agent"/><text x="420" y="662" class="h">agent-aura-zcode</text><text x="420" y="692" class="t">hooks → RingLightClient</text><text x="420" y="716" class="tiny">buildZcodeMessage → sendMessage</text><text x="420" y="738" class="tiny">HTTP/UDP/Serial 桥接</text></g>
+  <g><rect x="400" y="770" width="270" height="125" class="box agent"/><text x="420" y="802" class="h">agent-aura-qwencode</text><text x="420" y="832" class="t">hooks.ts → DeviceClient</text><text x="420" y="856" class="tiny">buildQwenMessage → sendMessage</text><text x="420" y="878" class="tiny">含 Qwen Code 扩展安装</text></g>
+  <g><rect x="400" y="910" width="270" height="105" class="box agent"/><text x="420" y="942" class="h">agent-aura-copilot</text><text x="420" y="972" class="t">Watcher → StateMapper</text><text x="420" y="996" class="tiny">→ DeviceClient</text></g>
+  <g><rect x="400" y="1030" width="270" height="105" class="box agent"/><text x="420" y="1062" class="h">qwenpaw-plugin</text><text x="420" y="1092" class="t">runner / approval → mapper</text><text x="420" y="1116" class="tiny">→ client.py</text></g>
+  <g filter="url(#glow)"><rect x="400" y="1160" width="270" height="190" class="box desk"/><text x="420" y="1194" class="h">统一状态映射</text><text x="420" y="1228" class="t">init · running · busy</text><text x="420" y="1256" class="t">waiting · idle · error</text><text x="420" y="1284" class="t">offline · upgrade</text><text x="420" y="1320" class="tiny">去抖 / 失败冷却 / fire-and-forget</text></g>
 
   <!-- source/plugin arrows -->
-  <path d="M330 262 H400" class="line"/><path d="M330 387 H400" class="line"/><path d="M330 512 H400" class="line"/><path d="M330 637 H400" class="line"/><path d="M330 762 H400" class="line"/><path d="M330 887 H400" class="line"/><path d="M330 1012 H400" class="line"/>
-  <path d="M535 315 V1100" class="line"/><path d="M560 440 V1100" class="line"/><path d="M585 565 V1100" class="line"/><path d="M610 690 V1100" class="line"/><path d="M635 815 V1100" class="line"/><path d="M660 940 V1100" class="line"/><path d="M685 1065 V1100" class="line"/>
+  <path d="M330 262 H400" class="line"/><path d="M330 412 H400" class="line"/><path d="M330 552 H400" class="line"/><path d="M330 692 H400" class="line"/><path d="M330 832 H400" class="line"/><path d="M330 962 H400" class="line"/><path d="M330 1082 H400" class="line"/>
+  <path d="M535 335 V1160" class="line"/><path d="M560 475 V1160" class="line"/><path d="M585 615 V1160" class="line"/><path d="M610 755 V1160" class="line"/><path d="M635 895 V1160" class="line"/><path d="M660 1015 V1160" class="line"/><path d="M685 1135 V1160" class="line"/>
 
   <!-- transports -->
-  <g><rect x="745" y="245" width="230" height="150" class="box proto"/><text x="770" y="280" class="h">HTTP</text><text x="770" y="310" class="t">ESP32 :80</text><text x="770" y="336" class="t">PetDesktop :47831</text><text x="770" y="365" class="tiny">POST /api/agent?state=...</text><text x="770" y="384" class="tiny">POST /api/cmd · Bearer Token</text></g>
-  <g><rect x="745" y="430" width="230" height="125" class="box proto"/><text x="770" y="465" class="h">UDP :8888</text><text x="770" y="495" class="t">文本：agent busy\n</text><text x="770" y="525" class="tiny">auth &lt;token&gt; &lt;command&gt;</text></g>
-  <g><rect x="745" y="590" width="230" height="125" class="box proto"/><text x="770" y="625" class="h">USB CDC Serial</text><text x="770" y="655" class="t">文本命令 + 换行</text><text x="770" y="685" class="t">115200 baud</text></g>
-  <g><rect x="745" y="760" width="230" height="145" class="box proto" stroke-dasharray="8 6"/><text x="770" y="795" class="h">UDP 广播发现</text><text x="770" y="825" class="t">discover / ping / who</text><text x="770" y="852" class="t">255.255.255.255:8888</text><text x="770" y="880" class="tiny">返回 IP / HTTP 端口 / caps JSON</text></g>
-  <path d="M670 1150 C720 1150 705 320 745 320" class="amber"/><path d="M670 1180 C720 1180 705 492 745 492" class="amber"/><path d="M670 1210 C720 1210 705 652 745 652" class="amber"/>
+  <g><rect x="745" y="245" width="230" height="175" class="box proto"/><text x="770" y="280" class="h">HTTP</text><text x="770" y="310" class="t">ESP32 :80 / PetDesktop :47831</text><text x="770" y="340" class="tiny">POST /api/agent?state=...</text><text x="770" y="360" class="tiny">POST /api/cmd · Bearer Token</text><text x="770" y="385" class="tiny">POST /api/v1/agents/{id}/state</text><text x="770" y="405" class="tiny">POST /api/v1/agents/{id}/message</text></g>
+  <g><rect x="745" y="455" width="230" height="125" class="box proto"/><text x="770" y="490" class="h">UDP :8888</text><text x="770" y="520" class="t">文本：agent busy\n</text><text x="770" y="550" class="tiny">auth &lt;token&gt; &lt;command&gt;</text></g>
+  <g><rect x="745" y="615" width="230" height="125" class="box proto"/><text x="770" y="650" class="h">USB CDC Serial</text><text x="770" y="680" class="t">文本命令 + 换行</text><text x="770" y="710" class="t">115200 baud</text></g>
+  <g><rect x="745" y="785" width="230" height="145" class="box proto" stroke-dasharray="8 6"/><text x="770" y="820" class="h">UDP 广播发现</text><text x="770" y="850" class="t">discover / ping / who</text><text x="770" y="877" class="t">255.255.255.255:8888</text><text x="770" y="905" class="tiny">返回 IP / HTTP 端口 / caps JSON</text></g>
+  <path d="M670 1210 C720 1210 705 332 745 332" class="amber"/><path d="M670 1240 C720 1240 705 517 745 517" class="amber"/><path d="M670 1270 C720 1270 705 677 745 677" class="amber"/>
 
   <!-- PetDesktop -->
-  <g><rect x="1050" y="205" width="380" height="480" class="box desk"/><text x="1080" y="245" class="h">PetDesktop · Tauri 2 / Rust / React</text>
+  <g><rect x="1050" y="205" width="380" height="530" class="box desk"/><text x="1080" y="245" class="h">PetDesktop · Tauri 2 / Rust / React</text>
     <rect x="1080" y="275" width="320" height="78" class="box desk"/><text x="1100" y="307" class="h">HTTP / UDP 兼容接入</text><text x="1100" y="334" class="tiny">/api/agent · /api/cmd · /api/state</text>
-    <rect x="1080" y="370" width="320" height="82" class="box desk"/><text x="1100" y="402" class="h">多 Agent API</text><text x="1100" y="429" class="tiny">register · heartbeat 10s · state · selection</text>
-    <rect x="1080" y="470" width="320" height="100" class="box desk"/><text x="1100" y="502" class="h">AppCore 状态仲裁</text><text x="1100" y="530" class="t">锁定优先 → 状态优先级</text><text x="1100" y="554" class="tiny">error &gt; waiting &gt; upgrade &gt; busy ...</text>
-    <rect x="1080" y="590" width="145" height="64" class="box out"/><text x="1097" y="620" class="h">React 管理 App</text><text x="1097" y="642" class="tiny">snapshot-changed</text>
-    <rect x="1255" y="590" width="145" height="64" class="box out"/><text x="1275" y="620" class="h">透明桌宠</text><text x="1275" y="642" class="tiny">状态 → 动画行</text>
+    <rect x="1080" y="370" width="320" height="82" class="box desk"/><text x="1100" y="402" class="h">多 Agent API</text><text x="1100" y="429" class="tiny">register · heartbeat 10s · state · message</text>
+    <rect x="1080" y="470" width="320" height="70" class="box desk"/><text x="1100" y="500" class="h">气泡消息队列</text><text x="1100" y="527" class="tiny">per-agent VecDeque(20) · 去重 · 优先级 · TTL</text>
+    <rect x="1080" y="560" width="320" height="100" class="box desk"/><text x="1100" y="592" class="h">AppCore 状态仲裁</text><text x="1100" y="620" class="t">锁定优先 → 状态优先级</text><text x="1100" y="644" class="tiny">error &gt; waiting &gt; upgrade &gt; busy ...</text>
+    <rect x="1080" y="680" width="145" height="64" class="box out"/><text x="1097" y="710" class="h">React 管理 App</text><text x="1097" y="732" class="tiny">snapshot-changed</text>
+    <rect x="1255" y="680" width="145" height="64" class="box out"/><text x="1275" y="708" class="h">透明桌宠</text><text x="1275" y="730" class="tiny">动画 + 气泡</text>
   </g>
-  <g><rect x="1050" y="735" width="380" height="150" class="box desk"/><text x="1080" y="775" class="h">Hardware Worker</text><text x="1080" y="807" class="t">mpsc 队列 · effectiveState</text><text x="1080" y="835" class="t">HTTP / UDP / Serial 桥接</text><text x="1080" y="861" class="tiny">透传：rgb / effect / brightness / speed / power / reset</text></g>
-  <path d="M975 320 H1080" class="line"/><path d="M975 492 C1030 492 1020 320 1080 320" class="line"/><path d="M975 652 C1010 652 1010 810 1050 810" class="line"/>
-  <path d="M1240 570 V590" class="line"/><path d="M1240 570 C1240 580 1328 580 1328 590" class="line"/><path d="M1240 570 V735" class="line"/>
-  <path d="M330 1170 C760 1370 930 620 1080 620" class="line dash"/>
+  <g><rect x="1050" y="770" width="380" height="150" class="box desk"/><text x="1080" y="810" class="h">Hardware Worker</text><text x="1080" y="842" class="t">mpsc 队列 · effectiveState</text><text x="1080" y="870" class="t">HTTP / UDP / Serial 桥接</text><text x="1080" y="896" class="tiny">透传：rgb / effect / brightness / speed / power / reset</text></g>
+  <path d="M975 332 H1080" class="line"/><path d="M975 517 C1030 517 1020 411 1080 411" class="line"/><path d="M975 677 C1010 677 1010 845 1050 845" class="line"/>
+  <path d="M1240 660 V680" class="line"/><path d="M1328 660 C1328 670 1328 670 1328 680" class="line"/><path d="M1240 660 V770" class="line"/>
+  <path d="M330 1170 C760 1420 930 710 1080 710" class="line dash"/>
 
   <!-- ESP32 -->
-  <g><rect x="1050" y="930" width="380" height="230" class="box hw"/><text x="1080" y="970" class="h">ESP32 Ring Light Firmware</text>
-    <rect x="1080" y="995" width="320" height="45" class="box hw"/><text x="1100" y="1024" class="t">REST :80 · UDP :8888 · Serial · BLE · MQTT</text>
-    <rect x="1080" y="1060" width="96" height="62" class="box hw"/><text x="1092" y="1088" class="h">Command</text><text x="1092" y="1110" class="tiny">Parser</text>
-    <rect x="1192" y="1060" width="96" height="62" class="box hw"/><text x="1204" y="1088" class="h">Effect</text><text x="1204" y="1110" class="tiny">Engine</text>
-    <rect x="1304" y="1060" width="96" height="62" class="box hw"/><text x="1317" y="1088" class="h">FastLED</text><text x="1317" y="1110" class="tiny">Driver</text>
+  <g><rect x="1050" y="965" width="380" height="230" class="box hw"/><text x="1080" y="1005" class="h">ESP32 Ring Light Firmware</text>
+    <rect x="1080" y="1030" width="320" height="45" class="box hw"/><text x="1100" y="1059" class="t">REST :80 · UDP :8888 · Serial · BLE · MQTT</text>
+    <rect x="1080" y="1095" width="96" height="62" class="box hw"/><text x="1092" y="1123" class="h">Command</text><text x="1092" y="1145" class="tiny">Parser</text>
+    <rect x="1192" y="1095" width="96" height="62" class="box hw"/><text x="1204" y="1123" class="h">Effect</text><text x="1204" y="1145" class="tiny">Engine</text>
+    <rect x="1304" y="1095" width="96" height="62" class="box hw"/><text x="1317" y="1123" class="h">FastLED</text><text x="1317" y="1145" class="tiny">Driver</text>
   </g>
-  <path d="M975 350 C1010 350 1000 1018 1080 1018" class="amber"/><path d="M975 492 C1015 492 1000 1018 1080 1018" class="amber"/><path d="M975 652 C1020 652 1000 1018 1080 1018" class="amber"/><text x="986" y="922" class="tiny">直连路线</text>
-  <path d="M1240 885 V930" class="line"/><text x="1254" y="913" class="tiny">桥接路线</text>
-  <path d="M1176 1091 H1192" class="line"/><path d="M1288 1091 H1304" class="line"/>
+  <path d="M975 362 C1010 362 1000 1053 1080 1053" class="amber"/><path d="M975 517 C1015 517 1000 1053 1080 1053" class="amber"/><path d="M975 677 C1020 677 1000 1053 1080 1053" class="amber"/><text x="986" y="957" class="tiny">直连路线</text>
+  <path d="M1240 920 V965" class="line"/><text x="1254" y="948" class="tiny">桥接路线</text>
+  <path d="M1176 1126 H1192" class="line"/><path d="M1288 1126 H1304" class="line"/>
 
   <!-- outputs/external -->
-  <g filter="url(#glow)"><rect x="1510" y="250" width="330" height="125" class="box out"/><text x="1540" y="290" class="h">桌宠动画输出</text><text x="1540" y="322" class="t">effectiveState → spritesheet</text><text x="1540" y="348" class="tiny">闲逛 · 置顶 · 鼠标穿透</text></g>
-  <g filter="url(#glow)"><rect x="1510" y="930" width="330" height="150" class="box out"/><text x="1540" y="974" class="h">WS2812B 环形灯</text><text x="1540" y="1008" class="t">颜色 · 呼吸 · 跑马 · 闪烁</text><text x="1540" y="1040" class="tiny">物理状态可视化输出</text></g>
+  <g filter="url(#glow)"><rect x="1510" y="250" width="330" height="150" class="box out"/><text x="1540" y="290" class="h">桌宠动画 + 气泡输出</text><text x="1540" y="322" class="t">effectiveState → spritesheet</text><text x="1540" y="348" class="t">PetBubble 状态模板 + 事件摘要</text><text x="1540" y="376" class="tiny">闲逛 · 置顶 · 鼠标穿透</text></g>
+  <g filter="url(#glow)"><rect x="1510" y="965" width="330" height="150" class="box out"/><text x="1540" y="1009" class="h">WS2812B 环形灯</text><text x="1540" y="1043" class="t">颜色 · 呼吸 · 跑马 · 闪烁</text><text x="1540" y="1075" class="tiny">物理状态可视化输出</text></g>
   <g><rect x="1510" y="500" width="330" height="250" class="box proto" stroke-dasharray="8 6"/><text x="1540" y="540" class="h">ESP32 额外入口</text><text x="1540" y="580" class="t">浏览器 Web 控制页 / AP 配网</text><text x="1540" y="620" class="t">BLE App / GATT Client</text><text x="1540" y="660" class="t">MQTT Broker / 自动化平台</text><text x="1540" y="705" class="tiny">这些路径不经过 Agent 插件</text></g>
-  <path d="M1400 622 C1470 622 1460 312 1510 312" class="line"/><path d="M1400 1091 C1460 1091 1460 1005 1510 1005" class="line"/><path d="M1510 625 C1460 625 1460 1018 1400 1018" class="line dash"/>
+  <path d="M1400 712 C1470 712 1460 325 1510 325" class="line"/><path d="M1400 1126 C1460 1126 1460 1040 1510 1040" class="line"/><path d="M1510 625 C1460 625 1460 1053 1400 1053" class="line dash"/>
 
   <!-- discovery -->
-  <path d="M975 832 C1020 832 1010 314 1080 314" class="line dash"/><path d="M975 850 C1030 850 1000 1018 1080 1018" class="line dash"/>
+  <path d="M975 857 C1020 857 1010 314 1080 314" class="line dash"/><path d="M975 875 C1030 875 1000 1053 1080 1053" class="line dash"/>
 
   <!-- legend/footer -->
-  <rect x="60" y="1350" width="1800" height="65" rx="14" fill="#0b1526" stroke="#26364f"/>
-  <path d="M90 1382 H160" class="line"/><text x="175" y="1388" class="t">主调用 / 状态流</text>
-  <path d="M355 1382 H425" class="line dash"/><text x="440" y="1388" class="t">发现 / 可选入口</text>
-  <path d="M635 1382 H705" class="amber"/><text x="720" y="1388" class="t">协议传输</text>
-  <text x="980" y="1388" class="t">两条主链路：A 插件直连 ESP32　B 插件 → PetDesktop 仲裁/桌宠 → ESP32</text>
+  <rect x="60" y="1400" width="1800" height="65" rx="14" fill="#0b1526" stroke="#26364f"/>
+  <path d="M90 1432 H160" class="line"/><text x="175" y="1438" class="t">主调用 / 状态流</text>
+  <path d="M355 1432 H425" class="line dash"/><text x="440" y="1438" class="t">发现 / 可选入口</text>
+  <path d="M635 1432 H705" class="amber"/><text x="720" y="1438" class="t">协议传输</text>
+  <text x="980" y="1438" class="t">两条主链路：A 插件直连 ESP32　B 插件 → PetDesktop 仲裁 / 桌宠 / 气泡 → ESP32</text>
 </svg>
