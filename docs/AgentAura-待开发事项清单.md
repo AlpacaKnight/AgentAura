@@ -274,15 +274,19 @@ Agent 生命周期事件
 
 #### 4.7.1 更新 README 插件状态表
 
+> ✅ 已完成（2026-07-16）：Root `README.md` 插件状态表已新增"气泡"列，标注各插件的气泡支持状态（Claude/Codex/Kimi/Qwen/ZCode ✅，QwenPaw/Copilot ❌）。Codex 事件列已更新为"官方 10 事件"。
+
 - **问题**：Root `README.md` 插件状态表未反映气泡支持情况
 - **目标**：在状态列中标注气泡支持（如新增"气泡"列）
 - **影响文件**：`README.md`
 
 #### 4.7.2 AMOLED 固件 API 文档
 
+> ✅ 已完成（2026-07-16）：新增 `Arduino_ESP32_AMOLED_Pet/doc/API.md`，涵盖文本指令集、JSON 指令协议（state_sync / approval_request / approval_response）、USB 串口、HTTP REST API、WiFi AP 配网、BLE GATT 服务、统一状态 JSON、状态枚举、构建与烧录、已知限制，共 11 节。
+
 - **问题**：AMOLED 固件只有构建指南，无协议/API 文档（RingLight 有 `doc/API.md`）
 - **目标**：编写 AMOLED 通信协议文档
-- **影响文件**：`Arduino_ESP32_AMOLED_Pet/` 新增 `doc/API.md`
+- **影响文件**：`Arduino_ESP32_AMOLED_Pet/doc/API.md`
 
 ---
 
@@ -301,7 +305,7 @@ Agent 生命周期事件
 | 9 | 补充气泡消息单元测试 | 中 | #1, #2 | ✅ 已完成 |
 | 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 | 暂不做 |
 | 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 | 暂不做 |
-| 13 | 更新过时文档 | 小 | #1-#7 | 待开发 |
+| 13 | 更新过时文档 | 小 | #1-#7 | ✅ 已完成 |
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
 | 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |
 | 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | 待开发 |
@@ -317,7 +321,8 @@ Agent 生命周期事件
 > - #8 Qwen 接入 CI + Kimi/ZCode 启用测试 已完成（Copilot 除外，无测试文件）
 > - #9 五插件 `buildXxxMessage` 单元测试 已完成（测试总数 51→60，全部通过）
 > - #10 Claude 自动安装、#12 v2 动画 用户确认暂不做
-> - 剩余：#13 文档、#14-#18 长期项
+> - #13 README 气泡列 + AMOLED API 文档 已完成
+> - 剩余：#14-#18 长期项（气泡持久化、多 Agent 展示、ESP32 BLE、AMOLED Apps、三平台 CI）
 
 ---
 
