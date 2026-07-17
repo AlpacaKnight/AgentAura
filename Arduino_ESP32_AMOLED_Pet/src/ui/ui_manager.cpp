@@ -14,11 +14,9 @@
 #include "ui/tiquan_v2_idle.h"
 #include <Arduino.h>
 #include <lvgl.h>
-#include <esp_timer.h>
+#include <esp_heap_caps.h>
 
 namespace ui {
-
-#define EXAMPLE_LVGL_TICK_PERIOD_MS 2
 
 // 前向声明
 static void _ui_init_pet_screen();
@@ -28,12 +26,10 @@ static void _ui_init_apps_screen();
 // LVGL 显示缓冲区
 static lv_disp_draw_buf_t s_draw_buf;
 static lv_color_t* s_buf1 = nullptr;
-static lv_color_t* s_buf2 = nullptr;
 
 // LVGL 驱动
 static lv_disp_drv_t s_disp_drv;
 static lv_indev_drv_t s_indev_drv;
-static uint32_t s_last_lvgl_tick_ms = 0;
 
 // 全局 UI 对象 (主界面)
 static lv_obj_t* s_screen_main = nullptr;
@@ -77,8 +73,6 @@ static int16_t s_touch_start_y = 0;
 static uint32_t s_last_swipe_ms = 0;
 static uint8_t s_pet_frame_index = 0;
 static lv_timer_t* s_idle_anim_timer = nullptr;
-static uint32_t s_last_pet_frame_ms = 0;
-static bool s_ui_dirty = false;
 static PetState s_displayed_pet_state = PetState::IDLE;
 static const void* s_pet_frames[TIQUAN_IDLE_FRAME_COUNT] = {
   &tiquan_idle_frames[0], &tiquan_idle_frames[1], &tiquan_idle_frames[2],
@@ -293,8 +287,13 @@ static void disp_flush_cb(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
 
+#if LV_COLOR_16_SWAP
+  hal::gfx->draw16bitBeRGBBitmap(area->x1, area->y1,
+                                  (uint16_t*)&color_p->full, w, h);
+#else
   hal::gfx->draw16bitRGBBitmap(area->x1, area->y1,
-                                (uint16_t*)color_p, w, h);
+                                (uint16_t*)&color_p->full, w, h);
+#endif
   lv_disp_flush_ready(disp);
 }
 
@@ -346,21 +345,18 @@ void ui_init() {
   // 3. 初始化 LVGL
   lv_init();
 
-  // 参考官方教程：使用 esp_timer 为 LVGL 提供稳定 tick
-  s_last_lvgl_tick_ms = millis();
-  Serial.println(F("[ui] refresh clock: main-loop"));
-
-  // 4. 配置显示缓冲区 (使用 PSRAM)
+  // 4. ESP32-C6 没有 PSRAM，按 Arduino_GFX LVGL 示例使用单内部 RAM 缓冲区
   size_t buf_size = LCD_WIDTH * 40 * sizeof(lv_color_t);
-  if (psramFound()) {
-    s_buf1 = (lv_color_t*)ps_malloc(buf_size);
-    s_buf2 = (lv_color_t*)ps_malloc(buf_size);
-  } else {
-    s_buf1 = (lv_color_t*)malloc(buf_size);
-    s_buf2 = (lv_color_t*)malloc(buf_size);
+  s_buf1 = (lv_color_t*)heap_caps_malloc(buf_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (!s_buf1) {
+    s_buf1 = (lv_color_t*)heap_caps_malloc(buf_size, MALLOC_CAP_8BIT);
+  }
+  if (!s_buf1) {
+    Serial.println(F("[ui] LVGL draw buffer allocation FAILED!"));
+    return;
   }
 
-  lv_disp_draw_buf_init(&s_draw_buf, s_buf1, s_buf2, LCD_WIDTH * 40);
+  lv_disp_draw_buf_init(&s_draw_buf, s_buf1, nullptr, LCD_WIDTH * 40);
 
   // 5. 注册显示驱动
   lv_disp_drv_init(&s_disp_drv);
@@ -388,6 +384,9 @@ void ui_init() {
   _enable_gesture_bubble(s_screen_main);
   _enable_gesture_bubble(s_screen_settings);
   _enable_gesture_bubble(s_screen_apps);
+  lv_obj_invalidate(s_screen_main);
+  lv_refr_now(nullptr);
+  Serial.println(F("[ui] init done"));
 }
 
 // ==================== 创建桌宠主界面 ====================
@@ -512,12 +511,20 @@ static void _ui_init_pet_screen() {
 // ==================== UI 循环 ====================
 void ui_loop() {
   uint32_t now = millis();
-  uint32_t tick_delta = now - s_last_lvgl_tick_ms;
-  if (tick_delta > 0) {
-    lv_tick_inc(tick_delta);
-    s_last_lvgl_tick_ms = now;
+
+  // 在调用 handler 的同一任务推进 tick，确保 LVGL 动画定时器持续运行。
+  static uint32_t s_last_tick = now;
+  uint32_t elapsed = now - s_last_tick;
+  if (elapsed > 0) {
+    lv_tick_inc(elapsed);
+    s_last_tick = now;
   }
-  lv_timer_handler();
+
+  static uint32_t s_last_lv_handler = 0;
+  if (s_last_lv_handler == 0 || now - s_last_lv_handler >= 5) {
+    s_last_lv_handler = now;
+    lv_timer_handler();
+  }
 
   // 更新 UI 数据 (简单状态同步，后续可优化)
   static uint32_t s_last_update = 0;
@@ -531,8 +538,6 @@ void ui_loop() {
              state.battery_charging ? "CHG" : "BAT",
              state.battery_percent);
     lv_label_set_text(s_battery_label, batt);
-
-    if (state.pet_state != s_displayed_pet_state) {
 
     // 更新桌宠图形和状态文字
     if (state.pet_state != s_displayed_pet_state) {
@@ -629,22 +634,9 @@ void ui_loop() {
       }
     }
   }
-
-#if 0
-
-  // 立即刷新本轮状态或动画变更，避免屏幕停留在启动首帧。
-  if (s_ui_dirty) {
 }
 
 // ==================== 创建设置页面 ====================
-}
-
-}
-
-#endif
-}
-}
-
 static void _ui_init_settings_screen() {
   s_screen_settings = lv_obj_create(NULL);
   lv_obj_add_event_cb(s_screen_settings, _screen_gesture_cb, LV_EVENT_GESTURE, nullptr);
@@ -799,6 +791,8 @@ static void _ui_init_apps_screen() {
 
 // ==================== 页面切换 ====================
 void ui_refresh_now() {
+  // 仅在 setup() 阶段调用（WiFi 连接前），用 lv_refr_now 强制渲染首帧。
+  // loop() 中不调用此函数——主循环依赖 lv_timer_handler() 异步渲染，避免阻塞 HTTP。
   lv_obj_t* active = lv_scr_act();
   if (!active) return;
   lv_obj_invalidate(active);
@@ -808,22 +802,25 @@ void ui_refresh_now() {
 void ui_show_pet() {
   ui_hide_approval();
   if (s_screen_main) {
-    lv_scr_load(s_screen_main);
+    if (lv_scr_act() != s_screen_main) lv_scr_load(s_screen_main);
+    lv_obj_invalidate(s_screen_main);
     s_active_page = ActivePage::PET;
   }
 }
 
 void ui_show_settings() {
-  s_active_page = ActivePage::SETTINGS;
   if (s_screen_settings) {
-    lv_scr_load(s_screen_settings);
+    if (lv_scr_act() != s_screen_settings) lv_scr_load(s_screen_settings);
+    lv_obj_invalidate(s_screen_settings);
+    s_active_page = ActivePage::SETTINGS;
   }
 }
 
 void ui_show_apps() {
-  s_active_page = ActivePage::APPS;
   if (s_screen_apps) {
-    lv_scr_load(s_screen_apps);
+    if (lv_scr_act() != s_screen_apps) lv_scr_load(s_screen_apps);
+    lv_obj_invalidate(s_screen_apps);
+    s_active_page = ActivePage::APPS;
   }
 }
 

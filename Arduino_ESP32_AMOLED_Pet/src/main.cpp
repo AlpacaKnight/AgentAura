@@ -164,7 +164,6 @@ void setup() {
   // 5. LVGL UI (内部初始化显示 + 触摸)
   ui::ui_init();
   ui::ui_show_pet();
-  ui::ui_refresh_now();
   Serial.println(F("[main] UI + display init done"));
 
   // 6. 音频
