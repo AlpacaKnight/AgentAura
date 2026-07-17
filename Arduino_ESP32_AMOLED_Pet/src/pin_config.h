@@ -63,8 +63,9 @@ const int SDMMC_DATA = 3;
 // SD_CS 由 TCA9554 EXIO7 控制
 
 // ==================== 按键 ====================
-// BOOT 按键 — 左侧，短按=语音，长按=待定
-#define BOOT_BUTTON_GPIO    0
+// GPIO0 已用于 LCD QSPI SCLK，不能再配置为按键输入。
+// 本板 PWR 键由 AXP2101 管理；没有可供应用轮询的独立 BOOT GPIO。
+#define BOOT_BUTTON_GPIO    -1
 // PWR 按键 — 右侧，连接到 AXP2101，短按=取消/拒绝，长按6秒=关机
 // PWR 由 AXP2101 电源管理芯片处理，在软件中通过 PMU 接口操作
 

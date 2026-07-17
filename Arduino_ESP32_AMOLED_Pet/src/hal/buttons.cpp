@@ -9,7 +9,7 @@
 
 namespace hal {
 
-#define BOOT_PIN       BOOT_BUTTON_GPIO  // GPIO0
+#define AGENTAURA_BOOT_PIN BOOT_BUTTON_GPIO
 
 static ButtonCallback s_boot_short_cb = nullptr;
 static ButtonCallback s_boot_long_cb  = nullptr;
@@ -20,9 +20,13 @@ static uint32_t s_boot_press_ms = 0;
 static bool s_boot_long_reported = false;
 
 void buttons_init() {
-  pinMode(BOOT_PIN, INPUT_PULLUP);
-  s_boot_last_state = digitalRead(BOOT_PIN);
+#if AGENTAURA_BOOT_PIN >= 0
+  pinMode(AGENTAURA_BOOT_PIN, INPUT_PULLUP);
+  s_boot_last_state = digitalRead(AGENTAURA_BOOT_PIN);
   Serial.println(F("[buttons] init OK"));
+#else
+  Serial.println(F("[buttons] BOOT polling disabled (GPIO0 is LCD SCLK)"));
+#endif
 }
 
 void on_boot_short_press(ButtonCallback cb) {
@@ -38,8 +42,11 @@ void on_pwr_short_press(ButtonCallback cb) {
 }
 
 void buttons_loop() {
+#if AGENTAURA_BOOT_PIN < 0
+  return;
+#else
   uint32_t now = millis();
-  bool boot_state = digitalRead(BOOT_PIN);
+  bool boot_state = digitalRead(AGENTAURA_BOOT_PIN);
 
   // ---- BOOT 按键 ----
   if (boot_state == LOW && s_boot_last_state == HIGH) {
@@ -60,6 +67,7 @@ void buttons_loop() {
   }
 
   s_boot_last_state = boot_state;
+#endif
 }
 
 } // namespace hal

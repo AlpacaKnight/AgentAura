@@ -66,6 +66,8 @@ enum class ActivePage : uint8_t {
   APPS
 };
 static ActivePage s_active_page = ActivePage::PET;
+static ActivePage s_requested_page = ActivePage::PET;
+static bool s_page_change_requested = false;
 static bool s_touch_tracking = false;
 static bool s_swipe_triggered = false;
 static int16_t s_touch_start_x = 0;
@@ -520,6 +522,32 @@ void ui_loop() {
     s_last_tick = now;
   }
 
+  if (s_page_change_requested) {
+    s_page_change_requested = false;
+
+    lv_obj_t* target = nullptr;
+    switch (s_requested_page) {
+      case ActivePage::PET:
+        ui_hide_approval();
+        target = s_screen_main;
+        break;
+      case ActivePage::SETTINGS:
+        target = s_screen_settings;
+        break;
+      case ActivePage::APPS:
+        target = s_screen_apps;
+        break;
+    }
+
+    if (target) {
+      if (lv_scr_act() != target) lv_scr_load(target);
+      lv_obj_invalidate(target);
+      s_active_page = s_requested_page;
+      lv_refr_now(nullptr);
+      Serial.printf("[ui] active page: %u\n", static_cast<unsigned>(s_active_page));
+    }
+  }
+
   static uint32_t s_last_lv_handler = 0;
   if (s_last_lv_handler == 0 || now - s_last_lv_handler >= 5) {
     s_last_lv_handler = now;
@@ -800,28 +828,18 @@ void ui_refresh_now() {
 }
 
 void ui_show_pet() {
-  ui_hide_approval();
-  if (s_screen_main) {
-    if (lv_scr_act() != s_screen_main) lv_scr_load(s_screen_main);
-    lv_obj_invalidate(s_screen_main);
-    s_active_page = ActivePage::PET;
-  }
+  s_requested_page = ActivePage::PET;
+  s_page_change_requested = true;
 }
 
 void ui_show_settings() {
-  if (s_screen_settings) {
-    if (lv_scr_act() != s_screen_settings) lv_scr_load(s_screen_settings);
-    lv_obj_invalidate(s_screen_settings);
-    s_active_page = ActivePage::SETTINGS;
-  }
+  s_requested_page = ActivePage::SETTINGS;
+  s_page_change_requested = true;
 }
 
 void ui_show_apps() {
-  if (s_screen_apps) {
-    if (lv_scr_act() != s_screen_apps) lv_scr_load(s_screen_apps);
-    lv_obj_invalidate(s_screen_apps);
-    s_active_page = ActivePage::APPS;
-  }
+  s_requested_page = ActivePage::APPS;
+  s_page_change_requested = true;
 }
 
 void ui_show_approval(const char* title, const char* desc,
