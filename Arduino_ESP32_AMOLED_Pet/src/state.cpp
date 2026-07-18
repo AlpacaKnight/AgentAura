@@ -68,6 +68,12 @@ void setWifiEnabled(RadioState rs) {
   state.wifi_enabled = rs;
 }
 
+void setPetMessage(const String& message) {
+  state.pet_message = message;
+  state.msg_timestamp = message.length() > 0 ? millis() : 0;
+  touchActivity();
+}
+
 // ==================== 额度管理 ====================
 bool isH5Depleted() {
   return state.quota.h5_remaining <= 0.01f;

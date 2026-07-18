@@ -113,8 +113,7 @@ String handleText(const String& cmd) {
     }
 
     if (sub == "speak" && val.length() > 0) {
-      state.pet_message = val;
-      state.msg_timestamp = millis();
+      setPetMessage(val);
       return "OK: pet says \"" + val + "\"";
     }
 
@@ -266,8 +265,7 @@ String handleJson(const String& json_str) {
     // 宠物消息
     const char* msg = doc["pet"]["message"];
     if (msg && strlen(msg) > 0) {
-      state.pet_message = String(msg);
-      state.msg_timestamp = millis();
+      setPetMessage(String(msg));
     }
 
     return "{\"status\":\"ok\"}";

@@ -100,6 +100,7 @@ void setBrightness(uint8_t v);
 void setVolume(uint8_t v);
 void setBleEnabled(RadioState rs);
 void setWifiEnabled(RadioState rs);
+void setPetMessage(const String& message);
 
 // 额度管理
 bool isH5Depleted();                      // 5 小时额度是否耗尽

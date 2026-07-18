@@ -486,10 +486,18 @@ static void _ui_init_pet_screen() {
 
   // 消息气泡 (宠物的说话内容)
   s_msg_label = lv_label_create(s_screen_main);
-  lv_obj_set_style_text_font(s_msg_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_msg_label, lv_color_hex(0x94A3B8), 0);
-  lv_obj_align(s_msg_label, LV_ALIGN_TOP_MID, 0, 15);
+  lv_obj_set_width(s_msg_label, LCD_WIDTH - 32);
+  lv_label_set_long_mode(s_msg_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_font(s_msg_label, &lv_font_agentaura_16, 0);
+  lv_obj_set_style_text_align(s_msg_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(s_msg_label, lv_color_hex(0xF8FAFC), 0);
+  lv_obj_set_style_bg_color(s_msg_label, lv_color_hex(0x0F172A), 0);
+  lv_obj_set_style_bg_opa(s_msg_label, LV_OPA_80, 0);
+  lv_obj_set_style_radius(s_msg_label, 10, 0);
+  lv_obj_set_style_pad_all(s_msg_label, 8, 0);
+  lv_obj_align(s_msg_label, LV_ALIGN_TOP_MID, 0, 70);
   lv_label_set_text(s_msg_label, "");
+  lv_obj_add_flag(s_msg_label, LV_OBJ_FLAG_HIDDEN);
 
   // 电池信息 (右下角)
   s_battery_label = lv_label_create(s_screen_main);
@@ -613,10 +621,18 @@ void ui_loop() {
     }
 
     // 更新消息气泡
-    if (state.msg_timestamp > 0 && now - state.msg_timestamp < 10000) {
-      lv_label_set_text(s_msg_label, state.pet_message.c_str());
+    bool show_message =
+      state.msg_timestamp > 0 &&
+      state.pet_message.length() > 0 &&
+      now - state.msg_timestamp < 10000;
+    if (show_message) {
+      if (strcmp(lv_label_get_text(s_msg_label), state.pet_message.c_str()) != 0) {
+        lv_label_set_text(s_msg_label, state.pet_message.c_str());
+      }
+      lv_obj_clear_flag(s_msg_label, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(s_msg_label);
     } else {
-      lv_label_set_text(s_msg_label, "");
+      lv_obj_add_flag(s_msg_label, LV_OBJ_FLAG_HIDDEN);
     }
 
     // Agent 类型 - 血条/蓝条显示逻辑
