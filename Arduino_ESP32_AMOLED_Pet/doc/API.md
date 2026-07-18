@@ -50,7 +50,7 @@
 
 | 命令 | 参数 | 说明 | 响应 |
 |------|------|------|------|
-| `pet state` | `idle\|running\|thinking\|speaking\|error\|sleep\|offline` | 设置宠物状态 | `OK: pet state -> <state>` 或 `ERR: unknown pet state` |
+| `pet state` | `idle\|running-right\|running-left\|waving\|jumping\|failed\|waiting\|running\|review\|look-directions-a\|look-directions-b` | 设置宠物动画；后两项仅 v2 可用 | `OK: pet state -> <state>` 或 `ERR: unknown pet state` |
 | `pet speak` | `<文本>` | 设置宠物说话气泡 | `OK: pet says "<文本>"` |
 | `agent type` | `CLAUDE\|CODEX\|OTHER` | 设置 Agent 类型 | `OK: agent type -> <type>` |
 
@@ -128,7 +128,7 @@ OK: brightness -> 180
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `agent.type` | string | `"claude"` / `"codex"` / 其他 |
-| `agent.state` | string | `"running"` / `"thinking"` / `"speaking"` / `"idle"` / `"error"`（仅 5 种） |
+| `agent.state` | string | v1 的 9 种标准状态或 v2 的两组观察方向；兼容 `thinking` / `speaking` / `error` 等旧名称 |
 | `agent.quota_*` | number | 配额信息（可选） |
 | `agent.quota_refresh_sec` | number | 配额刷新倒计时秒数，≥0 时生效（可选） |
 | `pet.message` | string | 宠物气泡文本，非空时设置（可选） |
@@ -320,14 +320,20 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 | 枚举值 | 字符串 | 文本指令 | JSON state_sync |
 |--------|--------|:--------:|:----------------:|
 | IDLE | `idle` | ✅ | ✅ |
+| RUNNING_RIGHT | `running-right` | ✅ | ✅ |
+| RUNNING_LEFT | `running-left` | ✅ | ✅ |
+| WAVING | `waving` | ✅ | ✅ |
+| JUMPING | `jumping` | ✅ | ✅ |
+| FAILED | `failed` | ✅ | ✅ |
+| WAITING | `waiting` | ✅ | ✅ |
 | RUNNING | `running` | ✅ | ✅ |
-| THINKING | `thinking` | ✅ | ✅ |
-| SPEAKING | `speaking` | ✅ | ✅ |
-| ERROR | `error` | ✅ | ✅ |
-| SLEEP | `sleep` | ✅ | ❌ |
-| OFFLINE | `offline` | ✅ | ❌ |
+| REVIEW | `review` | ✅ | ✅ |
+| LOOK_DIRECTIONS_A | `look-directions-a` | ✅（v2） | ✅（v2） |
+| LOOK_DIRECTIONS_B | `look-directions-b` | ✅（v2） | ✅（v2） |
 
-> 文本指令 `pet state` 接受全部 7 种状态；JSON `state_sync` 的 `agent.state` 仅接受 5 种（不含 `sleep` / `offline`）。
+> 为兼容旧客户端：`speaking` 映射到 `waving`，`error` 映射到 `failed`，`thinking` 映射到 `review`，`sleep` / `offline` 回退到 `idle`；方向状态同时接受下划线写法。
+>
+> `PET_SPRITE_VERSION=1` 时仅使用前 9 行，两个观察方向请求自动回退到 `idle`；默认 `PET_SPRITE_VERSION=2`，使用完整 11 行。
 
 ### AgentType（Agent 类型）
 

@@ -4,6 +4,7 @@
 #define TIQUAN_FRAME_WIDTH 192
 #define TIQUAN_FRAME_HEIGHT 208
 #define TIQUAN_FRAME_BYTES (TIQUAN_FRAME_WIDTH * TIQUAN_FRAME_HEIGHT * 2)
+#define TIQUAN_SPRITE_VERSION 2
 #define TIQUAN_ANIMATION_COUNT 11
 
 struct TiquanFrameIndex { uint32_t offset; uint32_t length; };

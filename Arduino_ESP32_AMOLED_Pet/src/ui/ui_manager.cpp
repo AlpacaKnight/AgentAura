@@ -49,6 +49,7 @@ static lv_obj_t* s_countdown_label = nullptr;
 
 // 设置页面
 static lv_obj_t* s_screen_settings = nullptr;
+static lv_obj_t* s_settings_pet_state_label = nullptr;
 
 // App 启动器页面
 static lv_obj_t* s_screen_apps = nullptr;
@@ -110,14 +111,14 @@ static uint8_t _animation_for_state(PetState pet_state) {
     case PetState::IDLE:          return 0;
     case PetState::RUNNING_RIGHT: return 1;
     case PetState::RUNNING_LEFT:  return 2;
-    case PetState::SPEAKING:      return 3;
+    case PetState::WAVING:        return 3;
     case PetState::JUMPING:       return 4;
-    case PetState::ERROR:         return 5;
+    case PetState::FAILED:        return 5;
     case PetState::WAITING:       return 6;
     case PetState::RUNNING:       return 7;
-    case PetState::THINKING:      return 8;
-    case PetState::OFFLINE:       return 9;
-    case PetState::SLEEP:         return 10;
+    case PetState::REVIEW:        return 8;
+    case PetState::LOOK_DIRECTIONS_A: return PET_SPRITE_VERSION >= 2 ? 9 : 0;
+    case PetState::LOOK_DIRECTIONS_B: return PET_SPRITE_VERSION >= 2 ? 10 : 0;
     default:                       return 0;
   }
 }
@@ -248,11 +249,11 @@ static void _set_pet_visual(PetState pet_state) {
   lv_color_t accent_color = lv_color_hex(0x38BDF8);
   switch (pet_state) {
     case PetState::RUNNING:  face_color = lv_color_hex(0x164E63); accent_color = lv_color_hex(0x22D3EE); break;
-    case PetState::THINKING: face_color = lv_color_hex(0x312E81); accent_color = lv_color_hex(0xA78BFA); break;
-    case PetState::SPEAKING: face_color = lv_color_hex(0x14532D); accent_color = lv_color_hex(0x4ADE80); break;
-    case PetState::ERROR:    face_color = lv_color_hex(0x7F1D1D); accent_color = lv_color_hex(0xFB7185); break;
-    case PetState::SLEEP:    face_color = lv_color_hex(0x334155); accent_color = lv_color_hex(0x94A3B8); break;
-    case PetState::OFFLINE:  face_color = lv_color_hex(0x3F3F46); accent_color = lv_color_hex(0xA1A1AA); break;
+    case PetState::REVIEW:   face_color = lv_color_hex(0x312E81); accent_color = lv_color_hex(0xA78BFA); break;
+    case PetState::WAVING:   face_color = lv_color_hex(0x14532D); accent_color = lv_color_hex(0x4ADE80); break;
+    case PetState::FAILED:   face_color = lv_color_hex(0x7F1D1D); accent_color = lv_color_hex(0xFB7185); break;
+    case PetState::LOOK_DIRECTIONS_A:
+    case PetState::LOOK_DIRECTIONS_B: face_color = lv_color_hex(0x0F3D3E); accent_color = lv_color_hex(0x2DD4BF); break;
     case PetState::RUNNING_RIGHT:
     case PetState::RUNNING_LEFT: face_color = lv_color_hex(0x164E63); accent_color = lv_color_hex(0x22D3EE); break;
     case PetState::JUMPING:  face_color = lv_color_hex(0x4C1D95); accent_color = lv_color_hex(0xC084FC); break;
@@ -271,16 +272,33 @@ static const char* _pet_state_text(PetState pet_state) {
   switch (pet_state) {
     case PetState::IDLE:          return "IDLE";
     case PetState::RUNNING:       return "RUNNING";
-    case PetState::THINKING:      return "THINKING";
-    case PetState::SPEAKING:      return "SPEAKING";
-    case PetState::ERROR:         return "ERROR";
-    case PetState::SLEEP:         return "SLEEP";
-    case PetState::OFFLINE:       return "OFFLINE";
-    case PetState::RUNNING_RIGHT: return "RUN RIGHT";
-    case PetState::RUNNING_LEFT:  return "RUN LEFT";
+    case PetState::REVIEW:        return "REVIEW";
+    case PetState::WAVING:        return "WAVING";
+    case PetState::FAILED:        return "FAILED";
+    case PetState::LOOK_DIRECTIONS_A: return "LOOK A";
+    case PetState::LOOK_DIRECTIONS_B: return "LOOK B";
+    case PetState::RUNNING_RIGHT: return "RUNNING RIGHT";
+    case PetState::RUNNING_LEFT:  return "RUNNING LEFT";
     case PetState::JUMPING:       return "JUMPING";
     case PetState::WAITING:       return "WAITING";
     default:                       return "READY";
+  }
+}
+
+static const char* _pet_state_text_zh(PetState pet_state) {
+  switch (pet_state) {
+    case PetState::IDLE:          return "待机";
+    case PetState::RUNNING:       return "工作中";
+    case PetState::REVIEW:        return "审阅";
+    case PetState::WAVING:        return "挥手";
+    case PetState::FAILED:        return "失败";
+    case PetState::LOOK_DIRECTIONS_A: return "观察方向 A";
+    case PetState::LOOK_DIRECTIONS_B: return "观察方向 B";
+    case PetState::RUNNING_RIGHT: return "向右移动";
+    case PetState::RUNNING_LEFT:  return "向左移动";
+    case PetState::JUMPING:       return "跳跃";
+    case PetState::WAITING:       return "等待输入";
+    default:                       return "未知";
   }
 }
 
@@ -573,6 +591,12 @@ void ui_loop() {
       s_pet_frame_index = 0;
     }
     lv_label_set_text(s_pet_label, _pet_state_text(state.pet_state));
+    if (s_settings_pet_state_label) {
+      char pet_state_text[40];
+      snprintf(pet_state_text, sizeof(pet_state_text), "状态: %s",
+               _pet_state_text_zh(state.pet_state));
+      lv_label_set_text(s_settings_pet_state_label, pet_state_text);
+    }
     _set_pet_visual(state.pet_state);
     char connection[48];
     snprintf(connection, sizeof(connection), "%s  |  %s  |  %s",
@@ -581,7 +605,7 @@ void ui_loop() {
              state.ble_connected ? "BLE" : "BLE -");
     lv_label_set_text(s_home_status_label, connection);
 
-    static PetState s_last_logged_pet_state = PetState::OFFLINE;
+    static PetState s_last_logged_pet_state = static_cast<PetState>(0xFF);
     if (state.pet_state != s_last_logged_pet_state) {
       Serial.printf("[ui] render pet state: %s\n", _pet_state_text(state.pet_state));
       s_last_logged_pet_state = state.pet_state;
@@ -674,14 +698,14 @@ static void _ui_init_settings_screen() {
 
   // 标题
   lv_obj_t* title = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(title, &lv_font_simsun_16_cjk, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(0x0EA5E9), 0);
-  lv_label_set_text(title, "Settings");
+  lv_label_set_text(title, "设置");
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 15);
 
   // 亮度滑块
   lv_obj_t* brt_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(brt_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(brt_label, &lv_font_simsun_16_cjk, 0);
   lv_obj_set_style_text_color(brt_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(brt_label, "亮度");
   lv_obj_align(brt_label, LV_ALIGN_TOP_LEFT, 20, 55);
@@ -696,7 +720,7 @@ static void _ui_init_settings_screen() {
 
   // 音量滑块
   lv_obj_t* vol_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(vol_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(vol_label, &lv_font_simsun_16_cjk, 0);
   lv_obj_set_style_text_color(vol_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(vol_label, "音量");
   lv_obj_align(vol_label, LV_ALIGN_TOP_LEFT, 20, 90);
@@ -709,12 +733,15 @@ static void _ui_init_settings_screen() {
   lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x333344), LV_PART_MAIN);
   lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x22C55E), LV_PART_INDICATOR);
 
-  // 设备信息
-  lv_obj_t* info_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(info_label, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_color(info_label, lv_color_hex(0x64748B), 0);
-  lv_label_set_text(info_label, "");
-  lv_obj_align(info_label, LV_ALIGN_TOP_LEFT, 20, 130);
+  // 当前宠物状态，与网页管理页使用同一组 11 状态语义。
+  s_settings_pet_state_label = lv_label_create(s_screen_settings);
+  lv_obj_set_style_text_font(s_settings_pet_state_label, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_color(s_settings_pet_state_label, lv_color_hex(0x94A3B8), 0);
+  char pet_state_text[40];
+  snprintf(pet_state_text, sizeof(pet_state_text), "状态: %s",
+           _pet_state_text_zh(state.pet_state));
+  lv_label_set_text(s_settings_pet_state_label, pet_state_text);
+  lv_obj_align(s_settings_pet_state_label, LV_ALIGN_TOP_LEFT, 20, 130);
 
   // 返回按钮 (触摸区域, 右下角)
   lv_obj_t* back_btn = lv_btn_create(s_screen_settings);
@@ -722,7 +749,8 @@ static void _ui_init_settings_screen() {
   lv_obj_align(back_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
   lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x0EA5E9), 0);
   lv_obj_t* back_lbl = lv_label_create(back_btn);
-  lv_label_set_text(back_lbl, "Back");
+  lv_obj_set_style_text_font(back_lbl, &lv_font_simsun_16_cjk, 0);
+  lv_label_set_text(back_lbl, "返回");
   lv_obj_center(back_lbl);
   lv_obj_set_style_text_color(back_lbl, lv_color_hex(0xFFFFFF), 0);
   lv_obj_add_event_cb(back_btn, [](lv_event_t* e) {

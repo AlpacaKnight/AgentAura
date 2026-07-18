@@ -88,6 +88,7 @@
 #define LV_FONT_MONTSERRAT_32  1
 #define LV_FONT_MONTSERRAT_36  1
 #define LV_FONT_MONTSERRAT_48  1
+#define LV_FONT_SIMSUN_16_CJK  1
 
 /* 动画和性能 */
 #define LV_USE_ANIMATION  1

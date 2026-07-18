@@ -67,11 +67,11 @@ static void startup_animation() {
 
 // ==================== 物理按键事件处理 ====================
 static void on_boot_short() {
-  Serial.println(F("[event] BOOT short press - toggle speech"));
-  if (state.pet_state == PetState::SPEAKING) {
+  Serial.println(F("[event] BOOT short press - toggle waving"));
+  if (state.pet_state == PetState::WAVING) {
     setPetState(PetState::IDLE);
   } else {
-    setPetState(PetState::SPEAKING);
+    setPetState(PetState::WAVING);
   }
 }
 

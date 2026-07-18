@@ -8,7 +8,8 @@ SOURCE = ROOT / "data/pets/tiquan-v2/spritesheet.webp"
 OUTPUT = ROOT / "data/pets/tiquan-v2/sprites.rle"
 HEADER = ROOT / "src/ui/tiquan_v2_frames.h"
 WIDTH, HEIGHT = 192, 208
-FRAME_COUNTS = (7, 8, 8, 4, 5, 8, 6, 6, 6, 8, 8)
+V1_FRAME_COUNTS = (7, 8, 8, 4, 5, 8, 6, 6, 6)
+V2_LOOK_FRAME_COUNTS = (8, 8)
 BACKGROUND = (0x1A, 0x1A, 0x2E)
 
 
@@ -36,11 +37,13 @@ def encode(frame):
 
 def main():
     atlas = Image.open(SOURCE).convert("RGBA")
-    if atlas.size != (WIDTH * 8, HEIGHT * 11):
+    if atlas.width != WIDTH * 8 or atlas.height not in (HEIGHT * 9, HEIGHT * 11):
         raise ValueError(f"unexpected atlas size: {atlas.size}")
+    sprite_version = 2 if atlas.height == HEIGHT * 11 else 1
+    frame_counts = V1_FRAME_COUNTS + (V2_LOOK_FRAME_COUNTS if sprite_version == 2 else ())
     data = bytearray()
     offsets = []
-    for row, count in enumerate(FRAME_COUNTS):
+    for row, count in enumerate(frame_counts):
         row_offsets = []
         for col in range(count):
             frame = atlas.crop((col * WIDTH, row * HEIGHT,
@@ -52,9 +55,10 @@ def main():
     lines = ["#pragma once", "#include <Arduino.h>", "",
              "#define TIQUAN_FRAME_WIDTH 192", "#define TIQUAN_FRAME_HEIGHT 208",
              "#define TIQUAN_FRAME_BYTES (TIQUAN_FRAME_WIDTH * TIQUAN_FRAME_HEIGHT * 2)",
-             "#define TIQUAN_ANIMATION_COUNT 11", "",
+             f"#define TIQUAN_SPRITE_VERSION {sprite_version}",
+             f"#define TIQUAN_ANIMATION_COUNT {len(frame_counts)}", "",
              "struct TiquanFrameIndex { uint32_t offset; uint32_t length; };",
-             f"static const uint8_t tiquan_frame_counts[TIQUAN_ANIMATION_COUNT] = {{{', '.join(map(str, FRAME_COUNTS))}}};",
+             f"static const uint8_t tiquan_frame_counts[TIQUAN_ANIMATION_COUNT] = {{{', '.join(map(str, frame_counts))}}};",
              "static const TiquanFrameIndex tiquan_frame_index[TIQUAN_ANIMATION_COUNT][8] = {"]
     for row in offsets:
         cells = [f"{{{offset}, {length}}}" for offset, length in row]

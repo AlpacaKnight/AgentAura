@@ -39,17 +39,25 @@
 // ==================== 閻庡湱濮锋晶鍧楁偐閼哥鍋?====================
 enum class PetState : uint8_t {
   IDLE,
-  RUNNING,
-  THINKING,
-  SPEAKING,
-  ERROR,
-  SLEEP,
-  OFFLINE,
   RUNNING_RIGHT,
   RUNNING_LEFT,
+  WAVING,
   JUMPING,
-  WAITING
+  FAILED,
+  WAITING,
+  RUNNING,
+  REVIEW,
+  LOOK_DIRECTIONS_A,
+  LOOK_DIRECTIONS_B
 };
+
+// Codex pet v1 has 9 rows; v2 adds two rows containing 16 look directions.
+// Override with -DPET_SPRITE_VERSION=1 when building firmware for a v1 atlas.
+#ifndef PET_SPRITE_VERSION
+#define PET_SPRITE_VERSION 2
+#endif
+static_assert(PET_SPRITE_VERSION == 1 || PET_SPRITE_VERSION == 2,
+              "PET_SPRITE_VERSION must be 1 or 2");
 
 enum class AgentType : uint8_t {
   NONE = 0,

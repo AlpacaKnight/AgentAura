@@ -12,18 +12,18 @@ ConnectionFlags conn;
 // ==================== 宠物状态字符串 ====================
 String getPetStateString(PetState ps) {
   switch (ps) {
-    case PetState::IDLE:     return "idle";
-    case PetState::RUNNING:  return "running";
-    case PetState::THINKING: return "thinking";
-    case PetState::SPEAKING: return "speaking";
-    case PetState::ERROR:    return "error";
-    case PetState::SLEEP:    return "sleep";
-    case PetState::OFFLINE:  return "offline";
-    case PetState::RUNNING_RIGHT: return "running_right";
-    case PetState::RUNNING_LEFT:  return "running_left";
+    case PetState::IDLE:          return "idle";
+    case PetState::RUNNING_RIGHT: return "running-right";
+    case PetState::RUNNING_LEFT:  return "running-left";
+    case PetState::WAVING:        return "waving";
     case PetState::JUMPING:       return "jumping";
+    case PetState::FAILED:        return "failed";
     case PetState::WAITING:       return "waiting";
-    default:                 return "unknown";
+    case PetState::RUNNING:       return "running";
+    case PetState::REVIEW:        return "review";
+    case PetState::LOOK_DIRECTIONS_A: return "look-directions-a";
+    case PetState::LOOK_DIRECTIONS_B: return "look-directions-b";
+    default:                      return "unknown";
   }
 }
 
@@ -38,6 +38,12 @@ String getAgentTypeString(AgentType at) {
 
 // ==================== 状态设置 ====================
 void setPetState(PetState ps) {
+#if PET_SPRITE_VERSION < 2
+  if (ps == PetState::LOOK_DIRECTIONS_A ||
+      ps == PetState::LOOK_DIRECTIONS_B) {
+    ps = PetState::IDLE;
+  }
+#endif
   state.pet_state = ps;
 }
 
@@ -112,6 +118,8 @@ String getStateJson() {
 
   // 宠物状态
   doc["pet"]["state"] = getPetStateString(state.pet_state);
+  doc["pet"]["sprite_version"] = PET_SPRITE_VERSION;
+  doc["pet"]["animation_count"] = PET_SPRITE_VERSION >= 2 ? 11 : 9;
   doc["pet"]["emotion"] = "";
   if (state.pet_message.length() > 0) {
     doc["pet"]["message"] = state.pet_message;
