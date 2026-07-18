@@ -13,22 +13,17 @@ namespace comm {
 static String s_line_buf;
 
 void usb_begin() {
-  Serial.begin(115200);
-  delay(150);
+  // Serial is initialized once at the start of setup(). Reinitializing native
+  // USB CDC here can stall immediately after flashing while the host reopens it.
   conn.usb = true;
   state.usb_connected = true;
-  Serial.println();
-  Serial.println(F("========================================"));
-  Serial.print(F("  ")); Serial.print(FW_NAME);
-  Serial.print(F(" v")); Serial.println(FW_VERSION);
-  Serial.print(F("  ")); Serial.println(DEVICE_MODEL);
-  Serial.println(F("========================================"));
-  Serial.println(F("  type 'help' for commands"));
-  Serial.println(F("========================================"));
 }
 
 void usb_loop() {
-  while (Serial.available()) {
+  // Keep USB input from monopolizing the main loop if flashing/monitoring leaves
+  // bytes queued. Animation and touch must get CPU time on every loop pass.
+  uint16_t budget = 64;
+  while (budget-- > 0 && Serial.available()) {
     int ch = Serial.read();
     if (ch == '\r') continue;
     if (ch == '\n') {

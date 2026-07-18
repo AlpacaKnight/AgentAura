@@ -7,10 +7,12 @@
 #include "comm/comm_manager.h"
 #include "comm/wifi_manager.h"
 #include "comm/ble_server.h"
+#include "hal/audio.h"
 #include "hal/display.h"
 #include "hal/touch.h"
 #include "pin_config.h"
 #include "state.h"
+#include "storage.h"
 #include "ui/tiquan_v2_idle.h"
 #include <Arduino.h>
 #include <lvgl.h>
@@ -24,6 +26,52 @@ namespace ui {
 static void _ui_init_pet_screen();
 static void _ui_init_settings_screen();
 static void _ui_init_apps_screen();
+static bool s_slider_interacting = false;
+
+static void _brightness_slider_event_cb(lv_event_t* event) {
+  lv_event_code_t code = lv_event_get_code(event);
+  lv_obj_t* slider = lv_event_get_target(event);
+  lv_obj_t* value_label = static_cast<lv_obj_t*>(lv_event_get_user_data(event));
+  uint8_t value = static_cast<uint8_t>(lv_slider_get_value(slider));
+
+  if (code == LV_EVENT_PRESSED) {
+    s_slider_interacting = true;
+  } else if (code == LV_EVENT_VALUE_CHANGED) {
+    if (value_label) lv_label_set_text_fmt(value_label, "%u", value);
+    setBrightness(value);
+    hal::display_set_brightness(value);
+    touchActivity();
+  } else if (code == LV_EVENT_RELEASED) {
+    s_slider_interacting = false;
+    storage::saveBrightness(value);
+    Serial.printf("[ui] brightness -> %u\n", value);
+  } else if (code == LV_EVENT_PRESS_LOST) {
+    s_slider_interacting = false;
+  }
+}
+
+static void _volume_slider_event_cb(lv_event_t* event) {
+  lv_event_code_t code = lv_event_get_code(event);
+  lv_obj_t* slider = lv_event_get_target(event);
+  lv_obj_t* value_label = static_cast<lv_obj_t*>(lv_event_get_user_data(event));
+  uint8_t value = static_cast<uint8_t>(lv_slider_get_value(slider));
+
+  if (code == LV_EVENT_PRESSED) {
+    s_slider_interacting = true;
+  } else if (code == LV_EVENT_VALUE_CHANGED) {
+    if (value_label) lv_label_set_text_fmt(value_label, "%u", value);
+    setVolume(value);
+    hal::audio_set_volume(value);
+    touchActivity();
+  } else if (code == LV_EVENT_RELEASED) {
+    s_slider_interacting = false;
+    storage::saveVolume(value);
+    hal::audio_play_tone();
+    Serial.printf("[ui] volume -> %u\n", value);
+  } else if (code == LV_EVENT_PRESS_LOST) {
+    s_slider_interacting = false;
+  }
+}
 
 // LVGL 显示缓冲区
 static lv_disp_draw_buf_t s_draw_buf;
@@ -336,7 +384,7 @@ static void touch_read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
       s_touch_start_y = y;
       s_touch_tracking = true;
       s_swipe_triggered = false;
-    } else if (!s_swipe_triggered) {
+    } else if (!s_swipe_triggered && !s_slider_interacting) {
       int16_t dx = x - s_touch_start_x;
       int16_t dy = y - s_touch_start_y;
       if (abs(dx) >= 55 && abs(dx) > abs(dy)) {
@@ -725,30 +773,50 @@ static void _ui_init_settings_screen() {
   lv_obj_set_style_text_font(brt_label, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(brt_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(brt_label, "亮度");
-  lv_obj_align(brt_label, LV_ALIGN_TOP_LEFT, 20, 55);
+  lv_obj_align(brt_label, LV_ALIGN_TOP_LEFT, 20, 65);
 
   lv_obj_t* brt_slider = lv_slider_create(s_screen_settings);
-  lv_obj_set_size(brt_slider, 200, 16);
-  lv_obj_align(brt_slider, LV_ALIGN_TOP_LEFT, 80, 52);
+  lv_obj_set_size(brt_slider, 190, 22);
+  lv_obj_align(brt_slider, LV_ALIGN_TOP_LEFT, 80, 62);
+  lv_obj_set_ext_click_area(brt_slider, 14);
   lv_slider_set_range(brt_slider, 0, 255);
   lv_slider_set_value(brt_slider, state.brightness, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(brt_slider, lv_color_hex(0x333344), LV_PART_MAIN);
   lv_obj_set_style_bg_color(brt_slider, lv_color_hex(0x0EA5E9), LV_PART_INDICATOR);
+
+  lv_obj_t* brt_value = lv_label_create(s_screen_settings);
+  lv_obj_set_width(brt_value, 52);
+  lv_obj_set_style_text_font(brt_value, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_align(brt_value, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_color(brt_value, lv_color_hex(0x38BDF8), 0);
+  lv_label_set_text_fmt(brt_value, "%u", state.brightness);
+  lv_obj_align(brt_value, LV_ALIGN_TOP_LEFT, 292, 64);
+  lv_obj_add_event_cb(brt_slider, _brightness_slider_event_cb, LV_EVENT_ALL, brt_value);
 
   // 音量滑块
   lv_obj_t* vol_label = lv_label_create(s_screen_settings);
   lv_obj_set_style_text_font(vol_label, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(vol_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(vol_label, "音量");
-  lv_obj_align(vol_label, LV_ALIGN_TOP_LEFT, 20, 90);
+  lv_obj_align(vol_label, LV_ALIGN_TOP_LEFT, 20, 125);
 
   lv_obj_t* vol_slider = lv_slider_create(s_screen_settings);
-  lv_obj_set_size(vol_slider, 200, 16);
-  lv_obj_align(vol_slider, LV_ALIGN_TOP_LEFT, 80, 87);
+  lv_obj_set_size(vol_slider, 190, 22);
+  lv_obj_align(vol_slider, LV_ALIGN_TOP_LEFT, 80, 122);
+  lv_obj_set_ext_click_area(vol_slider, 14);
   lv_slider_set_range(vol_slider, 0, 100);
   lv_slider_set_value(vol_slider, state.volume, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x333344), LV_PART_MAIN);
   lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x22C55E), LV_PART_INDICATOR);
+
+  lv_obj_t* vol_value = lv_label_create(s_screen_settings);
+  lv_obj_set_width(vol_value, 52);
+  lv_obj_set_style_text_font(vol_value, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_align(vol_value, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_color(vol_value, lv_color_hex(0x4ADE80), 0);
+  lv_label_set_text_fmt(vol_value, "%u", state.volume);
+  lv_obj_align(vol_value, LV_ALIGN_TOP_LEFT, 292, 124);
+  lv_obj_add_event_cb(vol_slider, _volume_slider_event_cb, LV_EVENT_ALL, vol_value);
 
   // 当前宠物状态，与网页管理页使用同一组 11 状态语义。
   s_settings_pet_state_label = lv_label_create(s_screen_settings);
@@ -758,7 +826,7 @@ static void _ui_init_settings_screen() {
   snprintf(pet_state_text, sizeof(pet_state_text), "状态: %s",
            _pet_state_text_zh(state.pet_state));
   lv_label_set_text(s_settings_pet_state_label, pet_state_text);
-  lv_obj_align(s_settings_pet_state_label, LV_ALIGN_TOP_LEFT, 20, 130);
+  lv_obj_align(s_settings_pet_state_label, LV_ALIGN_TOP_LEFT, 20, 190);
 
   // 返回按钮 (触摸区域, 右下角)
   lv_obj_t* back_btn = lv_btn_create(s_screen_settings);

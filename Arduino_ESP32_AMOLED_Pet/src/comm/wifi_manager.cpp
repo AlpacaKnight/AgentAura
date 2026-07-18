@@ -9,6 +9,7 @@
 #include "pin_config.h"
 #include "config.h"
 #include "state.h"
+#include "ui/ui_manager.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
@@ -169,9 +170,16 @@ void wifi_begin() {
 
   Serial.print(F("[wifi] STA connecting"));
   unsigned long t0 = millis();
+  unsigned long last_progress = t0;
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < STA_TIMEOUT_MS) {
-    delay(200);
-    Serial.print(F("."));
+    // Wi-Fi association can take several seconds. Keep LVGL timers and touch
+    // polling alive instead of freezing the already visible first frame.
+    ui::ui_loop();
+    delay(10);
+    if (millis() - last_progress >= 500) {
+      last_progress = millis();
+      if (Serial.availableForWrite() > 0) Serial.print(F("."));
+    }
   }
 
   if (WiFi.status() == WL_CONNECTED) {

@@ -141,6 +141,10 @@ static void manage_screen() {
 void setup() {
   // 1. 串口
   Serial.begin(115200);
+  // After an upload-triggered reset the host can leave USB Serial/JTAG
+  // connected without consuming output. Never let startup logs block the
+  // Arduino task; dropping a log line is preferable to freezing UI/touch.
+  Serial.setTxTimeoutMs(0);
   delay(150);
   print_banner();
 
