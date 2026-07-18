@@ -207,10 +207,13 @@ static void _pet_assets_failed() {
   s_pet_rle_read_pos = 0;
   s_pet_rle_read_size = 0;
 
-  constexpr uint8_t kMaxRetries = 3;
+  // Native USB and radio startup can temporarily retain a few KiB after an
+  // upload-triggered reset. Keep retrying long enough for that memory to be
+  // released instead of permanently falling back to idle.
+  constexpr uint8_t kMaxRetries = 10;
   if (s_pet_retry_count < kMaxRetries) {
     ++s_pet_retry_count;
-    s_pet_retry_at_ms = millis() + 2000;
+    s_pet_retry_at_ms = millis() + 3000;
     Serial.printf("[pet] SPIFFS RLE failed; built-in idle, retry %u/%u\n",
                   s_pet_retry_count, kMaxRetries);
   } else {
@@ -250,10 +253,10 @@ void ui_load_pet_assets() {
     heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest_before =
     heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  // Wi-Fi, HTTP, UDP and BLE are initialized before this allocation. Keeping
-  // 28 KiB free is sufficient for their steady-state work while allowing the
-  // 79,872-byte RGB565 frame on devices that have about 110 KiB free here.
-  constexpr size_t kRuntimeReserve = 28U * 1024U;
+  // Wi-Fi, HTTP, UDP and BLE are initialized before this allocation. Keep a
+  // 24 KiB steady-state reserve; the normal post-allocation heap is ~30 KiB,
+  // while an upload-triggered reset can temporarily report a few KiB less.
+  constexpr size_t kRuntimeReserve = 24U * 1024U;
   if (free_before < TIQUAN_FRAME_BYTES + kRuntimeReserve ||
       largest_before < TIQUAN_FRAME_BYTES) {
     s_pet_asset_file.close();
