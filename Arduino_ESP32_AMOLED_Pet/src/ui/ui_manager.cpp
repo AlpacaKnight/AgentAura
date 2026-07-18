@@ -16,6 +16,8 @@
 #include <lvgl.h>
 #include <esp_heap_caps.h>
 
+LV_FONT_DECLARE(lv_font_agentaura_16);
+
 namespace ui {
 
 // 前向声明
@@ -185,7 +187,6 @@ static void _enable_gesture_bubble(lv_obj_t* obj) {
   }
 }
 static void _switch_page_by_swipe(int16_t dx, int16_t dy) {
-  if (abs(dx) < 55 || abs(dx) <= abs(dy)) return;
   // 仅识别明显的横向滑动，避免普通点击和上下滚动触发页面切换。
   if (abs(dx) < 55 || abs(dx) <= abs(dy)) return;
   uint32_t now = millis();
@@ -698,14 +699,14 @@ static void _ui_init_settings_screen() {
 
   // 标题
   lv_obj_t* title = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(title, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_font(title, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(title, lv_color_hex(0x0EA5E9), 0);
   lv_label_set_text(title, "设置");
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 15);
 
   // 亮度滑块
   lv_obj_t* brt_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(brt_label, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_font(brt_label, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(brt_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(brt_label, "亮度");
   lv_obj_align(brt_label, LV_ALIGN_TOP_LEFT, 20, 55);
@@ -720,7 +721,7 @@ static void _ui_init_settings_screen() {
 
   // 音量滑块
   lv_obj_t* vol_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(vol_label, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_font(vol_label, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(vol_label, lv_color_hex(0x94A3B8), 0);
   lv_label_set_text(vol_label, "音量");
   lv_obj_align(vol_label, LV_ALIGN_TOP_LEFT, 20, 90);
@@ -735,7 +736,7 @@ static void _ui_init_settings_screen() {
 
   // 当前宠物状态，与网页管理页使用同一组 11 状态语义。
   s_settings_pet_state_label = lv_label_create(s_screen_settings);
-  lv_obj_set_style_text_font(s_settings_pet_state_label, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_font(s_settings_pet_state_label, &lv_font_agentaura_16, 0);
   lv_obj_set_style_text_color(s_settings_pet_state_label, lv_color_hex(0x94A3B8), 0);
   char pet_state_text[40];
   snprintf(pet_state_text, sizeof(pet_state_text), "状态: %s",
@@ -749,7 +750,7 @@ static void _ui_init_settings_screen() {
   lv_obj_align(back_btn, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
   lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x0EA5E9), 0);
   lv_obj_t* back_lbl = lv_label_create(back_btn);
-  lv_obj_set_style_text_font(back_lbl, &lv_font_simsun_16_cjk, 0);
+  lv_obj_set_style_text_font(back_lbl, &lv_font_agentaura_16, 0);
   lv_label_set_text(back_lbl, "返回");
   lv_obj_center(back_lbl);
   lv_obj_set_style_text_color(back_lbl, lv_color_hex(0xFFFFFF), 0);

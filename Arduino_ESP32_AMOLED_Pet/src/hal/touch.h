@@ -12,7 +12,7 @@
 namespace hal {
 
 void   touch_init();            // 初始化触摸
-bool   touch_available();       // 是否有触摸数据
+bool   touch_available();       // 触摸控制器是否已初始化
 bool   touch_read(int16_t* x, int16_t* y);  // 读取触摸坐标 (返回是否有效)
 void   touch_set_callback(void (*cb)(int16_t x, int16_t y, bool pressed));
 

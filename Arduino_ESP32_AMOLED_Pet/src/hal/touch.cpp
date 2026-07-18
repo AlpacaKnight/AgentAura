@@ -59,13 +59,13 @@ void touch_init() {
 }
 
 bool touch_available() {
-  // 检查 INT 引脚是否为低 (表示有触摸)
-  return s_touch_initialized && (digitalRead(TP_INT) == LOW);
+  // FT3168 的 INT 可能只是短脉冲，LVGL 定时轮询容易错过。
+  // 这里表示控制器已就绪，实际触摸状态由 touch_read() 的点数判断。
+  return s_touch_initialized;
 }
 
 bool touch_read(int16_t* x, int16_t* y) {
   if (!s_touch_initialized) return false;
-  if (digitalRead(TP_INT) != LOW) return false;
 
   uint8_t data[6] = {0};
   if (!ft3168_read_regs(FT3168_REG_DATA, data, 6)) return false;
