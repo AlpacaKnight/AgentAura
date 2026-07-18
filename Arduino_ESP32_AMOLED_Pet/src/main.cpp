@@ -182,6 +182,9 @@ void setup() {
   // 8. 通信层(WiFi/USB/BLE)
   comm::comm_begin();
 
+  // WiFi/BLE first reserve their internal RAM, then load the optional frame.
+  ui::ui_load_pet_assets();
+
   touchActivity();
   Serial.println(F("[main] setup done. type 'help' for commands."));
 }

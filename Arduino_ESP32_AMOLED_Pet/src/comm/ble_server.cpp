@@ -18,6 +18,7 @@ static NimBLECharacteristic* s_char_cmd   = nullptr;
 static NimBLECharacteristic* s_char_state = nullptr;
 static bool s_running  = false;
 static bool s_connected = false;
+static bool s_init_failed = false;
 
 static String s_cmd_buf;
 
@@ -107,9 +108,22 @@ void ble_begin() {
     Serial.println(F("[ble] disabled by user"));
     return;
   }
+  if (s_init_failed) {
+    Serial.println(F("[ble] init previously failed; retry after reboot"));
+    return;
+  }
 
   String ble_name = String(BLE_DEVICE_PREFIX) + _mac_suffix();
-  NimBLEDevice::init(ble_name.c_str());
+  if (!NimBLEDevice::init(ble_name.c_str()) ||
+      !NimBLEDevice::isInitialized()) {
+    Serial.printf("[ble] init failed; free heap=%u, BLE disabled\n",
+                  static_cast<unsigned>(ESP.getFreeHeap()));
+    s_running = false;
+    state.ble_connected = false;
+    conn.ble = false;
+    s_init_failed = true;
+    return;
+  }
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);  // 鏈€澶у彂灏勫姛鐜?
 
   setup_services();

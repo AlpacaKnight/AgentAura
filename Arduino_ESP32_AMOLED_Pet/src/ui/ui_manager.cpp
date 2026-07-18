@@ -13,8 +13,10 @@
 #include "pin_config.h"
 #include "state.h"
 #include "storage.h"
+#include "ui/tiquan_v2_frames.h"
 #include "ui/tiquan_v2_idle.h"
 #include <Arduino.h>
+#include <SPIFFS.h>
 #include <lvgl.h>
 #include <esp_heap_caps.h>
 
@@ -133,28 +135,21 @@ static const void* s_pet_frames[TIQUAN_IDLE_FRAME_COUNT] = {
   &tiquan_idle_frames[6]
 };
 
-static void _idle_anim_timer_cb(lv_timer_t*) {
-  if (!s_pet_image || s_active_page != ActivePage::PET) return;
-  s_pet_frame_index = (s_pet_frame_index + 1) % TIQUAN_IDLE_FRAME_COUNT;
-  lv_img_set_src(s_pet_image, s_pet_frames[s_pet_frame_index]);
-  lv_obj_invalidate(s_pet_image);
-}
-
-#if 0 // External LittleFS animation decoder: disabled until independently validated.
 static bool s_pet_assets_ready = false;
 static bool s_pet_decode_active = false;
-static uint8_t s_pet_decode_failures = 0;
+static bool s_pet_frame_requested = false;
 static uint32_t s_pet_decode_remaining = 0;
 static uint32_t s_pet_decode_output = 0;
 static uint16_t s_pet_decode_run = 0;
 static uint16_t s_pet_decode_color = 0;
-static File s_pet_decode_file;
-static uint8_t s_pet_frame_buffer[TIQUAN_FRAME_BYTES];
-static lv_img_dsc_t s_pet_frame_dsc = {
-  { LV_IMG_CF_TRUE_COLOR, 0, 0, TIQUAN_FRAME_WIDTH, TIQUAN_FRAME_HEIGHT },
-  TIQUAN_FRAME_BYTES,
-  s_pet_frame_buffer
-};
+static uint8_t s_pet_rle_read_buffer[1024];
+static size_t s_pet_rle_read_pos = 0;
+static size_t s_pet_rle_read_size = 0;
+static uint8_t s_pet_retry_count = 0;
+static uint32_t s_pet_retry_at_ms = 0;
+static File s_pet_asset_file;
+static uint8_t* s_pet_frame_buffer = nullptr;
+static lv_img_dsc_t s_pet_frame_dsc = {};
 
 static uint8_t _animation_for_state(PetState pet_state) {
   switch (pet_state) {
@@ -180,51 +175,184 @@ static bool _begin_pet_frame(PetState pet_state, uint8_t frame) {
   if (frame_count == 0) return false;
   frame %= frame_count;
   const TiquanFrameIndex& index = tiquan_frame_index[animation][frame];
-  s_pet_decode_file.close();
-  s_pet_decode_file = LittleFS.open("/pets/tiquan-v2/sprites.rle", FILE_READ);
-  if (!s_pet_decode_file || !s_pet_decode_file.seek(index.offset)) return false;
+  if (!s_pet_asset_file ||
+      !s_pet_asset_file.seek(index.offset, SeekSet)) return false;
   s_pet_decode_remaining = index.length;
   s_pet_decode_output = 0;
   s_pet_decode_run = 0;
+  s_pet_rle_read_pos = 0;
+  s_pet_rle_read_size = 0;
   s_pet_decode_active = true;
   return true;
 }
 
+static void _pet_assets_failed() {
+  s_pet_decode_active = false;
+  s_pet_frame_requested = false;
+  s_pet_assets_ready = false;
+  if (s_pet_image) {
+    s_pet_frame_index %= TIQUAN_IDLE_FRAME_COUNT;
+    lv_img_set_src(s_pet_image, s_pet_frames[s_pet_frame_index]);
+    lv_obj_invalidate(s_pet_image);
+  }
+  if (s_pet_asset_file) {
+    s_pet_asset_file.close();
+  }
+  if (s_pet_frame_buffer) {
+    heap_caps_free(s_pet_frame_buffer);
+    s_pet_frame_buffer = nullptr;
+  }
+  memset(&s_pet_frame_dsc, 0, sizeof(s_pet_frame_dsc));
+  s_pet_rle_read_pos = 0;
+  s_pet_rle_read_size = 0;
+
+  constexpr uint8_t kMaxRetries = 3;
+  if (s_pet_retry_count < kMaxRetries) {
+    ++s_pet_retry_count;
+    s_pet_retry_at_ms = millis() + 2000;
+    Serial.printf("[pet] SPIFFS RLE failed; built-in idle, retry %u/%u\n",
+                  s_pet_retry_count, kMaxRetries);
+  } else {
+    s_pet_retry_at_ms = 0;
+    Serial.println(F("[pet] SPIFFS RLE disabled; using built-in idle"));
+  }
+}
+
+void ui_load_pet_assets() {
+  if (s_pet_assets_ready || s_pet_frame_buffer) return;
+
+  if (!SPIFFS.begin(false)) {
+    Serial.println(F("[pet] SPIFFS mount failed; using built-in idle"));
+    return;
+  }
+
+  s_pet_asset_file =
+    SPIFFS.open("/pets/tiquan-v2/sprites.rle", FILE_READ);
+  if (!s_pet_asset_file) {
+    s_pet_asset_file = SPIFFS.open("/sprites.rle", FILE_READ);
+  }
+
+  const TiquanFrameIndex& last =
+    tiquan_frame_index[TIQUAN_ANIMATION_COUNT - 1][7];
+  const uint32_t expected_size = last.offset + last.length;
+  if (!s_pet_asset_file ||
+      static_cast<uint64_t>(s_pet_asset_file.size()) < expected_size) {
+    Serial.printf("[pet] SPIFFS RLE missing or too small; need %lu bytes\n",
+                  static_cast<unsigned long>(expected_size));
+    s_pet_asset_file.close();
+    return;
+  }
+
+  const size_t free_before =
+    heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest_before =
+    heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  constexpr size_t kRuntimeReserve = 32U * 1024U;
+  if (free_before < TIQUAN_FRAME_BYTES + kRuntimeReserve ||
+      largest_before < TIQUAN_FRAME_BYTES) {
+    s_pet_asset_file.close();
+    Serial.printf("[pet] insufficient safe heap; free=%u largest=%u\n",
+                  static_cast<unsigned>(free_before),
+                  static_cast<unsigned>(largest_before));
+    return;
+  }
+  s_pet_frame_buffer = static_cast<uint8_t*>(
+    heap_caps_malloc(TIQUAN_FRAME_BYTES,
+                     MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (!s_pet_frame_buffer) {
+    s_pet_asset_file.close();
+    Serial.printf("[pet] no RAM for frame buffer; free=%u largest=%u\n",
+                  static_cast<unsigned>(free_before),
+                  static_cast<unsigned>(largest_before));
+    return;
+  }
+
+  memset(&s_pet_frame_dsc, 0, sizeof(lv_img_dsc_t));
+  s_pet_frame_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
+  s_pet_frame_dsc.header.w = TIQUAN_FRAME_WIDTH;
+  s_pet_frame_dsc.header.h = TIQUAN_FRAME_HEIGHT;
+  s_pet_frame_dsc.data_size = TIQUAN_FRAME_BYTES;
+  s_pet_frame_dsc.data = s_pet_frame_buffer;
+
+  s_pet_assets_ready = true;
+  s_pet_frame_index = 0;
+  s_pet_frame_requested = true;
+  Serial.printf("[pet] SPIFFS RLE ready: %lu bytes, %u animations, heap=%u\n",
+                static_cast<unsigned long>(s_pet_asset_file.size()),
+                TIQUAN_ANIMATION_COUNT,
+                static_cast<unsigned>(ESP.getFreeHeap()));
+}
+
+static bool _read_pet_rle_record(uint16_t& run, uint16_t& color) {
+  if (s_pet_decode_remaining < 4) return false;
+
+  if (s_pet_rle_read_size - s_pet_rle_read_pos < 4) {
+    const size_t wanted =
+      s_pet_decode_remaining < sizeof(s_pet_rle_read_buffer)
+        ? s_pet_decode_remaining
+        : sizeof(s_pet_rle_read_buffer);
+    const size_t received =
+      s_pet_asset_file.read(s_pet_rle_read_buffer, wanted);
+    if (received != wanted || received < 4) return false;
+    s_pet_rle_read_pos = 0;
+    s_pet_rle_read_size = received;
+  }
+
+  const uint8_t* record = s_pet_rle_read_buffer + s_pet_rle_read_pos;
+  run = uint16_t(record[0]) | (uint16_t(record[1]) << 8);
+  color = uint16_t(record[2]) | (uint16_t(record[3]) << 8);
+  s_pet_rle_read_pos += 4;
+  s_pet_decode_remaining -= 4;
+  return run != 0;
+}
+
 static void _service_pet_decode() {
   if (!s_pet_decode_active) return;
-  uint16_t budget = 1024;
-  while (budget && s_pet_decode_active) {
+  while (s_pet_decode_active) {
     if (s_pet_decode_run == 0) {
-      uint8_t record[4];
-      if (s_pet_decode_remaining < 4 || s_pet_decode_file.read(record, 4) != 4) goto failed;
-      s_pet_decode_remaining -= 4;
-      s_pet_decode_run = uint16_t(record[0]) | (uint16_t(record[1]) << 8);
-      s_pet_decode_color = uint16_t(record[2]) | (uint16_t(record[3]) << 8);
+      if (!_read_pet_rle_record(s_pet_decode_run, s_pet_decode_color)) {
+        _pet_assets_failed();
+        return;
+      }
     }
-    uint16_t pixels = min(s_pet_decode_run, budget);
-    if (s_pet_decode_output + uint32_t(pixels) * 2 > TIQUAN_FRAME_BYTES) goto failed;
+    const uint16_t pixels = s_pet_decode_run;
+    if (s_pet_decode_output + uint32_t(pixels) * 2 > TIQUAN_FRAME_BYTES) {
+      _pet_assets_failed();
+      return;
+    }
     for (uint16_t i = 0; i < pixels; ++i) {
       s_pet_frame_buffer[s_pet_decode_output++] = s_pet_decode_color & 0xff;
       s_pet_frame_buffer[s_pet_decode_output++] = s_pet_decode_color >> 8;
     }
-    s_pet_decode_run -= pixels;
-    budget -= pixels;
+    s_pet_decode_run = 0;
     if (s_pet_decode_output == TIQUAN_FRAME_BYTES) {
-      s_pet_decode_file.close();
+      if (s_pet_decode_remaining != 0) {
+        _pet_assets_failed();
+        return;
+      }
       s_pet_decode_active = false;
-      s_pet_decode_failures = 0;
       lv_img_set_src(s_pet_image, &s_pet_frame_dsc);
       lv_obj_invalidate(s_pet_image);
     }
   }
-  return;
-failed:
-  s_pet_decode_file.close();
-  s_pet_decode_active = false;
-  if (++s_pet_decode_failures >= 3) s_pet_assets_ready = false;
-  Serial.println(F("[pet] frame decode failed"));
 }
-#endif
+
+static void _idle_anim_timer_cb(lv_timer_t*) {
+  if (!s_pet_image || s_active_page != ActivePage::PET) return;
+
+  if (s_pet_assets_ready) {
+    if (s_pet_decode_active || s_pet_frame_requested) return;
+    uint8_t animation = _animation_for_state(state.pet_state);
+    uint8_t frame_count = tiquan_frame_counts[animation];
+    s_pet_frame_index = (s_pet_frame_index + 1) % frame_count;
+    s_pet_frame_requested = true;
+    return;
+  }
+
+  s_pet_frame_index = (s_pet_frame_index + 1) % TIQUAN_IDLE_FRAME_COUNT;
+  lv_img_set_src(s_pet_image, s_pet_frames[s_pet_frame_index]);
+  lv_obj_invalidate(s_pet_image);
+}
 
 static void _enable_gesture_bubble(lv_obj_t* obj) {
   if (!obj) return;
@@ -597,6 +725,21 @@ void ui_loop() {
     s_last_tick = now;
   }
 
+  if (!s_pet_assets_ready && s_pet_retry_at_ms != 0 &&
+      static_cast<int32_t>(now - s_pet_retry_at_ms) >= 0) {
+    s_pet_retry_at_ms = 0;
+    ui_load_pet_assets();
+  }
+
+  if (s_pet_assets_ready && s_pet_frame_requested &&
+      !s_pet_decode_active) {
+    s_pet_frame_requested = false;
+    if (!_begin_pet_frame(state.pet_state, s_pet_frame_index)) {
+      _pet_assets_failed();
+    }
+  }
+  _service_pet_decode();
+
   if (s_page_change_requested) {
     s_page_change_requested = false;
 
@@ -646,6 +789,10 @@ void ui_loop() {
     if (state.pet_state != s_displayed_pet_state) {
       s_displayed_pet_state = state.pet_state;
       s_pet_frame_index = 0;
+      if (s_pet_assets_ready) {
+        s_pet_decode_active = false;
+        s_pet_frame_requested = true;
+      }
     }
     lv_label_set_text(s_pet_label, _pet_state_text(state.pet_state));
     if (s_settings_pet_state_label) {

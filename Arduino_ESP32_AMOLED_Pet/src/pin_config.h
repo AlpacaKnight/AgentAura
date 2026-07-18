@@ -56,11 +56,13 @@
 // ES8311 I2C 地址 (复用 I2C 总线: SDA=8, SCL=7)
 #define ES8311_ADDR 0x18
 
-// ==================== SD 卡 (SDMMC) ====================
-const int SDMMC_CLK  = 2;
-const int SDMMC_CMD  = 1;
-const int SDMMC_DATA = 3;
-// SD_CS 由 TCA9554 EXIO7 控制
+// ==================== TF 卡 (SPI) ====================
+// ESP32-C6 只有一个通用硬件 SPI，已由 AMOLED QSPI 使用。
+// TF 卡按原理图使用以下独立引脚，并通过软件 SPI 驱动。
+#define SD_SPI_MOSI  6
+#define SD_SPI_SCK   10
+#define SD_SPI_MISO  11
+#define SD_SPI_CS    18
 
 // ==================== 按键 ====================
 // GPIO0 已用于 LCD QSPI SCLK，不能再配置为按键输入。

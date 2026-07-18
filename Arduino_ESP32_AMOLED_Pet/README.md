@@ -120,3 +120,20 @@ uv run pio run -e esp32c6 -t upload --upload-port COM4
 # 监视串口
 uv run pio device monitor -e esp32c6 -p COM4 -b 115200
 ```
+## SPIFFS RLE 宠物资源
+
+完整的 11 状态宠物动画从 SPIFFS 分区加载。资源文件已经放在：
+
+```text
+data/pets/tiquan-v2/sprites.rle
+```
+
+刷入固件后，还需要单独刷入 SPIFFS 文件系统镜像：
+
+```powershell
+uv run pio run -e esp32c6 -t uploadfs --upload-port COM4
+```
+
+上传前需要关闭占用 COM4 的串口监视器。设备启动时会检查 RLE 文件
+大小和单帧缓冲，并使用块读取完成整帧解码；SPIFFS 挂载或资源读取
+失败时，会自动回退到固件内置的 idle 动画并进行有限次数重试。

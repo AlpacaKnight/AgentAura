@@ -15,6 +15,7 @@
 namespace ui {
 
 void ui_init();                 // 初始化 LVGL + 显示 + 触摸
+void ui_load_pet_assets();      // 通信模块启动后加载 SPIFFS 动画
 void ui_loop();                 // 轮询 LVGL 任务
 void ui_refresh_now();          // 立即刷新当前界面
 
