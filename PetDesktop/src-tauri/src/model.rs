@@ -371,9 +371,13 @@ pub fn default_animations(sprite_version: u32) -> HashMap<String, AnimationSpec>
         ("review", 8, vec![150, 150, 150, 150, 150, 280]),
     ];
     if sprite_version >= 2 {
-        rows.push(("look", 9, vec![200, 200, 200, 200, 200, 200, 200, 300]));
         rows.push((
-            "directions",
+            "look-directions-a",
+            9,
+            vec![200, 200, 200, 200, 200, 200, 200, 300],
+        ));
+        rows.push((
+            "look-directions-b",
             10,
             vec![180, 180, 180, 180, 180, 180, 180, 260],
         ));

@@ -237,17 +237,17 @@ Agent 生命周期事件
 
 #### 4.5.3 启用 Codex 宠物 v2 新增动画
 
-- **背景**：提交 `d11a392`（`feat: 支持codex宠物v2图集`）为精灵图新增了两个动画行 `look`（row 9，8 帧）和 `directions`（row 10，8 帧），并将 `idle` 扩展到 7 帧。v2 精灵图为 8×11 布局（v1 为 8×9）。
-- **问题**：`Pet.tsx:21-30` 的 `STATE_ANIMATION` 映射表中没有任何 `AgentState` 指向 `look` 或 `directions`，两个新动画行处于孤立状态，永远不会被触发。
-- **说明**：新增的 `look` / `directions` 是**行为动画**而非状态动画，不属于 `AgentState` 枚举（`init/running/busy/waiting/error/idle/offline/upgrade` 8 个值未变）。插件无需改动——它们仍发送原有的 8 个状态值，PetDesktop 的 `AgentState::from_str` 也只接受这 8 个值。需要做的是在 PetDesktop 前端决定何时触发这两个动画。
+- **背景**：提交 `d11a392`（`feat: 支持codex宠物v2图集`）为精灵图新增了两行观察方向帧 `look-directions-a`（row 9，8 帧）和 `look-directions-b`（row 10，8 帧），并将 `idle` 扩展到 7 帧。v2 精灵图为 8×11 布局（v1 为 8×9）。
+- **问题**：`Pet.tsx:21-30` 的 `STATE_ANIMATION` 映射表中没有独立的 `lookDirection` 驱动逻辑，两个方向帧行不能按 16 个观察方向使用。
+- **说明**：新增的 `look-directions-a/b` 是**观察方向帧集合**而非状态动画，不属于 `AgentState` 枚举（`init/running/busy/waiting/error/idle/offline/upgrade` 8 个值未变）。插件无需改动——它们仍发送原有的 8 个状态值，PetDesktop 的 `AgentState::from_str` 也只接受这 8 个值。需要做的是在 PetDesktop 前端决定何时设置 0-15 的观察方向。
 - **可能的触发方案**（需确认产品意图）：
-  - `look`：Agent 处于 `idle` 状态时以一定概率随机播放（原地张望），增加生动感
-  - `directions`：拖拽宠物或闲逛换方向时播放（方向指示），作为过渡动画
+  - `lookDirection`：Agent 处于 `idle` 状态时以一定概率选择 0-15 的方向帧（原地张望），增加生动感
+  - 拖拽宠物或闲逛换方向时更新 `lookDirection`，作为方向指示
 - **相关状态**：
   - v1 兼容：`Pet.tsx:65-71` 已有回退保护，`fallbackAnimation.row < petRows`，避免 v1 精灵图渲染越界
   - 验证：`pets.rs:172-176` 已根据 `spriteVersion` 区分 v1（9 行）/ v2（11 行）
-  - 配置：`model.rs:163-164` 新增 `sprite_version` 字段，`model.rs:347-380` 的 `default_animations` 在 v2 时追加 `look`/`directions`
-- **目标**：确定 `look`/`directions` 的触发条件并实现，让 v2 精灵图的两个新动画行不再孤立
+  - 配置：`model.rs:163-164` 新增 `sprite_version` 字段，`model.rs:347-380` 的 `default_animations` 在 v2 时追加 `look-directions-a/b`
+- **目标**：确定 `lookDirection` 的触发条件并实现，让 v2 精灵图的 16 个方向帧可被使用
 - **影响文件**：`PetDesktop/src/Pet.tsx`（`STATE_ANIMATION` 映射或动画调度逻辑）、`PetDesktop/src/Pet.test.ts`（补充 v2 动画测试）
 
 ### 4.6 低优先级 — 固件
@@ -306,7 +306,7 @@ Agent 生命周期事件
 | 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 | ✅ 已完成 |
 | 9 | 补充气泡消息单元测试 | 中 | #1, #2 | ✅ 已完成 |
 | 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 | 暂不做 |
-| 12 | 启用 Codex 宠物 v2 新增动画（look/directions） | 中 | 产品确认触发方案 | 暂不做 |
+| 12 | 启用 Codex 宠物 v2 观察方向帧（lookDirection） | 中 | 产品确认触发方案 | 暂不做 |
 | 13 | 更新过时文档 | 小 | #1-#7 | ✅ 已完成 |
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
 | 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |

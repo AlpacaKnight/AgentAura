@@ -14,8 +14,8 @@ const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
   waiting: { row: 6, frames: 6, durationsMs: [150, 150, 150, 150, 150, 260] },
   running: { row: 7, frames: 6, durationsMs: [120, 120, 120, 120, 120, 220] },
   review: { row: 8, frames: 6, durationsMs: [150, 150, 150, 150, 150, 280] },
-  look: { row: 9, frames: 8, durationsMs: [200, 200, 200, 200, 200, 200, 200, 300] },
-  directions: { row: 10, frames: 8, durationsMs: [180, 180, 180, 180, 180, 180, 180, 260] },
+  'look-directions-a': { row: 9, frames: 8, durationsMs: [200, 200, 200, 200, 200, 200, 200, 300] },
+  'look-directions-b': { row: 10, frames: 8, durationsMs: [180, 180, 180, 180, 180, 180, 180, 260] },
 };
 
 const STATE_ANIMATION: Record<string, string> = {
