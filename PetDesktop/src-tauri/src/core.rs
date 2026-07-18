@@ -122,6 +122,14 @@ impl AppCore {
 
     pub fn set_hardware_sender(&self, sender: mpsc::Sender<HardwareMessage>) {
         *self.hardware_tx.lock() = Some(sender);
+        let initial_state = {
+            let model = self.model.read();
+            (!model.paused && model.settings.hardware.transport != HardwareTransport::Disabled)
+                .then_some(model.effective_state)
+        };
+        if let Some(state) = initial_state {
+            self.queue_hardware(HardwareMessage::State(state));
+        }
     }
 
     pub fn set_http_lan_sender(&self, sender: watch::Sender<bool>) {
@@ -353,6 +361,14 @@ impl AppCore {
         if lan_changed {
             self.reload_http_listener();
         }
+        let current_state = {
+            let model = self.model.read();
+            (!model.paused && model.settings.hardware.transport != HardwareTransport::Disabled)
+                .then_some(model.effective_state)
+        };
+        if let Some(state) = current_state {
+            self.queue_hardware(HardwareMessage::State(state));
+        }
         self.log(LogLevel::Info, "settings", "settings saved");
         Ok(())
     }
@@ -439,6 +455,11 @@ impl AppCore {
             })
             .clamp(PET_MESSAGE_TTL_MIN_MS, PET_MESSAGE_TTL_MAX_MS);
 
+        let forward_to_hardware = model.effective_agent_id.as_deref() == Some(instance_id)
+            && model.settings.pet_bubble.enabled
+            && !model.paused
+            && model.settings.hardware.transport != HardwareTransport::Disabled;
+
         let queue = model
             .pet_messages
             .entry(instance_id.to_string())
@@ -476,6 +497,10 @@ impl AppCore {
             queue.pop_front();
         }
         drop(model);
+
+        if forward_to_hardware {
+            self.queue_hardware(HardwareMessage::PetMessage(truncated.clone()));
+        }
 
         // 历史进入运行日志（不持久化完整正文，仅内存日志）。
         let kind_label = match kind {

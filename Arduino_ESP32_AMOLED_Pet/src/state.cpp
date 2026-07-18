@@ -126,6 +126,9 @@ String getStateJson() {
   doc["pet"]["state"] = getPetStateString(state.pet_state);
   doc["pet"]["sprite_version"] = PET_SPRITE_VERSION;
   doc["pet"]["animation_count"] = PET_SPRITE_VERSION >= 2 ? 11 : 9;
+  doc["pet"]["assets_ready"] = state.pet_assets_ready;
+  doc["pet"]["animation_row"] = state.pet_animation_row;
+  doc["pet"]["animation_frame"] = state.pet_animation_frame;
   doc["pet"]["emotion"] = "";
   if (state.pet_message.length() > 0) {
     doc["pet"]["message"] = state.pet_message;
@@ -135,6 +138,7 @@ String getStateJson() {
   // Agent
   doc["agent"]["type"] = getAgentTypeString(state.agent_type);
   doc["agent"]["name"] = state.agent_name;
+  doc["agent"]["state"] = state.agent_state;
 
   // 连接
   doc["connections"]["usb"]  = conn.usb;
@@ -142,6 +146,7 @@ String getStateJson() {
   doc["connections"]["ble"]  = state.ble_connected;
   doc["connections"]["mqtt"] = state.mqtt_connected;
   doc["connections"]["ws"]   = state.ws_connected;
+  doc["connections"]["udp"]  = conn.udp;
 
   // 设置
   doc["settings"]["brightness"]  = state.brightness;

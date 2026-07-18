@@ -70,6 +70,48 @@ static bool setPetStateFromName(String value) {
 }
 
 // ==================== 文本指令解析 ====================
+bool setAgentStateFromName(const String& value, String* normalized) {
+  String agent_state = value;
+  agent_state.trim();
+  agent_state.toLowerCase();
+
+  PetState pet_state;
+  const char* canonical;
+  if (agent_state == "init") {
+    pet_state = PetState::WAVING;
+    canonical = "init";
+  } else if (agent_state == "running") {
+    pet_state = PetState::RUNNING;
+    canonical = "running";
+  } else if (agent_state == "busy" || agent_state == "processing") {
+    pet_state = PetState::RUNNING;
+    canonical = "busy";
+  } else if (agent_state == "waiting") {
+    pet_state = PetState::WAITING;
+    canonical = "waiting";
+  } else if (agent_state == "idle") {
+    pet_state = PetState::IDLE;
+    canonical = "idle";
+  } else if (agent_state == "error") {
+    pet_state = PetState::FAILED;
+    canonical = "error";
+  } else if (agent_state == "offline" || agent_state == "standby") {
+    pet_state = PetState::IDLE;
+    canonical = "offline";
+  } else if (agent_state == "upgrade" || agent_state == "updating") {
+    pet_state = PetState::JUMPING;
+    canonical = "upgrade";
+  } else {
+    return false;
+  }
+
+  setPetState(pet_state);
+  state.agent_state = canonical;
+  touchActivity();
+  if (normalized) *normalized = canonical;
+  return true;
+}
+
 String handleText(const String& cmd) {
   if (cmd.length() == 0) return "";
 
@@ -122,6 +164,11 @@ String handleText(const String& cmd) {
 
   // ---- agent 命令 ----
   if (verb == "agent") {
+    String normalized;
+    if (setAgentStateFromName(args, &normalized)) {
+      return "OK agent " + normalized;
+    }
+
     sp = args.indexOf(' ');
     String sub = (sp > 0) ? args.substring(0, sp) : args;
     String val = (sp > 0) ? args.substring(sp + 1) : "";
@@ -135,7 +182,7 @@ String handleText(const String& cmd) {
       else return "ERR: unknown agent type";
       return "OK: agent type -> " + getAgentTypeString(state.agent_type);
     }
-    return "ERR: usage: agent type [CLAUDE|CODEX|OTHER]";
+    return "ERR: usage: agent [init|running|busy|waiting|idle|error|offline|upgrade] or agent type [CLAUDE|CODEX|OTHER]";
   }
 
   // ---- wifi 命令 ----
@@ -229,6 +276,9 @@ String handleJson(const String& json_str) {
   }
 
   const char* type = doc["type"];
+  if (!type) {
+    return "{\"error\":\"missing type\"}";
+  }
 
   // ---- 状态同步 ----
   if (strcmp(type, "state_sync") == 0) {
@@ -246,7 +296,9 @@ String handleJson(const String& json_str) {
 
       const char* state_str = agent["state"];
       if (state_str) {
-        setPetStateFromName(String(state_str));
+        if (!setAgentStateFromName(String(state_str))) {
+          setPetStateFromName(String(state_str));
+        }
       }
 
       // 额度更新

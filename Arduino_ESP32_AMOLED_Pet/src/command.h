@@ -19,6 +19,9 @@ String handleText(const String& cmd);
 // 处理JSON指令 (来自WebSocket/HTTP/MQTT)
 String handleJson(const String& json_str);
 
+// Apply a PetDesktop AgentState name and return its normalized name.
+bool setAgentStateFromName(const String& value, String* normalized = nullptr);
+
 // 返回帮助文本
 String getHelp();
 

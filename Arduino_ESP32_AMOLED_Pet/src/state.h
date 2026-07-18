@@ -39,8 +39,12 @@ struct ApprovalRequest {
 struct RuntimeState {
   // 宠物状态
   PetState  pet_state    = PetState::IDLE;
+  bool      pet_assets_ready = false;
+  uint8_t   pet_animation_row = 0;
+  uint8_t   pet_animation_frame = 0;
   AgentType agent_type   = AgentType::NONE;
   String    agent_name;                    // Agent 显示名称
+  String    agent_state = "idle";          // PetDesktop AgentState
 
   // 连接状态
   bool      usb_connected  = false;

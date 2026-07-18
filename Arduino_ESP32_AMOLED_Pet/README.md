@@ -30,7 +30,7 @@ uv run pio run -e esp32c6
 .pio\build\esp32c6\firmware.factory.bin
 ```
 
-当前验证结果：RAM 使用率约 23%，Flash 使用率约 60%，编译结果为 `SUCCESS`。
+当前验证结果：RAM 使用率约 23%，应用分区使用率约 78%，编译结果为 `SUCCESS`。
 
 ## 三、查找设备串口
 
@@ -91,6 +91,16 @@ uv run pio run -e esp32c6 -t monitor --upload-port COM4
 不要使用 RingLight 的 `esp32c3` 配置烧录此设备。
 
 ## 七、常见问题
+
+### 连接 PetDesktop
+
+固件兼容 PetDesktop 的 HTTP、UDP 和 USB 串口硬件桥接：
+
+- HTTP 主机填写设备 IP，端口填写 `80`。
+- UDP 主机填写设备 IP，端口填写 `8888`；也可以在 PetDesktop 中执行设备发现。
+- USB 串口选择设备端口，波特率填写 `115200`。
+
+PetDesktop 的 `init/running/busy/waiting/idle/error/offline/upgrade` 状态会自动映射到对应宠物动画。当前有效 Agent 的气泡消息也会通过 `pet speak` 同步到设备。
 
 ### `UnknownPackageError: pioarduino/tool-esptoolpy`
 

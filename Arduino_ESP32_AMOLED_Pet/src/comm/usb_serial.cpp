@@ -29,8 +29,6 @@ void usb_loop() {
     if (ch == '\n') {
 s_line_buf.trim();
 	      if (s_line_buf.length() > 0) {
-	        Serial.print(F(">> ")); Serial.println(s_line_buf);
-
 	        // 路由到 command parser
 	        String resp = cmd::handleText(s_line_buf);
 	        if (resp.length() > 0) {

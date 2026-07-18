@@ -30,7 +30,7 @@
 └──────────────────────────────────────────────────────────┘
 ```
 
-> **注意**：UDP 指令、MQTT 客户端、WebSocket 在 `pin_config.h` / `state.h` 中有配置项和连接标志，但固件尚未实现对应传输层，当前不可用。
+> UDP 文本指令和设备发现已实现于端口 `8888`。MQTT 客户端和 WebSocket 仍未实现。
 
 ---
 
@@ -52,6 +52,7 @@
 |------|------|------|------|
 | `pet state` | `idle\|running-right\|running-left\|waving\|jumping\|failed\|waiting\|running\|review\|look-directions-a\|look-directions-b` | 设置宠物动画；后两项仅 v2 可用 | `OK: pet state -> <state>` 或 `ERR: unknown pet state` |
 | `pet speak` | `<文本>` | 设置宠物说话气泡 | `OK: pet says "<文本>"` |
+| `agent` | `init\|running\|busy\|waiting\|idle\|error\|offline\|upgrade` | 同步 PetDesktop Agent 状态并映射到宠物动画 | `OK agent <state>` |
 | `agent type` | `CLAUDE\|CODEX\|OTHER` | 设置 Agent 类型 | `OK: agent type -> <type>` |
 
 ### 2.3 通信开关
@@ -88,6 +89,8 @@ OK: pet state -> running
 OK: pet says "正在编译..."
 > agent type CLAUDE
 OK: agent type -> claude
+> agent waiting
+OK agent waiting
 > brightness 180
 OK: brightness -> 180
 > state
@@ -189,7 +192,7 @@ OK: brightness -> 180
 | 换行 | LF（`\n`） |
 | 最大行长 | 200 字符 |
 | 协议 | 仅文本指令（JSON 不支持） |
-| 回显 | 每行输入回显 `>> <line>` |
+| 回显 | 不回显输入；首个响应行直接为 `OK`、`ERR` 或 JSON，兼容 PetDesktop 串口读取 |
 | 开机 | 打印固件名、设备型号、`type 'help' for commands` |
 
 ---
@@ -200,9 +203,10 @@ HTTP 服务器仅在 **WiFi STA 模式**下启动，端口 **80**。
 
 | 方法 | 路径 | Content-Type | 说明 |
 |------|------|-------------|------|
-| `GET` | `/` | `application/json` | 查询完整状态 JSON |
+| `GET` | `/` | `text/html` | 中文设备管理页面 |
 | `GET` | `/api/state` | `application/json` | 同上 |
-| `POST` | `/api/cmd` | `application/json` | JSON 指令（`state_sync` / `approval_request`） |
+| `POST` | `/api/agent?state=<状态>` | `text/plain` | PetDesktop 状态同步 |
+| `POST` | `/api/cmd` | `text/plain` 或 `application/json` | 文本指令，或 JSON 指令（`state_sync` / `approval_request`） |
 | `GET` | `/api/cmd?cmd=<文本>` | `text/plain` | 文本指令 |
 
 - `POST /api/cmd` 空体返回 `400 {"error":"no body"}`
@@ -211,7 +215,21 @@ HTTP 服务器仅在 **WiFi STA 模式**下启动，端口 **80**。
 
 ---
 
-## 6. WiFi 配网（AP 模式）
+## 6. UDP 指令与设备发现
+
+UDP 服务仅在 WiFi STA 模式下启动，端口为 `8888`。请求和响应均为 UTF-8 单个数据报。
+
+| 请求 | 响应 |
+|------|------|
+| `discover` / `ping` / `who` | 包含 `device/model/fw/ip/http/udp/mac/caps` 的发现 JSON |
+| `state` | 完整状态 JSON |
+| `agent busy` 等文本指令 | 与 USB/HTTP 文本接口一致的 `OK` / `ERR` 响应 |
+
+PetDesktop 的设备发现会广播 `discover\n` 到 `255.255.255.255:8888`，固件会把设备 IP、HTTP 端口 `80` 和 UDP 端口 `8888` 返回给请求方。
+
+---
+
+## 7. WiFi 配网（AP 模式）
 
 WiFi STA 连接失败时自动切换到 AP 模式。
 
@@ -235,7 +253,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ---
 
-## 7. BLE GATT 服务
+## 8. BLE GATT 服务
 
 | 项目 | 说明 |
 |------|------|
@@ -257,7 +275,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ---
 
-## 8. 统一状态 JSON
+## 9. 统一状态 JSON
 
 `GET /api/state`、`GET /`、`state` 文本指令均返回此结构：
 
@@ -313,7 +331,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ---
 
-## 9. 状态枚举
+## 10. 状态枚举
 
 ### PetState（桌宠状态）
 
@@ -348,7 +366,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ---
 
-## 10. 构建与烧录
+## 11. 构建与烧录
 
 ### 环境
 
@@ -401,11 +419,10 @@ uv run pio device monitor -e esp32c6 -p /dev/ttyACM0 -b 115200
 
 ---
 
-## 11. 已知限制
+## 12. 已知限制
 
 | 项目 | 说明 |
 |------|------|
-| UDP 指令 / 设备发现 | `pin_config.h` 定义了 `UDP_PORT=8888`，但未实现传输层 |
 | MQTT 客户端 | 配网页面可保存 MQTT 配置，但未实现客户端 |
 | WebSocket | `state.h` 有 `ws_connected` 标志，但未实现 |
 | 屏幕常亮 | `SCREEN_ALWAYS_ON=1`，调试模式下禁用自动息屏（dim/off 超时不生效） |

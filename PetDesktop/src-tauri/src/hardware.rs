@@ -16,6 +16,7 @@ use crate::{
 
 pub enum HardwareMessage {
     State(AgentState),
+    PetMessage(String),
     Command(String, oneshot::Sender<Result<String, String>>),
 }
 
@@ -49,6 +50,9 @@ pub fn start_worker(core: AppCore) -> mpsc::Sender<HardwareMessage> {
         while let Some(message) = receiver.recv().await {
             let command = match &message {
                 HardwareMessage::State(state) => format!("agent {}", state.as_str()),
+                HardwareMessage::PetMessage(text) => {
+                    format!("pet speak {}", hardware_message_text(text))
+                }
                 HardwareMessage::Command(command, _) => command.clone(),
             };
             let mut status = core.hardware_status();
@@ -298,6 +302,22 @@ fn json_u16(value: &serde_json::Value, key: &str) -> Option<u16> {
         .and_then(|entry| u16::try_from(entry).ok())
 }
 
+fn hardware_message_text(text: &str) -> String {
+    let normalized = text
+        .replace(['\r', '\n'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut result = String::new();
+    for ch in normalized.chars() {
+        if result.len() + ch.len_utf8() > 180 {
+            break;
+        }
+        result.push(ch);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,5 +329,15 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.contains("disabled"));
+    }
+
+    #[test]
+    fn hardware_pet_message_is_single_line_and_bounded() {
+        let text = format!("第一行\n第二行 {}", "字".repeat(100));
+        let result = hardware_message_text(&text);
+        assert!(!result.contains('\n'));
+        assert!(result.len() <= 180);
+        assert!(result.is_char_boundary(result.len()));
+        assert!(result.starts_with("第一行 第二行"));
     }
 }

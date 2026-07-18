@@ -190,6 +190,7 @@ static void _pet_assets_failed() {
   s_pet_decode_active = false;
   s_pet_frame_requested = false;
   s_pet_assets_ready = false;
+  state.pet_assets_ready = false;
   if (s_pet_image) {
     s_pet_frame_index %= TIQUAN_IDLE_FRAME_COUNT;
     lv_img_set_src(s_pet_image, s_pet_frames[s_pet_frame_index]);
@@ -223,6 +224,7 @@ void ui_load_pet_assets() {
 
   if (!SPIFFS.begin(false)) {
     Serial.println(F("[pet] SPIFFS mount failed; using built-in idle"));
+    _pet_assets_failed();
     return;
   }
 
@@ -240,6 +242,7 @@ void ui_load_pet_assets() {
     Serial.printf("[pet] SPIFFS RLE missing or too small; need %lu bytes\n",
                   static_cast<unsigned long>(expected_size));
     s_pet_asset_file.close();
+    _pet_assets_failed();
     return;
   }
 
@@ -247,13 +250,17 @@ void ui_load_pet_assets() {
     heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest_before =
     heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  constexpr size_t kRuntimeReserve = 32U * 1024U;
+  // Wi-Fi, HTTP, UDP and BLE are initialized before this allocation. Keeping
+  // 28 KiB free is sufficient for their steady-state work while allowing the
+  // 79,872-byte RGB565 frame on devices that have about 110 KiB free here.
+  constexpr size_t kRuntimeReserve = 28U * 1024U;
   if (free_before < TIQUAN_FRAME_BYTES + kRuntimeReserve ||
       largest_before < TIQUAN_FRAME_BYTES) {
     s_pet_asset_file.close();
     Serial.printf("[pet] insufficient safe heap; free=%u largest=%u\n",
                   static_cast<unsigned>(free_before),
                   static_cast<unsigned>(largest_before));
+    _pet_assets_failed();
     return;
   }
   s_pet_frame_buffer = static_cast<uint8_t*>(
@@ -264,6 +271,7 @@ void ui_load_pet_assets() {
     Serial.printf("[pet] no RAM for frame buffer; free=%u largest=%u\n",
                   static_cast<unsigned>(free_before),
                   static_cast<unsigned>(largest_before));
+    _pet_assets_failed();
     return;
   }
 
@@ -275,6 +283,9 @@ void ui_load_pet_assets() {
   s_pet_frame_dsc.data = s_pet_frame_buffer;
 
   s_pet_assets_ready = true;
+  state.pet_assets_ready = true;
+  s_pet_retry_count = 0;
+  s_pet_retry_at_ms = 0;
   s_pet_frame_index = 0;
   s_pet_frame_requested = true;
   Serial.printf("[pet] SPIFFS RLE ready: %lu bytes, %u animations, heap=%u\n",
@@ -331,6 +342,11 @@ static void _service_pet_decode() {
         return;
       }
       s_pet_decode_active = false;
+      state.pet_animation_frame = s_pet_frame_index;
+      // The descriptor and backing buffer are reused for every frame.
+      // Invalidate it explicitly so this stays correct if LVGL image caching
+      // is enabled in a future build.
+      lv_img_cache_invalidate_src(&s_pet_frame_dsc);
       lv_img_set_src(s_pet_image, &s_pet_frame_dsc);
       lv_obj_invalidate(s_pet_image);
     }
@@ -731,6 +747,24 @@ void ui_loop() {
     ui_load_pet_assets();
   }
 
+  // React to externally synchronized state before starting another frame.
+  // Previously this ran only in the 500 ms data refresh block, allowing an
+  // already requested idle frame to win after the Agent state had changed.
+  if (state.pet_state != s_displayed_pet_state) {
+    s_displayed_pet_state = state.pet_state;
+    s_pet_frame_index = 0;
+    s_pet_decode_active = false;
+    s_pet_decode_run = 0;
+    s_pet_decode_remaining = 0;
+    s_pet_frame_requested = s_pet_assets_ready;
+    state.pet_animation_row = _animation_for_state(state.pet_state);
+    state.pet_animation_frame = 0;
+    Serial.printf("[pet] animation switch: state=%s row=%u assets=%s\n",
+                  _pet_state_text(state.pet_state),
+                  static_cast<unsigned>(state.pet_animation_row),
+                  s_pet_assets_ready ? "SPIFFS" : "idle-fallback");
+  }
+
   if (s_pet_assets_ready && s_pet_frame_requested &&
       !s_pet_decode_active) {
     s_pet_frame_requested = false;
@@ -786,14 +820,6 @@ void ui_loop() {
     lv_label_set_text(s_battery_label, batt);
 
     // 更新桌宠图形和状态文字
-    if (state.pet_state != s_displayed_pet_state) {
-      s_displayed_pet_state = state.pet_state;
-      s_pet_frame_index = 0;
-      if (s_pet_assets_ready) {
-        s_pet_decode_active = false;
-        s_pet_frame_requested = true;
-      }
-    }
     lv_label_set_text(s_pet_label, _pet_state_text(state.pet_state));
     if (s_settings_pet_state_label) {
       char pet_state_text[40];

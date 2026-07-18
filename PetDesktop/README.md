@@ -16,6 +16,7 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 - 系统托盘、Agent 管理、宠物管理、硬件配置、运行日志。
 - HTTP/UDP 固件兼容接口和 Agent 注册/心跳扩展接口。
 - HTTP、UDP、USB 串口硬件桥接。
+- 对 AgentAura AMOLED 固件同步 8 种 Agent 状态；当前有效 Agent 的气泡消息会转发为设备端 `pet speak`。
 
 ## 当前状态
 
