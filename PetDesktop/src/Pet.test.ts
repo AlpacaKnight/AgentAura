@@ -18,6 +18,10 @@ describe('Codex pet animation contract', () => {
     }
   });
 
+  it('maps busy to the review animation used by the hardware firmware', () => {
+    expect(STATE_ANIMATION.busy).toBe('review');
+  });
+
   it('does not map offline to v2 look-direction rows', () => {
     expect(STATE_ANIMATION.offline).toBe('idle');
     expect(Object.values(STATE_ANIMATION)).not.toContain('look-directions-a');

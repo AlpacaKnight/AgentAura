@@ -29,6 +29,30 @@ static void _ui_init_pet_screen();
 static void _ui_init_settings_screen();
 static void _ui_init_apps_screen();
 static bool s_slider_interacting = false;
+static lv_obj_t* s_brightness_slider = nullptr;
+static lv_obj_t* s_brightness_value_label = nullptr;
+static lv_obj_t* s_volume_slider = nullptr;
+static lv_obj_t* s_volume_value_label = nullptr;
+
+static void _sync_settings_controls() {
+  if (s_slider_interacting) return;
+
+  if (s_brightness_slider &&
+      lv_slider_get_value(s_brightness_slider) != state.brightness) {
+    lv_slider_set_value(s_brightness_slider, state.brightness, LV_ANIM_OFF);
+  }
+  if (s_brightness_value_label) {
+    lv_label_set_text_fmt(s_brightness_value_label, "%u", state.brightness);
+  }
+
+  if (s_volume_slider &&
+      lv_slider_get_value(s_volume_slider) != state.volume) {
+    lv_slider_set_value(s_volume_slider, state.volume, LV_ANIM_OFF);
+  }
+  if (s_volume_value_label) {
+    lv_label_set_text_fmt(s_volume_value_label, "%u", state.volume);
+  }
+}
 
 static void _brightness_slider_event_cb(lv_event_t* event) {
   lv_event_code_t code = lv_event_get_code(event);
@@ -830,6 +854,7 @@ void ui_loop() {
                _pet_state_text_zh(state.pet_state));
       lv_label_set_text(s_settings_pet_state_label, pet_state_text);
     }
+    _sync_settings_controls();
     _set_pet_visual(state.pet_state);
     char connection[48];
     snprintf(connection, sizeof(connection), "%s  |  %s  |  %s",
@@ -951,23 +976,24 @@ static void _ui_init_settings_screen() {
   lv_label_set_text(brt_label, "亮度");
   lv_obj_align(brt_label, LV_ALIGN_TOP_LEFT, 20, 65);
 
-  lv_obj_t* brt_slider = lv_slider_create(s_screen_settings);
-  lv_obj_set_size(brt_slider, 190, 22);
-  lv_obj_align(brt_slider, LV_ALIGN_TOP_LEFT, 80, 62);
-  lv_obj_set_ext_click_area(brt_slider, 14);
-  lv_slider_set_range(brt_slider, 0, 255);
-  lv_slider_set_value(brt_slider, state.brightness, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(brt_slider, lv_color_hex(0x333344), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(brt_slider, lv_color_hex(0x0EA5E9), LV_PART_INDICATOR);
+  s_brightness_slider = lv_slider_create(s_screen_settings);
+  lv_obj_set_size(s_brightness_slider, 190, 22);
+  lv_obj_align(s_brightness_slider, LV_ALIGN_TOP_LEFT, 80, 62);
+  lv_obj_set_ext_click_area(s_brightness_slider, 14);
+  lv_slider_set_range(s_brightness_slider, 0, 255);
+  lv_slider_set_value(s_brightness_slider, state.brightness, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(s_brightness_slider, lv_color_hex(0x333344), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(s_brightness_slider, lv_color_hex(0x0EA5E9), LV_PART_INDICATOR);
 
-  lv_obj_t* brt_value = lv_label_create(s_screen_settings);
-  lv_obj_set_width(brt_value, 52);
-  lv_obj_set_style_text_font(brt_value, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_align(brt_value, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_style_text_color(brt_value, lv_color_hex(0x38BDF8), 0);
-  lv_label_set_text_fmt(brt_value, "%u", state.brightness);
-  lv_obj_align(brt_value, LV_ALIGN_TOP_LEFT, 292, 64);
-  lv_obj_add_event_cb(brt_slider, _brightness_slider_event_cb, LV_EVENT_ALL, brt_value);
+  s_brightness_value_label = lv_label_create(s_screen_settings);
+  lv_obj_set_width(s_brightness_value_label, 52);
+  lv_obj_set_style_text_font(s_brightness_value_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_align(s_brightness_value_label, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_color(s_brightness_value_label, lv_color_hex(0x38BDF8), 0);
+  lv_label_set_text_fmt(s_brightness_value_label, "%u", state.brightness);
+  lv_obj_align(s_brightness_value_label, LV_ALIGN_TOP_LEFT, 292, 64);
+  lv_obj_add_event_cb(s_brightness_slider, _brightness_slider_event_cb,
+                      LV_EVENT_ALL, s_brightness_value_label);
 
   // 音量滑块
   lv_obj_t* vol_label = lv_label_create(s_screen_settings);
@@ -976,23 +1002,24 @@ static void _ui_init_settings_screen() {
   lv_label_set_text(vol_label, "音量");
   lv_obj_align(vol_label, LV_ALIGN_TOP_LEFT, 20, 125);
 
-  lv_obj_t* vol_slider = lv_slider_create(s_screen_settings);
-  lv_obj_set_size(vol_slider, 190, 22);
-  lv_obj_align(vol_slider, LV_ALIGN_TOP_LEFT, 80, 122);
-  lv_obj_set_ext_click_area(vol_slider, 14);
-  lv_slider_set_range(vol_slider, 0, 100);
-  lv_slider_set_value(vol_slider, state.volume, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x333344), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(vol_slider, lv_color_hex(0x22C55E), LV_PART_INDICATOR);
+  s_volume_slider = lv_slider_create(s_screen_settings);
+  lv_obj_set_size(s_volume_slider, 190, 22);
+  lv_obj_align(s_volume_slider, LV_ALIGN_TOP_LEFT, 80, 122);
+  lv_obj_set_ext_click_area(s_volume_slider, 14);
+  lv_slider_set_range(s_volume_slider, 0, 100);
+  lv_slider_set_value(s_volume_slider, state.volume, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(s_volume_slider, lv_color_hex(0x333344), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(s_volume_slider, lv_color_hex(0x22C55E), LV_PART_INDICATOR);
 
-  lv_obj_t* vol_value = lv_label_create(s_screen_settings);
-  lv_obj_set_width(vol_value, 52);
-  lv_obj_set_style_text_font(vol_value, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_align(vol_value, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_style_text_color(vol_value, lv_color_hex(0x4ADE80), 0);
-  lv_label_set_text_fmt(vol_value, "%u", state.volume);
-  lv_obj_align(vol_value, LV_ALIGN_TOP_LEFT, 292, 124);
-  lv_obj_add_event_cb(vol_slider, _volume_slider_event_cb, LV_EVENT_ALL, vol_value);
+  s_volume_value_label = lv_label_create(s_screen_settings);
+  lv_obj_set_width(s_volume_value_label, 52);
+  lv_obj_set_style_text_font(s_volume_value_label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_align(s_volume_value_label, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_color(s_volume_value_label, lv_color_hex(0x4ADE80), 0);
+  lv_label_set_text_fmt(s_volume_value_label, "%u", state.volume);
+  lv_obj_align(s_volume_value_label, LV_ALIGN_TOP_LEFT, 292, 124);
+  lv_obj_add_event_cb(s_volume_slider, _volume_slider_event_cb,
+                      LV_EVENT_ALL, s_volume_value_label);
 
   // 当前宠物状态，与网页管理页使用同一组 11 状态语义。
   s_settings_pet_state_label = lv_label_create(s_screen_settings);

@@ -100,7 +100,19 @@ uv run pio run -e esp32c6 -t monitor --upload-port COM4
 - UDP 主机填写设备 IP，端口填写 `8888`；也可以在 PetDesktop 中执行设备发现。
 - USB 串口选择设备端口，波特率填写 `115200`。
 
-PetDesktop 的 `init/running/busy/waiting/idle/error/offline/upgrade` 状态会自动映射到对应宠物动画。当前有效 Agent 的气泡消息也会通过 `pet speak` 同步到设备。
+PetDesktop 的状态会按以下规则映射到宠物动画：
+
+| Agent 状态 | 宠物动画 |
+|------------|----------|
+| `init` | `waving` |
+| `running` | `running` |
+| `busy` / `processing` | `review` |
+| `waiting` | `waiting` |
+| `idle` / `offline` | `idle` |
+| `error` | `failed` |
+| `upgrade` | `jumping` |
+
+当前有效 Agent 的气泡消息也会通过 `pet speak` 同步到设备。网页或其他通信通道修改亮度、音量后，硬件立即应用，设置页滑块和数字会在 500ms 内同步。
 
 ### `UnknownPackageError: pioarduino/tool-esptoolpy`
 

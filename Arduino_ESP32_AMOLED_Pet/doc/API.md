@@ -52,8 +52,21 @@
 |------|------|------|------|
 | `pet state` | `idle\|running-right\|running-left\|waving\|jumping\|failed\|waiting\|running\|review\|look-directions-a\|look-directions-b` | 设置宠物动画；后两项仅 v2 可用 | `OK: pet state -> <state>` 或 `ERR: unknown pet state` |
 | `pet speak` | `<文本>` | 设置宠物说话气泡 | `OK: pet says "<文本>"` |
-| `agent` | `init\|running\|busy\|waiting\|idle\|error\|offline\|upgrade` | 同步 PetDesktop Agent 状态并映射到宠物动画 | `OK agent <state>` |
+| `agent` | `init\|running\|busy\|waiting\|idle\|error\|offline\|upgrade` | 同步 PetDesktop Agent 状态并按下表映射到宠物动画 | `OK agent <state>` |
 | `agent type` | `CLAUDE\|CODEX\|OTHER` | 设置 Agent 类型 | `OK: agent type -> <type>` |
+
+Agent 状态和宠物动画映射：
+
+| Agent 状态 | 宠物动画 | 动画行 |
+|------------|----------|-------:|
+| `init` | `waving` | 3 |
+| `running` | `running` | 7 |
+| `busy` / `processing` | `review` | 8 |
+| `waiting` | `waiting` | 6 |
+| `idle` | `idle` | 0 |
+| `error` | `failed` | 5 |
+| `offline` | `idle` | 0 |
+| `upgrade` | `jumping` | 4 |
 
 ### 2.3 通信开关
 
@@ -68,8 +81,10 @@
 
 | 命令 | 参数 | 说明 | 响应 |
 |------|------|------|------|
-| `brightness` | `0-255` | 设置屏幕亮度 | `OK: brightness -> N` 或 `ERR: brightness 0-255` |
-| `volume` | `0-100` | 设置音量 | `OK: volume -> N` 或 `ERR: volume 0-100` |
+| `brightness` | `0-255` | 设置屏幕亮度、写入 NVS，并在 500ms 内同步硬件设置页控件 | `OK: brightness -> N` 或 `ERR: brightness 0-255` |
+| `volume` | `0-100` | 设置音量、写入 NVS，并在 500ms 内同步硬件设置页控件 | `OK: volume -> N` 或 `ERR: volume 0-100` |
+
+网页、USB、UDP 或 BLE 发出的亮度和音量命令会立即作用于硬件。硬件设置页中的滑块和数值标签从统一运行状态回写；用户正在触摸滑块时暂停外部回写，松手后恢复同步。
 
 ### 2.5 页面切换
 
@@ -277,7 +292,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ## 9. 统一状态 JSON
 
-`GET /api/state`、`GET /`、`state` 文本指令均返回此结构：
+`GET /api/state` 和 `state` 文本指令均返回此结构；`GET /` 返回中文管理网页：
 
 ```json
 {
@@ -285,20 +300,27 @@ WiFi STA 连接失败时自动切换到 AP 模式。
   "device": "ESP32-C6-AMOLED-PET",
   "pet": {
     "state": "idle",
+    "sprite_version": 2,
+    "animation_count": 11,
+    "assets_ready": true,
+    "animation_row": 0,
+    "animation_frame": 3,
     "emotion": "",
     "message": "正在编译...",
     "h5_depleted": false
   },
   "agent": {
     "type": "none",
-    "name": ""
+    "name": "",
+    "state": "idle"
   },
   "connections": {
     "usb": true,
     "wifi": false,
     "ble": false,
     "mqtt": false,
-    "ws": false
+    "ws": false,
+    "udp": true
   },
   "settings": {
     "brightness": 200,
@@ -326,6 +348,8 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 ```
 
 - `pet.message` 仅在非空时包含
+- `pet.assets_ready` 表示 SPIFFS RLE 完整动画资源是否已加载；为 false 时使用内置 idle 回退图
+- `pet.animation_row` / `pet.animation_frame` 是设备当前正在显示的动画行和帧，可用于诊断状态已切换但画面未切换的问题
 - `approval.id` / `approval.title` / `approval.description` 仅在 `approval.active` 为 true 时包含
 - `pet.emotion` 当前为占位字段，始终为空字符串
 

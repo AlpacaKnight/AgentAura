@@ -84,7 +84,7 @@ bool setAgentStateFromName(const String& value, String* normalized) {
     pet_state = PetState::RUNNING;
     canonical = "running";
   } else if (agent_state == "busy" || agent_state == "processing") {
-    pet_state = PetState::RUNNING;
+    pet_state = PetState::REVIEW;
     canonical = "busy";
   } else if (agent_state == "waiting") {
     pet_state = PetState::WAITING;

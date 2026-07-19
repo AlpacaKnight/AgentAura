@@ -21,7 +21,7 @@ const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
 const STATE_ANIMATION: Record<string, string> = {
   init: 'waving',
   running: 'running',
-  busy: 'running',
+  busy: 'review',
   waiting: 'waiting',
   idle: 'idle',
   error: 'failed',
