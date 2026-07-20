@@ -28,6 +28,7 @@ import os
 import socket
 import threading
 import time
+import json
 from typing import Any
 
 import httpx
@@ -36,6 +37,8 @@ logger = logging.getLogger("agentaura")
 
 # Cooldown after a failed probe / request before we try the device again.
 _UNREACHABLE_COOLDOWN_SEC = 3.0
+_PETDESKTOP_HEARTBEAT_SEC = 10.0
+_PLUGIN_VERSION = "0.3.0"
 
 # Lock around mutating the cached config (UI + discovery may both write).
 _CONFIG_LOCK = threading.RLock()
@@ -107,6 +110,41 @@ class _HttpTransport(_Transport):
         except Exception as exc:
             logger.debug("AgentAura[http] cmd %r failed: %s", command, exc)
             return False
+
+    def request_json(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        instance_id: str = "",
+    ) -> tuple[int, dict[str, Any] | None]:
+        """Call a PetDesktop JSON endpoint without raising."""
+        headers = {
+            "Content-Type": "application/json",
+            "x-agentaura-client": "qwenpaw",
+            "x-agentaura-display-name": "QwenPaw",
+            **self._auth_headers(),
+        }
+        if instance_id:
+            headers["x-agentaura-instance"] = instance_id
+        try:
+            resp = httpx.request(
+                method,
+                f"{self._base_url()}{path}",
+                content=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
+                headers=headers,
+                trust_env=False,
+                timeout=1.0,
+            )
+            try:
+                body = resp.json()
+            except Exception:
+                body = None
+            return resp.status_code, body if isinstance(body, dict) else None
+        except Exception as exc:
+            logger.debug("AgentAura[http] %s %s failed: %s", method, path, exc)
+            return 0, None
 
     def health(self) -> dict[str, Any] | None:
         try:
@@ -375,6 +413,16 @@ class RingLightClient:
         self._last_state: str = ""
         self._last_state_ts: float = 0.0
         self._debounce_ms: int = 500
+        host_id = "".join(
+            ch if ch.isalnum() or ch in "-_" else "-"
+            for ch in socket.gethostname().lower()
+        ).strip("-") or "host"
+        self._instance_id = f"qwenpaw-{host_id}-{os.getpid()}"
+        self._http_target: str = "unknown"
+        self._session_generation = 0
+        self._session_lock = threading.RLock()
+        self._heartbeat_stop: threading.Event | None = None
+        self._heartbeat_thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------ config
 
@@ -420,6 +468,7 @@ class RingLightClient:
                 changed = True
 
             if changed:
+                self.disconnect_agent()
                 # Close the old serial connection (if any) before swapping.
                 old = self._transport
                 if isinstance(old, _SerialTransport):
@@ -435,6 +484,7 @@ class RingLightClient:
                 # New target: clear prior unreachable flag + debounce cache.
                 self._unreachable_until = 0.0
                 self._last_state = ""
+                self._http_target = "unknown"
                 logger.info(
                     "RingLight client reconfigured: %s -> %s",
                     self._transport_name,
@@ -509,14 +559,14 @@ class RingLightClient:
             return {
                 "configured": False,
                 "transport": self._transport_name,
-                "auth_token": self._auth_token,
+                "has_auth_token": bool(self._auth_token),
                 "reachable": False,
             }
         state = self.health()
         return {
             "configured": True,
             "transport": self._transport_name,
-            "auth_token": self._auth_token,
+            "has_auth_token": bool(self._auth_token),
             **self._transport.describe(),
             "reachable": state is not None,
             "device_state": state,
@@ -553,13 +603,238 @@ class RingLightClient:
         if (
             state == self._last_state
             and (now - self._last_state_ts) * 1000 < self._debounce_ms
+            and not (
+                isinstance(self._transport, _HttpTransport)
+                and self._http_target == "unknown"
+            )
         ):
             return True  # treat as success; the device is already in this state
-        ok = self.send_command(f"agent {state}")
+        if isinstance(self._transport, _HttpTransport):
+            ok = self._send_http_agent_state(state)
+        else:
+            ok = self.send_command(f"agent {state}")
         if ok:
             self._last_state = state
             self._last_state_ts = now
         return ok
+
+    def send_message(
+        self,
+        text: str,
+        kind: str = "activity",
+        priority: int | None = None,
+        ttl_ms: int = 5000,
+    ) -> bool:
+        """Send a desktop-pet bubble; firmware targets ignore it."""
+        clean_text = (text or "").strip()
+        transport = self._transport
+        if not clean_text or not isinstance(transport, _HttpTransport):
+            return False
+        with self._session_lock:
+            generation = self._session_generation
+        if self._http_target == "unknown":
+            self._register_petdesktop(
+                self._last_state or "running",
+                generation,
+            )
+        if self._http_target != "petdesktop":
+            return False
+        status, _ = transport.request_json(
+            "POST",
+            f"/api/v1/agents/{self._instance_id}/message",
+            {
+                "text": clean_text[:500],
+                "kind": kind,
+                "priority": priority,
+                "ttlMs": max(500, int(ttl_ms)),
+            },
+            instance_id=self._instance_id,
+        )
+        with self._session_lock:
+            if generation != self._session_generation:
+                return False
+        if status == 404 and self._register_petdesktop(
+            self._last_state or "running",
+            generation,
+        ):
+            status, _ = transport.request_json(
+                "POST",
+                f"/api/v1/agents/{self._instance_id}/message",
+                {
+                    "text": clean_text[:500],
+                    "kind": kind,
+                    "priority": priority,
+                    "ttlMs": max(500, int(ttl_ms)),
+                },
+                instance_id=self._instance_id,
+            )
+        with self._session_lock:
+            return (
+                generation == self._session_generation
+                and 200 <= status < 300
+            )
+
+    def disconnect_agent(self) -> None:
+        """Stop heartbeat and remove this process from PetDesktop."""
+        with self._session_lock:
+            self._session_generation += 1
+            transport = self._transport
+            should_delete = (
+                self._http_target == "petdesktop"
+                and isinstance(transport, _HttpTransport)
+            )
+            self._http_target = "unknown"
+        self._stop_heartbeat()
+        if should_delete and isinstance(transport, _HttpTransport):
+            transport.request_json(
+                "DELETE",
+                f"/api/v1/agents/{self._instance_id}",
+                instance_id=self._instance_id,
+            )
+
+    def _send_http_agent_state(self, state: str) -> bool:
+        transport = self._transport
+        if not isinstance(transport, _HttpTransport):
+            return False
+        with self._session_lock:
+            generation = self._session_generation
+        if self._http_target == "unknown":
+            self._register_petdesktop(state, generation)
+        with self._session_lock:
+            if generation != self._session_generation:
+                return False
+        if self._http_target == "petdesktop":
+            status, _ = transport.request_json(
+                "POST",
+                f"/api/v1/agents/{self._instance_id}/state",
+                {"state": state},
+                instance_id=self._instance_id,
+            )
+            with self._session_lock:
+                if generation != self._session_generation:
+                    return False
+            if status == 404 and self._register_petdesktop(state, generation):
+                status, _ = transport.request_json(
+                    "POST",
+                    f"/api/v1/agents/{self._instance_id}/state",
+                    {"state": state},
+                    instance_id=self._instance_id,
+                )
+            with self._session_lock:
+                return (
+                    generation == self._session_generation
+                    and 200 <= status < 300
+                )
+        return self.send_command(f"agent {state}")
+
+    def _register_petdesktop(
+        self,
+        state: str,
+        expected_generation: int | None = None,
+    ) -> bool:
+        transport = self._transport
+        if not isinstance(transport, _HttpTransport):
+            return False
+        with self._session_lock:
+            generation = (
+                self._session_generation
+                if expected_generation is None
+                else expected_generation
+            )
+            if generation != self._session_generation:
+                return False
+        status, body = transport.request_json(
+            "POST",
+            "/api/v1/agents/register",
+            {
+                "clientId": "qwenpaw",
+                "instanceId": self._instance_id,
+                "displayName": "QwenPaw",
+                "version": _PLUGIN_VERSION,
+                "state": state,
+            },
+            instance_id=self._instance_id,
+        )
+        with self._session_lock:
+            if generation != self._session_generation or transport is not self._transport:
+                return False
+            if not 200 <= status < 300:
+                self._http_target = (
+                    "firmware" if status in (404, 405) else "unknown"
+                )
+                return False
+            self._http_target = "petdesktop"
+        interval_ms = int((body or {}).get("heartbeatIntervalMs") or 10_000)
+        self._start_heartbeat(
+            max(3.0, min(30.0, interval_ms / 1000)),
+            generation,
+        )
+        return True
+
+    def _start_heartbeat(
+        self,
+        interval_sec: float = _PETDESKTOP_HEARTBEAT_SEC,
+        generation: int | None = None,
+    ) -> None:
+        with self._session_lock:
+            active_generation = (
+                self._session_generation if generation is None else generation
+            )
+            if active_generation != self._session_generation:
+                return
+            if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+                return
+            stop_event = threading.Event()
+
+            def run() -> None:
+                while not stop_event.wait(interval_sec):
+                    with self._session_lock:
+                        if active_generation != self._session_generation:
+                            return
+                    transport = self._transport
+                    if self._http_target != "petdesktop" or not isinstance(transport, _HttpTransport):
+                        return
+                    status, _ = transport.request_json(
+                        "POST",
+                        f"/api/v1/agents/{self._instance_id}/heartbeat",
+                        instance_id=self._instance_id,
+                    )
+                    if not 200 <= status < 300:
+                        with self._session_lock:
+                            if (
+                                stop_event.is_set()
+                                or active_generation != self._session_generation
+                            ):
+                                return
+                            self._http_target = "unknown"
+                        if not self._register_petdesktop(
+                            self._last_state or "idle",
+                            active_generation,
+                        ):
+                            return
+
+            thread = threading.Thread(
+                target=run,
+                name="agentaura-qwenpaw-heartbeat",
+                daemon=True,
+            )
+            self._heartbeat_stop = stop_event
+            self._heartbeat_thread = thread
+            thread.start()
+
+    def _stop_heartbeat(self) -> None:
+        with self._session_lock:
+            stop_event = self._heartbeat_stop
+            thread = self._heartbeat_thread
+            if stop_event:
+                stop_event.set()
+        if thread and thread is not threading.current_thread():
+            thread.join(timeout=1.2)
+        with self._session_lock:
+            if self._heartbeat_thread is thread:
+                self._heartbeat_thread = None
+            if self._heartbeat_stop is stop_event:
+                self._heartbeat_stop = None
 
     def set_color(self, r: int, g: int, b: int) -> bool:
         return self.send_command(f"rgb {r},{g},{b}")

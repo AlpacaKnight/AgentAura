@@ -240,7 +240,7 @@ UDP 服务仅在 WiFi STA 模式下启动，端口为 `8888`。请求和响应�
 | `state` | 完整状态 JSON |
 | `agent busy` 等文本指令 | 与 USB/HTTP 文本接口一致的 `OK` / `ERR` 响应 |
 
-PetDesktop 的设备发现会广播 `discover\n` 到 `255.255.255.255:8888`，固件会把设备 IP、HTTP 端口 `80` 和 UDP 端口 `8888` 返回给请求方。
+PetDesktop 的设备发现会向 `255.255.255.255:8888` 以及每个非回环 IPv4 网卡的定向广播地址发送 `discover\n`。固件会把设备 IP、HTTP 端口 `80` 和 UDP 端口 `8888` 返回给请求方；这样 Wi-Fi、有线网卡和虚拟网卡并存时也能完成扫描。
 
 ---
 
@@ -448,7 +448,57 @@ uv run pio device monitor -e esp32c6 -p /dev/ttyACM0 -b 115200
 
 ---
 
-## 12. 已知限制
+## 12. 桌宠资源规格
+
+项目内文件：
+
+```text
+data/pets/tiquan-v2/pet.json
+data/pets/tiquan-v2/spritesheet.webp
+data/pets/tiquan-v2/sprites.rle
+src/ui/tiquan_v2_idle.h
+src/ui/tiquan_v2_frames.h
+```
+
+原始 spritesheet 为 Codex v2 资源：1536×2288、8 列、11 行。`sprites.rle` 和 `tiquan_v2_frames.h` 由 `tools/generate_tiquan_rle.py` 生成。运行时使用 `tiquan_v2_frames.h` 的帧索引，从 SPIFFS 中分块读取并解码 `sprites.rle` 到 RGB565 单帧缓冲。
+
+---
+
+## 13. 部署注意事项
+
+### 13.1 SPIFFS 上传
+
+普通固件烧录不会更新宠物资源分区。新设备、分区表变化或资源更新后，需要额外执行 `uploadfs`：
+
+```powershell
+uv run pio run -e esp32c6 -t uploadfs --upload-port COM4
+```
+
+如果 `/api/state` 返回 `pet.assets_ready=false`，设备会显示内置 idle 回退图，并在启动后的约 30 秒内重试加载。
+
+### 13.2 内存约束
+
+RGB565 单帧缓冲约 79,872 字节。资源加载前会检查空闲堆和最大连续块，并保留 24KB 安全空间。刷机触发的首次自动重启可能存在 USB/无线初始化造成的瞬时堆波动，因此加载逻辑最多重试 10 次（3 秒间隔）。
+
+### 13.3 源文件编码
+
+`ui_manager.cpp` 和 `platformio.ini` 仍有早期遗留的乱码注释。功能代码可以正常构建运行，但后续整理时应保持 UTF-8，并避免仅为清理注释而改动运行逻辑。
+
+---
+
+## 14. 验收标准
+
+1. 固件和 SPIFFS 均上传成功，设备不循环重启。
+2. `/api/state` 连续请求成功，且 `pet.assets_ready=true`。
+3. `/` 显示中文管理页面。
+4. 11 个宠物状态均能切换到对应动画行，`animation_frame` 持续推进。
+5. `busy` 在硬件和 PetDesktop 中均显示 `review` 动画。
+6. 网页修改亮度和音量后，真实硬件与设备设置页控件同步。
+7. 网页请求、触摸滑动和动画播放可以同时工作。
+
+---
+
+## 15. 已知限制
 
 | 项目 | 说明 |
 |------|------|

@@ -3,17 +3,17 @@
 ## 1. 文档状态
 
 - 状态：待开发
-- 上次更新：2026-07-16
+- 上次更新：2026-07-20
 - 涵盖范围：AgentAura 全项目（PetDesktop、Agent 插件、ESP32 固件、CI/CD、文档）
 
 ## 2. 桌宠文字气泡闭环状态
 
-核心气泡链路已 100% 闭环，五个 TS 插件（Claude、Kimi、Codex、Qwen、ZCode）均已接入：
+核心气泡链路已 100% 闭环，七个插件（Claude、Kimi、Codex、Qwen、ZCode、Copilot、QwenPaw）均已接入。前五个使用命令型 Hook；Copilot 使用 transcript 事件；QwenPaw 使用 AgentRunner / ApprovalService 事件：
 
 ```
 Agent 生命周期事件
-  → 插件 Hook 脚本 (node out/index.js hook <Event>)
-  → sendAgentState → PetDesktop 注册 + 心跳子进程
+  → 命令型 Hook / Copilot transcript / QwenPaw 原生事件
+  → sendAgentState → PetDesktop 注册 + 心跳
   → sendMessage → POST /api/v1/agents/{id}/message
   → PetDesktop Rust 后端 (core.submit_message) 入队 + 广播
   → Tauri 事件 "snapshot-changed"
@@ -22,12 +22,12 @@ Agent 生命周期事件
 
 | 环节 | 状态 | 关键代码 |
 |------|------|----------|
-| Hook 脚本入口 | ✅ | 各插件 `index.ts` 的 `hook` 分支 |
-| 事件→状态映射 | ✅ | 各插件 `hooks.ts` 的 `mapXxxEventToAgentState` |
-| PetDesktop 注册 | ✅ | 各插件 `deviceClient.ts` 的 `registerPetDesktop` |
-| 心跳子进程 | ✅ | 各插件 `deviceClient.ts` 的 `ensureHeartbeatProcess` |
-| 气泡消息构建 | ✅ | 各插件 `hooks.ts` 的 `buildXxxMessage` |
-| 气泡消息发送 | ✅ | 各插件 `deviceClient.ts` 的 `sendMessage` |
+| 事件入口 | ✅ | Hook 脚本、Copilot transcript、QwenPaw AgentRunner / ApprovalService |
+| 事件→状态映射 | ✅ | 各插件 mapper / watcher |
+| PetDesktop 注册 | ✅ | TS `deviceClient.ts`、QwenPaw `client.py` |
+| 心跳 | ✅ | Hook 插件 detached 子进程；Copilot / QwenPaw 常驻线程或定时器 |
+| 气泡消息构建 | ✅ | Hook message builder、Copilot watcher、QwenPaw mapper |
+| 气泡消息发送 | ✅ | TS `sendMessage`、QwenPaw `send_message` |
 | 后端接收+存储 | ✅ | `core.rs:407-495` `submit_message` |
 | Tauri 事件推送 | ✅ | `core.rs:180-184` `broadcast()` |
 | 前端渲染 | ✅ | `PetBubble.tsx:32-61` `selectBubbleMessage` |
@@ -143,6 +143,17 @@ Agent 生命周期事件
 - **目标**：补 `UserPromptSubmit` 事件；`PostToolUseFailure`/`StopFailure`/`SessionEnd` 经查证非官方事件，不纳入
 - **影响文件**：`agent-aura-codex/src/hooks.ts`、`agent-aura-codex/test/regression.test.js`
 
+#### 4.1.5 为全部插件添加 BLE 传输支持
+
+- **背景**：固件 v0.3.0 和 PetDesktop 已支持 BLE GATT 通信（NimBLE），但所有 7 个插件（Claude、Codex、Kimi、Qwen、ZCode、Copilot、QwenPaw）的 `TRANSPORTS` 仍为 `['http', 'udp', 'serial']`，缺少 `'ble'` 选项
+- **问题**：通过 BLE 连接设备时，插件无法直接通信
+- **目标**：为各插件的 `deviceClient` 添加 BLE 传输实现，在 `types.ts` 的 `TRANSPORTS` 中加入 `'ble'`，在 `plugin.json` 的 `userConfig` 中添加 `ble_address` 配置项
+- **影响文件**：
+  - 各插件 `src/types.ts` — `TRANSPORTS` 数组
+  - 各插件 `src/deviceClient.ts` — BLE 传输方法
+  - 各插件 `.claude-plugin/plugin.json` / `plugin.json` — `userConfig.ble_address`
+  - 各插件 `test/regression.test.js` — BLE 相关测试
+
 ### 4.2 高优先级 — PetDesktop 插件管理
 
 #### 4.2.1 实现 Claude PetDesktop 自动安装
@@ -189,6 +200,14 @@ Agent 生命周期事件
 - **目标**：Claude 和 Kimi 升版本至 `0.3.0`
 - **影响文件**：`agent-aura-claude/package.json`、`agent-aura-kimi-code/package.json`
 
+#### 4.3.5 Claude 插件清单版本未同步
+
+> ✅ 已完成（2026-07-20）：`.claude-plugin/plugin.json` 已同步为 `0.3.0`。
+
+- **问题**：`agent-aura-claude/.claude-plugin/plugin.json` 的 `version` 仍为 `0.1.0`，而 `package.json` 已是 `0.3.0`，两个文件版本不一致
+- **目标**：将 `.claude-plugin/plugin.json` 的 `version` 同步为 `0.3.0`
+- **影响文件**：`Agent_Plugin/agent-aura-claude/.claude-plugin/plugin.json`
+
 ### 4.4 中优先级 — CI / 测试
 
 #### 4.4.1 Qwen Code 接入 CI
@@ -201,10 +220,10 @@ Agent 生命周期事件
 
 #### 4.4.2 Kimi / ZCode / Copilot 在 CI 中启用测试
 
-> ✅ 已完成（2026-07-16）：Kimi 和 ZCode 的 CI 步骤从 `npm run compile` 改为 `npm test`。Copilot 保持 `npm run compile`（无测试文件）。
+> ✅ 已完成（2026-07-20）：Kimi、ZCode 和 Copilot 的 CI 均执行 `npm test`；Copilot 已新增 PetDesktop v1 API 与气泡回归测试。QwenPaw 的 Python 单元测试也已接入 CI。
 
 - **问题**：CI 对 Kimi/ZCode/Copilot 只运行 `npm run compile`，跳过 `npm test`
-- **目标**：改为 `npm ci && npm test`（Copilot 除外，无测试文件）
+- **目标**：改为 `npm ci && npm test`
 - **影响文件**：`.github/workflows/petdesktop.yml`
 
 #### 4.4.3 补充气泡消息单元测试
@@ -236,6 +255,8 @@ Agent 生命周期事件
 - **影响文件**：`PetDesktop/src-tauri/src/core.rs`、`PetDesktop/src/PetBubble.tsx`、`PetDesktop/src/Pet.tsx`
 
 #### 4.5.3 启用 Codex 宠物 v2 新增动画
+
+> ✅ 已完成（2026-07-20）：PetDesktop 在 v2 宠物空闲时随机选择 0–15 的观察方向，分别映射到 `look-directions-a/b` 的固定帧；v1 保持原九行动画，已补边界回归测试。
 
 - **背景**：提交 `d11a392`（`feat: 支持codex宠物v2图集`）为精灵图新增了两行观察方向帧 `look-directions-a`（row 9，8 帧）和 `look-directions-b`（row 10，8 帧），并将 `idle` 扩展到 7 帧。v2 精灵图为 8×11 布局（v1 为 8×9）。
 - **问题**：`Pet.tsx:21-30` 的 `STATE_ANIMATION` 映射表中没有独立的 `lookDirection` 驱动逻辑，两个方向帧行不能按 16 个观察方向使用。
@@ -276,7 +297,7 @@ Agent 生命周期事件
 
 #### 4.7.1 更新 README 插件状态表
 
-> ✅ 已完成（2026-07-16）：Root `README.md` 插件状态表已新增"气泡"列，标注各插件的气泡支持状态（Claude/Codex/Kimi/Qwen/ZCode ✅，QwenPaw/Copilot ❌）。Codex 事件列已更新为"官方 10 事件"。
+> ✅ 已完成（2026-07-20）：Root `README.md` 插件状态表已新增“气泡”列，七个插件均已标注为支持；Codex 事件列为“官方 10 事件”。
 
 - **问题**：Root `README.md` 插件状态表未反映气泡支持情况
 - **目标**：在状态列中标注气泡支持（如新增"气泡"列）
@@ -284,7 +305,7 @@ Agent 生命周期事件
 
 #### 4.7.2 AMOLED 固件 API 文档
 
-> ✅ 已完成（2026-07-16）：新增 `Arduino_ESP32_AMOLED_Pet/doc/API.md`，涵盖文本指令集、JSON 指令协议（state_sync / approval_request / approval_response）、USB 串口、HTTP REST API、WiFi AP 配网、BLE GATT 服务、统一状态 JSON、状态枚举、构建与烧录、已知限制，共 11 节。
+> ✅ 已完成（2026-07-16，2026-07-20 扩展）：`Arduino_ESP32_AMOLED_Pet/doc/API.md` 现涵盖 15 节：文本指令集、JSON 指令协议（state_sync / approval_request / approval_response）、USB 串口、HTTP REST API、UDP 指令与设备发现、WiFi AP 配网、BLE GATT 服务、统一状态 JSON、状态枚举、构建与烧录、桌宠资源规格、部署注意事项、验收标准、已知限制。
 
 - **问题**：AMOLED 固件只有构建指南，无协议/API 文档（RingLight 有 `doc/API.md`）
 - **目标**：编写 AMOLED 通信协议文档
@@ -306,26 +327,29 @@ Agent 生命周期事件
 | 8 | Qwen 接入 CI + Kimi/ZCode 启用测试 | 小 | 无 | ✅ 已完成 |
 | 9 | 补充气泡消息单元测试 | 中 | #1, #2 | ✅ 已完成 |
 | 10 | 实现 Claude PetDesktop 自动安装 | 中 | 无 | 暂不做 |
-| 12 | 启用 Codex 宠物 v2 观察方向帧（lookDirection） | 中 | 产品确认触发方案 | 暂不做 |
+| 12 | 启用 Codex 宠物 v2 观察方向帧（lookDirection） | 中 | 无 | ✅ 已完成 |
 | 13 | 更新过时文档 | 小 | #1-#7 | ✅ 已完成 |
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
 | 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |
 | 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | 待开发 |
 | 17 | （长期）AMOLED Apps 页面 | 中 | 无 | ✅ 已完成 |
 | 18 | （长期）三平台 CI 产物验证 | 中 | 无 | 待开发 |
+| 19 | 为全部插件添加 BLE 传输支持 | 大 | 无 | 待开发 |
+| 20 | Claude 插件清单版本同步 | 极小 | 无 | ✅ 已完成 |
 
-> 进度更新（2026-07-16）：
+> 进度更新（2026-07-20）：
 > - #1 统一签名、#2 Session ID、#3 任务完成气泡 已完成
 > - #4 Codex 补 `UserPromptSubmit`，覆盖官方全部 10 个事件已完成；`PostToolUseFailure`/`StopFailure`/`SessionEnd` 经查证非官方 Codex 事件，不纳入
 > - #5 清理 Qwen/ZCode 调试日志 已完成
 > - #6 修复 ZCode Hook 抑制死代码 已完成
 > - #7 修复 Claude build 脚本 + 版本对齐 0.3.0 已完成
-> - #8 Qwen 接入 CI + Kimi/ZCode 启用测试 已完成（Copilot 除外，无测试文件）
-> - #9 五插件 `buildXxxMessage` 单元测试 已完成（测试总数 51→60，全部通过）
-> - #10 Claude 自动安装、#12 v2 动画 用户确认暂不做
+> - #8 Qwen 接入 CI + Kimi/ZCode/Copilot/QwenPaw 启用测试 已完成
+> - #9 五个 Hook 插件 `buildXxxMessage` 单元测试，以及 Copilot/QwenPaw 气泡回归测试已完成
+> - #10 Claude 自动安装暂不做；#12 v2 观察方向动画已完成
 > - #13 README 气泡列 + AMOLED API 文档 已完成
 > - #17 AMOLED Apps 页面 + Boot 长按 已完成（App 启动器：页面导航 + 快捷开关，编译通过）
-> - 剩余：#14 气泡持久化、#15 多 Agent 展示、#16 ESP32 BLE、#18 三平台 CI
+> - 固件和 PetDesktop 已完成 BLE 支持（v0.3.0），但插件侧未跟进
+> - 剩余：#14 气泡持久化、#15 多 Agent 展示、#16 ESP32 BLE、#18 三平台 CI、#19 插件 BLE 传输
 
 ---
 
@@ -335,8 +359,6 @@ Agent 生命周期事件
 
 | 项目 | 原因 |
 |------|------|
-| QwenPaw（Python 插件）气泡支持 | 设计为硬件同步插件，无 Hook 生命周期事件 |
-| Copilot 气泡支持 | VS Code 扩展，无原生 Hook，体验不稳定 |
 | Codex App 内部宠物消息获取 | Codex 内部 API 不公开，设计明确不依赖 |
 | 完整流式回复正文展示 | 第一版不承诺捕获完整对话正文 |
 | 自动从互联网下载插件包 | 安全设计决策，不支持 |

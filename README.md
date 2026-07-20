@@ -26,17 +26,17 @@
 
 | 插件 | Agent 平台 | 安装方式 | 状态获取 | Hook 支持 | 气泡 | 配置页 | 状态 |
 |------|-----------|----------|----------|-----------|:----:|--------|------|
-| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 | AgentRunner API | 原生 | ❌ | ✅ | ✅ 完善 |
+| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 | AgentRunner API | 原生 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-claude** | Claude Code | Marketplace / 托管 | Hooks + CLI | 原生 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-codex** | Codex ~/.codex 配置 | 托管 | hooks.json 命令型 | 官方 10 事件 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-kimi-code** | Kimi Code | 托管 | config.toml [[hooks]] | 15 事件 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-qwencode** | Qwen Code | 托管 + Qwen 扩展 | Hooks + 扩展事件 | 12 事件 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-zcode** | ZCode | ZCode 插件市场 / 本地目录 | 原生插件 hooks | 7 事件 | ✅ | ✅ | ✅ 完善 |
-| **agent-aura-copilot** | VS Code Copilot | VSIX 扩展 | Transcript 监听 | 无原生 hook | ❌ | ❌ | ⚠️ 实验性 |
+| **agent-aura-copilot** | VS Code Copilot | VSIX 扩展 | Transcript 监听 | 无原生 hook | ✅ | ❌ | ⚠️ 实验性 |
 
 > **备注**：
 > - **PetDesktop 托管安装** 指在桌面应用的"插件"面板中一键安装；**外部安装**指通过各平台自带的包管理（npm、VSIX、Marketplace）手动安装。
-> - 所有插件均支持 HTTP / UDP / 串口 三种传输方式，且优先连接 PetDesktop 本地桥接服务。
+> - 所有插件均支持 HTTP / UDP / 串口三种传输方式；HTTP 可自动识别 PetDesktop v1 Agent API 或 ESP32 固件。UDP 发现会向所有 IPv4 网卡的广播地址发送探测，避免虚拟网卡抢占默认广播路由。
 
 ---
 
@@ -64,11 +64,11 @@
 |------|------|
 | `agent-aura-claude/` | Claude Code marketplace 插件。通过 `hooks/hooks.json` 捕获 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 等生命周期事件，映射为固件状态指令。提供 `/agent-aura-claude:aura` 会话内命令手动控制。 |
 | `agent-aura-codex/` | Codex 命令型 hook。通过 `~/.codex/hooks.json` 注册命令型 hook，捕获用户提交、工具执行、权限请求和停止事件，支持 HTTP/UDP/串口传输。提供 CLI 配置、设备发现与手动测试。 |
-| `agent-aura-copilot/` | VS Code Copilot 扩展。监听 GitHub Copilot Chat 的 transcript 和 VS Code 终端事件，解析会话生命周期并发送设备指令。**原生无 Hook 接口，稳定性有限，建议抱着实验精神试用。** |
+| `agent-aura-copilot/` | VS Code Copilot 扩展。监听 GitHub Copilot Chat 的 transcript 和 VS Code 终端事件，通过 PetDesktop v1 API 注册、心跳、同步状态和气泡，也可直连 ESP32。**原生无 Hook 接口，稳定性有限，建议抱着实验精神试用。** |
 | `agent-aura-kimi-code/` | Kimi Code hook 插件。通过 `~/.kimi-code/config.toml` 的 `[[hooks]]` 机制注册命令型 hook，捕获 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 事件。兼容 PetDesktop 身份请求头与 Bearer Token。 |
 | `agent-aura-qwencode/` | Qwen Code 扩展 + 托管双重支持。通过 Qwen 扩展机制与 hooks 文件捕获事件，支持 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop`。提供 CLI 配置与设备发现。 |
 | `agent-aura-zcode/` | ZCode 原生插件。通过 `.zcode-plugin/plugin.json` + `hooks/hooks.json` 捕获 ZCode 的 7 个生命周期事件（`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`Stop`），映射为固件状态指令。支持 PetDesktop 桥接（注册/心跳/桌宠气泡消息）与 ESP32 固件直连。提供 `/agent-aura-zcode:aura` 会话内命令。 |
-| `qwenpaw-plugin/` | QwenPaw 独立插件。包装 `AgentRunner` 与 `ApprovalService` 获取智能体事件与审批流程状态，支持 HTTP/UDP/串口。通过 PetDesktop 托管安装，提供完整的生命周期状态映射。 |
+| `qwenpaw-plugin/` | QwenPaw 独立插件。包装 `AgentRunner` 与 `ApprovalService` 获取智能体事件与审批流程状态，支持 HTTP/UDP/串口，并通过 PetDesktop v1 API 提供注册、心跳、状态与气泡同步。 |
 
 ### Arduino_ESP32_RingLight — 硬件固件
 

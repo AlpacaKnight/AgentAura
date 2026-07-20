@@ -505,10 +505,32 @@ pub async fn discover() -> Result<Vec<DiscoveredHardware>, String> {
     socket
         .set_broadcast(true)
         .map_err(|error| format!("cannot enable UDP broadcast: {error}"))?;
-    socket
-        .send_to(b"discover\n", format!("255.255.255.255:{UDP_PORT}"))
-        .await
-        .map_err(|error| format!("cannot send discovery broadcast: {error}"))?;
+    let mut broadcasts = std::collections::HashSet::from([std::net::Ipv4Addr::BROADCAST]);
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        for interface in interfaces {
+            if let if_addrs::IfAddr::V4(address) = interface.addr {
+                if address.ip.is_loopback() {
+                    continue;
+                }
+                let ip = u32::from(address.ip);
+                let mask = u32::from(address.netmask);
+                broadcasts.insert(std::net::Ipv4Addr::from(ip | !mask));
+            }
+        }
+    }
+    let mut sent = false;
+    for broadcast in broadcasts {
+        if socket
+            .send_to(b"discover\n", (broadcast, UDP_PORT))
+            .await
+            .is_ok()
+        {
+            sent = true;
+        }
+    }
+    if !sent {
+        return Err("cannot send discovery broadcast on any network adapter".to_string());
+    }
 
     let deadline = tokio::time::Instant::now() + Duration::from_millis(1_500);
     let mut devices = Vec::new();

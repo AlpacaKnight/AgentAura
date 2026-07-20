@@ -96,7 +96,8 @@ if (Test-Path -LiteralPath $zipPath) {
 $excludeDirs = @(
     'ui\dist', 'ui/dist',
     'node_modules', 'ui\node_modules', 'ui/node_modules',
-    '__pycache__', '.pytest_cache', '.mypy_cache', '.git'
+    '__pycache__', '.pytest_cache', '.mypy_cache', '.git',
+    'tests'
 )
 $excludeFiles = @('.gitignore', 'package-lock.json')
 

@@ -56,7 +56,7 @@ flowchart LR
     HTTP["HTTP<br/>兼容状态：POST /api/agent?state=...<br/>兼容命令：POST /api/cmd text/plain<br/>v1 状态：POST /api/v1/agents/{id}/state<br/>v1 气泡：POST /api/v1/agents/{id}/message<br/>PetDesktop 127.0.0.1:47831 / ESP32 :80<br/>远程可用 Bearer Token"]:::protocol
     UDP["UDP 文本协议 :8888<br/>agent busy\n 等<br/>远程鉴权：auth token command"]:::protocol
     SERIAL["USB CDC 串口<br/>文本命令 + 换行<br/>115200 baud"]:::protocol
-    DISC["UDP 广播发现<br/>discover / ping / who<br/>255.255.255.255:8888<br/>设备返回 JSON（IP/HTTP端口/caps）"]:::optional
+    DISC["UDP 多网卡广播发现<br/>discover / ping / who<br/>各网卡定向广播 + 255.255.255.255:8888<br/>设备返回 JSON（IP/HTTP端口/caps）"]:::optional
   end
 
   CANON --> HTTP
@@ -145,8 +145,8 @@ flowchart LR
 - 插件不会同时使用三种传输；每个插件按配置选择 HTTP、UDP 或 Serial。
 - PetDesktop 是可选中间层。插件直连 ESP32 时没有多 Agent 仲裁和桌宠联动；连接 PetDesktop 时，状态会先仲裁，再驱动桌宠，并可继续桥接到 ESP32。
 - PetDesktop 的 `/api/agent` 是兼容入口；`/api/v1/agents/*` 才能保留多个 Agent 实例身份、心跳和选择信息。
-- 五个 TS 插件（Claude / Kimi / Codex / Qwen / ZCode）在发送状态后，额外发送气泡消息摘要到 PetDesktop（`buildXxxMessage` → `sendMessage`）；消息仅在已注册 PetDesktop Agent 时发送，不回退固件。Copilot 和 QwenPaw 不支持气泡。
+- 七个插件均可向 PetDesktop 发送气泡消息摘要；消息仅在已注册 PetDesktop Agent 时发送，不回退固件。Claude / Kimi / Codex / Qwen / ZCode 从 Hook 构建摘要，Copilot 从 transcript 事件构建摘要，QwenPaw 从 AgentRunner / ApprovalService 事件构建摘要。
 - 气泡消息仅在内存队列中保留（每 Agent 最多 20 条），PetDesktop 重启后丢失；桌宠窗口只显示当前有效 Agent 的气泡。
-- 各插件在首次成功注册 PetDesktop 后，会 spawn 一个 detached `heartbeat-loop` 子进程维持 10 秒心跳；空闲超过 120 秒后自动断开。
+- 五个命令型 Hook 插件在首次注册后 spawn detached `heartbeat-loop` 子进程，并在空闲 120 秒后自动断开；Copilot 与 QwenPaw 是常驻插件，分别用定时器与后台线程维持 10 秒心跳，关闭时主动注销。
 - `rgb/effect/brightness/speed/power/reset` 在 PetDesktop 中是硬件透传白名单；`agent <state>` 在本地更新状态后，按配置同步给硬件。
 - ESP32 还提供 MQTT、BLE 与固件 Web 控制页，这几条路径不经过 Agent 插件。

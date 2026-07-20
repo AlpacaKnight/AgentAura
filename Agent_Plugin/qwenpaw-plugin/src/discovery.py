@@ -9,6 +9,7 @@ wildcard address and collect any replies within a short window.
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import socket
 import time
@@ -22,27 +23,41 @@ DISCOVERY_TIMEOUT_SEC = 1.5
 DISCOVERY_BUFFER_SIZE = 2048
 
 
-def _local_broadcast_addr() -> str:
-    """Best-effort primary broadcast address.
-
-    Falling back to the limited broadcast ``255.255.255.255`` works on
-    most home networks; the explicit subnet broadcast is only needed on
-    stricter stacks that drop the all-ones broadcast.
-    """
+def _broadcast_addresses() -> list[str]:
+    """Return limited and per-interface IPv4 broadcast addresses."""
+    addresses = {"255.255.255.255"}
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-        finally:
-            s.close()
-        parts = ip.split(".")
-        if len(parts) == 4:
-            parts[-1] = "255"
-            return ".".join(parts)
-    except Exception:
+        import psutil  # type: ignore
+
+        for entries in psutil.net_if_addrs().values():
+            for entry in entries:
+                if entry.family != socket.AF_INET or not entry.address:
+                    continue
+                if entry.netmask:
+                    try:
+                        network = ipaddress.IPv4Network(
+                            f"{entry.address}/{entry.netmask}",
+                            strict=False,
+                        )
+                        addresses.add(str(network.broadcast_address))
+                    except ValueError:
+                        logger.debug(
+                            "ignore invalid adapter address %s/%s",
+                            entry.address,
+                            entry.netmask,
+                        )
+    except (ImportError, OSError):
         pass
-    return "255.255.255.255"
+
+    # Standard-library fallback for minimal QwenPaw installations.
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."):
+                addresses.add(str(ipaddress.IPv4Network(f"{ip}/24", strict=False).broadcast_address))
+    except (OSError, ValueError):
+        pass
+    return sorted(addresses)
 
 
 def discover_devices(
@@ -63,12 +78,12 @@ def discover_devices(
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.settimeout(timeout)
     try:
-        bcast = _local_broadcast_addr()
-        for keyword in DISCOVERY_KEYWORDS:
-            try:
-                sock.sendto(keyword + b"\n", (bcast, port))
-            except OSError as exc:
-                logger.debug("discover sendto %s failed: %s", bcast, exc)
+        for bcast in _broadcast_addresses():
+            for keyword in DISCOVERY_KEYWORDS:
+                try:
+                    sock.sendto(keyword + b"\n", (bcast, port))
+                except OSError as exc:
+                    logger.debug("discover sendto %s failed: %s", bcast, exc)
 
         deadline = time.monotonic() + timeout
         while True:
@@ -79,7 +94,7 @@ def discover_devices(
             try:
                 data, addr = sock.recvfrom(DISCOVERY_BUFFER_SIZE)
             except socket.timeout:
-                break
+                continue
             except OSError as exc:
                 logger.debug("discover recv failed: %s", exc)
                 break

@@ -29,10 +29,36 @@ const STATE_ANIMATION: Record<string, string> = {
   upgrade: 'jumping',
 };
 
+type LookFrame = { animationName: 'look-directions-a' | 'look-directions-b'; frame: number };
+
+function resolveLookDirection(direction: number | undefined, spriteVersion: number): LookFrame | undefined {
+  if (
+    spriteVersion < 2 ||
+    direction === undefined ||
+    !Number.isInteger(direction) ||
+    direction < 0 ||
+    direction > 15
+  ) return undefined;
+  return direction < 8
+    ? { animationName: 'look-directions-a', frame: direction }
+    : { animationName: 'look-directions-b', frame: direction - 8 };
+}
+
+function resolveActiveLookDirection(
+  direction: number | undefined,
+  spriteVersion: number,
+  state: string,
+  moving: boolean,
+): LookFrame | undefined {
+  if (state !== 'idle' || moving) return undefined;
+  return resolveLookDirection(direction, spriteVersion);
+}
+
 export default function Pet() {
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
   const [asset, setAsset] = useState('');
   const [frame, setFrame] = useState(0);
+  const [lookDirection, setLookDirection] = useState<number>();
   const [moving, setMoving] = useState<'running-left' | 'running-right'>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewScale, setPreviewScale] = useState<number>();
@@ -61,7 +87,13 @@ export default function Pet() {
     return () => stop?.();
   }, []);
 
-  const animationName = moving ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
+  const lookFrame = resolveActiveLookDirection(
+    lookDirection,
+    snapshot?.selectedPet?.spriteVersion ?? 1,
+    snapshot?.effectiveState ?? 'idle',
+    moving !== undefined,
+  );
+  const animationName = moving ?? lookFrame?.animationName ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
   // 回退时校验目标行不超出当前宠物的实际行数，避免 V1 宠物渲染越界（空白帧）。
   const petRows = snapshot?.selectedPet?.rows ?? 9;
   const fallbackAnimation = DEFAULT_ANIMATIONS[animationName];
@@ -76,10 +108,29 @@ export default function Pet() {
   }, [animationName]);
 
   useEffect(() => {
+    if (lookFrame) return;
     const duration = animation.durationsMs[frame] ?? animation.durationsMs.at(-1) ?? 150;
     const timer = window.setTimeout(() => setFrame(value => (value + 1) % animation.frames), duration);
     return () => window.clearTimeout(timer);
-  }, [animation, frame]);
+  }, [animation, frame, lookFrame]);
+
+  useEffect(() => {
+    const canLook =
+      (snapshot?.selectedPet?.spriteVersion ?? 1) >= 2 &&
+      snapshot?.effectiveState === 'idle' &&
+      !moving;
+    if (!canLook) {
+      setLookDirection(undefined);
+      return;
+    }
+    const delay = lookDirection === undefined
+      ? 4000 + Math.random() * 4000
+      : 700 + Math.random() * 500;
+    const timer = window.setTimeout(() => {
+      setLookDirection(current => current === undefined ? Math.floor(Math.random() * 16) : undefined);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [snapshot?.selectedPet?.spriteVersion, snapshot?.effectiveState, moving, lookDirection]);
 
   const bubbleEnabled = snapshot?.settings.petBubble.enabled ?? false;
   // 气泡可见但高度尚未测量到时，用 60px 估计值确保窗口足够高，避免被 overflow:hidden 裁切。
@@ -168,11 +219,11 @@ export default function Pet() {
       width: pet.frameWidth,
       height: pet.frameHeight,
       backgroundImage: `url(${asset})`,
-      backgroundPosition: `${-frame * pet.frameWidth}px ${-animation.row * pet.frameHeight}px`,
+      backgroundPosition: `${-(lookFrame?.frame ?? frame) * pet.frameWidth}px ${-animation.row * pet.frameHeight}px`,
       transform: `scale(${scale})`,
       transformOrigin: 'bottom center',
     };
-  }, [snapshot?.selectedPet, asset, animation.row, frame, scale]);
+  }, [snapshot?.selectedPet, asset, animation.row, frame, lookFrame?.frame, scale]);
 
   const drag = (event: React.MouseEvent) => {
     if (menuOpen) return;
@@ -228,4 +279,4 @@ export default function Pet() {
   );
 }
 
-export { DEFAULT_ANIMATIONS, STATE_ANIMATION };
+export { DEFAULT_ANIMATIONS, STATE_ANIMATION, resolveLookDirection, resolveActiveLookDirection };

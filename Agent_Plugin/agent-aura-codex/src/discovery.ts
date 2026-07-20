@@ -1,7 +1,22 @@
 import * as dgram from 'dgram';
+import * as os from 'os';
 import { DiscoveredDevice } from './types';
 
 const DISCOVERY_PORT = 8888;
+
+export function discoveryBroadcastAddresses(): string[] {
+    const addresses = new Set<string>(['255.255.255.255']);
+    for (const entries of Object.values(os.networkInterfaces())) {
+        for (const entry of entries || []) {
+            if (entry.family !== 'IPv4' || entry.internal) { continue; }
+            const ip = entry.address.split('.').map(Number);
+            const mask = entry.netmask.split('.').map(Number);
+            if (ip.length !== 4 || mask.length !== 4 || ip.some(Number.isNaN) || mask.some(Number.isNaN)) { continue; }
+            addresses.add(ip.map((octet, index) => ((octet & mask[index]) | (~mask[index] & 255)) >>> 0).join('.'));
+        }
+    }
+    return [...addresses];
+}
 
 export function discoverDevices(timeoutMs = 2500): Promise<DiscoveredDevice[]> {
     return new Promise((resolve) => {
@@ -40,12 +55,9 @@ export function discoverDevices(timeoutMs = 2500): Promise<DiscoveredDevice[]> {
         socket.bind(0, () => {
             try { socket.setBroadcast(true); } catch { /* ignore */ }
             const payload = Buffer.from('discover\n', 'utf8');
-            socket.send(payload, DISCOVERY_PORT, '255.255.255.255', (error) => {
-                if (error) {
-                    clearTimeout(timer);
-                    finish();
-                }
-            });
+            for (const address of discoveryBroadcastAddresses()) {
+                socket.send(payload, DISCOVERY_PORT, address, () => {});
+            }
         });
     });
 }

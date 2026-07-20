@@ -94,7 +94,7 @@ interface ClientStatus {
   port?: number;
   serial_port?: string;
   baud?: number;
-  auth_token?: string;
+  has_auth_token?: boolean;
   reachable: boolean;
   device_state?: any;
 }
@@ -155,6 +155,7 @@ function RingLightConfigPage() {
   const [portsLoading, setPortsLoading] = React.useState(false);
   const [transport, setTransport] = React.useState<Transport>("http");
   const [testing, setTesting] = React.useState<string | null>(null);
+  const [authTokenTouched, setAuthTokenTouched] = React.useState(false);
 
   // --- refresh status from backend
   const refresh = React.useCallback(async () => {
@@ -173,10 +174,11 @@ function RingLightConfigPage() {
         port: client.port ?? DEFAULT_PORT[t],
         serial_port: client.serial_port || "",
         baud: client.baud ?? 115200,
-        auth_token: client.auth_token || "",
+        auth_token: "",
         auto_discover: true,
         debounce_ms: 500,
       });
+      setAuthTokenTouched(false);
     } catch (e: any) {
       message.error(e?.message || String(e));
     } finally {
@@ -242,7 +244,7 @@ function RingLightConfigPage() {
         serial_port: values.serial_port || "",
         baud: values.baud ?? null,
         debounce_ms: values.debounce_ms ?? 500,
-        auth_token: values.auth_token || "",
+        auth_token: authTokenTouched ? values.auth_token || "" : null,
         auto_discover: !!values.auto_discover,
       });
       message.success("配置已保存");
@@ -534,8 +536,11 @@ function RingLightConfigPage() {
                   "HTTP 请求的 Bearer Token。设备无认证时留空。",
               },
               React.createElement(Input.Password, {
-                placeholder: "留空表示不使用认证",
+                placeholder: status?.has_auth_token
+                  ? "已配置；留空保持不变"
+                  : "留空表示不使用认证",
                 visibilityToggle: true,
+                onChange: () => setAuthTokenTouched(true),
               }),
             ),
 

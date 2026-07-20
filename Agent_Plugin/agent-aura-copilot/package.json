@@ -2,7 +2,7 @@
   "name": "agent-aura-copilot",
   "displayName": "AgentAura - Copilot Ring Light",
   "description": "Sync GitHub Copilot activity states to ESP32 Ring Light hardware in real-time",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publisher": "AlpacaKnight",
   "license": "MIT",
   "engines": {
@@ -137,6 +137,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
+    "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package"

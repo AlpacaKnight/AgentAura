@@ -207,7 +207,7 @@ def build_router() -> APIRouter:
             "serial_port": client.serial_port,
             "baud": client.baud,
             "debounce_ms": client.debounce_ms,
-            "auth_token": client.auth_token,
+            "has_auth_token": bool(client.auth_token),
             "auto_discover": payload.auto_discover,
             "configured": client.is_configured,
         }

@@ -152,7 +152,7 @@ npm run tauri -- build
 图集支持两种版本，自动按 `pet.json` 的 `spriteVersion` 字段识别（缺省为 1，兼容 `spriteVersionNumber`）：
 
 - **V1（`spriteVersion` 缺省或 `1`）**：8 列 × 9 行 WebP，各行依次为 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。
-- **V2（`spriteVersion: 2`）**：8 列 × 11 行 WebP，在 V1 九行基础上追加 `look`（第 9 行）与 `directions`（第 10 行），且 `idle` 扩展为 7 帧。
+- **V2（`spriteVersion: 2`）**：8 列 × 11 行 WebP，在 V1 九行基础上追加 `look-directions-a`（第 9 行）与 `look-directions-b`（第 10 行），且 `idle` 扩展为 7 帧。桌宠空闲时会随机短暂显示 0–15 的固定观察方向；V1 宠物不会访问新增行。
 
 导入器拒绝路径穿越、符号链接、超大压缩包和无效图集。
 
@@ -177,4 +177,5 @@ npm run tauri -- build
 - 已明确配置硬件主机或串口的插件继续直连硬件。
 - 网络目标为空且自动发现开启时，插件先探测本机 PetDesktop，再回退到原 ESP32 UDP 发现。
 - Copilot 与 QwenPaw 是常驻进程，会注册并每 10 秒发送心跳。
+- 手动硬件扫描会向所有 IPv4 网卡的定向广播地址发送 UDP 探测，因此 Wi-Fi、有线网卡与虚拟网卡可并存。
 - Codex、Claude Code 与 Kimi Code 使用短生命周期 hook 进程，通过兼容请求头提供稳定实例身份，每次生命周期事件刷新在线状态。

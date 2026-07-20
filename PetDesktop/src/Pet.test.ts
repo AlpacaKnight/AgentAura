@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ANIMATIONS, STATE_ANIMATION } from './Pet';
+import {
+  DEFAULT_ANIMATIONS,
+  STATE_ANIMATION,
+  resolveActiveLookDirection,
+  resolveLookDirection,
+} from './Pet';
 
 describe('Codex pet animation contract', () => {
   it('maps the fixed 8x9 atlas rows', () => {
@@ -26,5 +31,28 @@ describe('Codex pet animation contract', () => {
     expect(STATE_ANIMATION.offline).toBe('idle');
     expect(Object.values(STATE_ANIMATION)).not.toContain('look-directions-a');
     expect(Object.values(STATE_ANIMATION)).not.toContain('look-directions-b');
+  });
+
+  it('maps all 16 v2 look directions to two fixed-frame rows', () => {
+    expect(resolveLookDirection(0, 2)).toEqual({ animationName: 'look-directions-a', frame: 0 });
+    expect(resolveLookDirection(7, 2)).toEqual({ animationName: 'look-directions-a', frame: 7 });
+    expect(resolveLookDirection(8, 2)).toEqual({ animationName: 'look-directions-b', frame: 0 });
+    expect(resolveLookDirection(15, 2)).toEqual({ animationName: 'look-directions-b', frame: 7 });
+  });
+
+  it('keeps v1 pets and invalid directions on their state animation', () => {
+    expect(resolveLookDirection(0, 1)).toBeUndefined();
+    expect(resolveLookDirection(-1, 2)).toBeUndefined();
+    expect(resolveLookDirection(1.5, 2)).toBeUndefined();
+    expect(resolveLookDirection(16, 2)).toBeUndefined();
+  });
+
+  it('drops a pending look frame immediately when state or movement changes', () => {
+    expect(resolveActiveLookDirection(3, 2, 'idle', false)).toEqual({
+      animationName: 'look-directions-a',
+      frame: 3,
+    });
+    expect(resolveActiveLookDirection(3, 2, 'busy', false)).toBeUndefined();
+    expect(resolveActiveLookDirection(3, 2, 'idle', true)).toBeUndefined();
   });
 });

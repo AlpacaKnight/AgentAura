@@ -322,6 +322,7 @@ export class TranscriptWatcher implements vscode.Disposable {
                 this._clearApproval();
                 this._setState('running');
                 this._markActive();
+                void this._client.sendMessage('收到新的 Copilot 请求', 'activity', 20);
                 this._outputChannel.appendLine('[TranscriptWatcher] → user.message (running)');
                 break;
 
@@ -355,6 +356,7 @@ export class TranscriptWatcher implements vscode.Disposable {
                 this._clearApproval();
                 this._setState('busy');
                 this._markActive();
+                void this._client.sendMessage(`正在运行 ${event.data?.toolName || '工具'}`, 'activity', 20);
                 this._outputChannel.appendLine(`[TranscriptWatcher] → tool_start: ${event.data?.toolName || 'unknown'} (busy)`);
                 break;
 
@@ -363,12 +365,14 @@ export class TranscriptWatcher implements vscode.Disposable {
                 this._clearApproval();
                 this._setState('running');
                 this._armIdleTimer();
+                void this._client.sendMessage(`${event.data?.toolName || '工具'}执行完成`, 'success', 40);
                 this._outputChannel.appendLine('[TranscriptWatcher] → tool_complete (running)');
                 break;
 
             case 'assistant.turn_end':
                 if (this._pendingApproval) { break; }
                 this._armIdleTimer();
+                void this._client.sendMessage('Copilot 任务已完成', 'success', 40);
                 break;
         }
     }
@@ -423,6 +427,7 @@ export class TranscriptWatcher implements vscode.Disposable {
 
             if (this._pendingApproval) {
                 this._setState('waiting');
+                void this._client.sendMessage('Copilot 等待操作授权', 'warning', 60, 10_000);
                 this._outputChannel.appendLine('[TranscriptWatcher] → waiting for approval (blink)');
                 this._armWatchdog(this._waitingTimeout);
                 if (this._pendingApprovalIsOutsideReadOnly) {
