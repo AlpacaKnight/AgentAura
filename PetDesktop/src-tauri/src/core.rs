@@ -354,10 +354,25 @@ impl AppCore {
 
     pub fn save_settings(&self, mut settings: AppSettings) -> anyhow::Result<()> {
         settings.normalize();
-        let lan_changed = self.settings().lan_enabled != settings.lan_enabled;
+        let previous = self.settings();
+        let lan_changed = previous.lan_enabled != settings.lan_enabled;
+        let hardware_changed = previous.hardware.transport != settings.hardware.transport
+            || previous.hardware.host != settings.hardware.host
+            || previous.hardware.port != settings.hardware.port
+            || previous.hardware.serial_port != settings.hardware.serial_port
+            || previous.hardware.ble_address != settings.hardware.ble_address
+            || previous.hardware.baud != settings.hardware.baud;
 
         persist_settings(&self.data_dir()?, &settings)?;
         self.model.write().settings = settings;
+        if hardware_changed {
+            let mut status = self.hardware_status();
+            status.connected = false;
+            status.syncing = false;
+            status.last_error = None;
+            status.device = None;
+            self.update_hardware(status);
+        }
         if lan_changed {
             self.reload_http_listener();
         }

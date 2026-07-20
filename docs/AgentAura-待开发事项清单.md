@@ -284,7 +284,10 @@ Agent 生命周期事件
 > BLE 开关。广播主包现包含 128-bit Service UUID 与短名 `RingXXXX`，
 > 扫描响应包含完整名 `ESP32-Ring-XXXX`，兼容 PetDesktop 的 UUID
 > 过滤。COM3 实机已验证广播、过滤扫描、GATT 连接/服务枚举、WiFi AP
-> 和 FastLED `agent running` 灯效共存，未再重启。
+> 和 FastLED `agent running` 灯效共存。后续 STA 实机验证发现 C3 在
+> BLE 开启时不允许 `WIFI_PS_NONE`；v1.1.0 已改为
+> `WIFI_PS_MIN_MODEM`，完成 WiFi STA + BLE + 灯效共存验证；另补充
+> 2 秒广播自检，处理断连后 NimBLE 偶发未恢复广播的问题。
 
 - **原问题（已解决）**：修复前 `config.h` 默认关闭 BLE，ESP32-C3 在 WiFi 启动后初始化 NimBLE 会反复崩溃重启
 - **完成结果**：当前 `BLE_ENABLED=true`，BLE 先于 WiFi 初始化，PetDesktop 可发现并连接环形灯

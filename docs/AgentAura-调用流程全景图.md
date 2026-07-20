@@ -144,7 +144,7 @@ flowchart LR
 
 - 插件不会同时使用三种传输；每个插件按配置选择 HTTP、UDP 或 Serial。
 - PetDesktop 是可选中间层。插件直连 ESP32 时没有多 Agent 仲裁和桌宠联动；连接 PetDesktop 时，状态会先仲裁，再驱动桌宠，并可继续桥接到 ESP32。
-- ESP32-C3 环形灯的固件初始化顺序为 LED → BLE → WiFi，避免 IDF 4.4 在 WiFi 已启动后启用 BLE 控制器时进入 `coex_core_enable()` 崩溃。BLE 主广播携带 Service UUID + `RingXXXX` 短名，扫描响应携带 `ESP32-Ring-XXXX` 完整名。
+- ESP32-C3 环形灯的固件初始化顺序为 LED → BLE → WiFi，避免 IDF 4.4 在 WiFi 已启动后启用 BLE 控制器时进入 `coex_core_enable()` 崩溃；WiFi STA 使用 `WIFI_PS_MIN_MODEM` 满足 C3 共存约束。BLE 主广播携带 Service UUID + `RingXXXX` 短名，扫描响应携带 `ESP32-Ring-XXXX` 完整名；未连接时每 2 秒自检广播并在必要时自动恢复。
 - PetDesktop 的 `/api/agent` 是兼容入口；`/api/v1/agents/*` 才能保留多个 Agent 实例身份、心跳和选择信息。
 - 七个插件均可向 PetDesktop 发送气泡消息摘要；消息仅在已注册 PetDesktop Agent 时发送，不回退固件。Claude / Kimi / Codex / Qwen / ZCode 从 Hook 构建摘要，Copilot 从 transcript 事件构建摘要，QwenPaw 从 AgentRunner / ApprovalService 事件构建摘要。
 - 气泡消息仅在内存队列中保留（每 Agent 最多 20 条），PetDesktop 重启后丢失；桌宠窗口只显示当前有效 Agent 的气泡。

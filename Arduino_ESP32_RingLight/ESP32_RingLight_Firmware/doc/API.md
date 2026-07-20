@@ -365,6 +365,8 @@ HA 会识别为一个支持 RGB + 效果列表 + 亮度的灯光实体。
 | 默认状态 | 启用（`BLE_ENABLED=true`）；`bluetooth on/off` 仅修改本次运行状态 |
 | 广播布局 | 主广播：Flags + 128-bit Service UUID + 短名；扫描响应：完整设备名 |
 | 初始化顺序 | LED → BLE → WiFi；ESP32-C3 / IDF 4.4 不得在 WiFi STA/AP 启动后首次初始化 BLE |
+| WiFi 省电 | BLE 共存时使用 `WIFI_PS_MIN_MODEM`；不得设置 `WIFI_PS_NONE` |
+| 广播自愈 | 未连接时每 2 秒检查广播；断连后未自动恢复时重新启动广播 |
 
 ### 服务与特征
 
@@ -391,6 +393,11 @@ Arduino-ESP32 2.0.17 / ESP-IDF 4.4 的 `coex_core_enable()` 中触发
 
 BLE 控制器不使用 RMT 外设；FastLED 的 RMT 输出不是本次崩溃根因。
 ESP32-C3 不应通过 `FASTLED_ESP32_I2S` 规避该问题。
+
+WiFi STA 连接成功后必须保持 modem sleep。ESP32-C3 在 BLE 已启用时调用
+`esp_wifi_set_ps(WIFI_PS_NONE)` 会输出
+`Should enable WiFi modem sleep when both WiFi and Bluetooth are enabled`
+并主动终止；v1.1.0 使用 `WIFI_PS_MIN_MODEM`。
 
 ---
 

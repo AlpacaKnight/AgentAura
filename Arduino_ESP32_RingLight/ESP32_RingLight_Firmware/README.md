@@ -330,7 +330,12 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 > ESP32-C3 使用 Arduino-ESP32 2.0.17 / ESP-IDF 4.4 时必须先初始化 BLE，
 > 再启动 WiFi STA/AP。反向初始化会在 `coex_core_enable()` 中触发
 > `abort()`，表现为绿色启动跑马灯不断从头执行。该问题与 FastLED
-> 占用 RMT 通道无关，也不需要切换到 I2S。
+> 占用 RMT 通道无关，也不需要切换到 I2S。BLE 与 WiFi STA 同时启用时
+> 还必须保留 `WIFI_PS_MIN_MODEM`；设置 `WIFI_PS_NONE` 会被 C3 共存层
+> 主动终止。
+>
+> 固件会在 BLE 未连接时每 2 秒检查广播状态。若 NimBLE 在断连后
+> 没有自动恢复广播，会自动重新启动广播，避免状态显示运行但设备无法扫描。
 
 | 特征值 UUID | 读写 | 载荷 | 说明 |
 |:------------|:----:|:-----|:-----|
@@ -604,6 +609,9 @@ A：供电不足。24 灯全亮白光电流约 1.4A，USB 口带不动，请用�
 **Q：BLE 搜不到，或绿色启动跑马灯一直重复？**
 A：重复启动动画表示设备在重启，不是 `running` 灯效。当前固件已将 BLE 初始化提前到 WiFi STA/AP 之前，避免 ESP-IDF 4.4 的 `coex_core_enable()` 崩溃。扫描时使用 PetDesktop 或 BLE GATT App，不要只看系统配对列表；完整名称为 `ESP32-Ring-XXXX`，短名为 `RingXXXX`。
 
+**Q：连接 WiFi 成功后为什么立即反复重启？**
+A：ESP32-C3 的 WiFi/BLE 共存层要求启用 WiFi modem sleep。旧实现连接 STA 后设置 `WIFI_PS_NONE`，驱动会输出 `Should enable WiFi modem sleep when both WiFi and Bluetooth are enabled` 并主动 `abort()`。v1.1.0 已改用 `WIFI_PS_MIN_MODEM`。
+
 **Q：PetDesktop 扫描结果为什么显示 `AgentAura`？**
 A：这是客户端在尚未收到扫描响应名称时使用的兜底名称。当前固件把短名和 Service UUID 一起放入主广播包，并在扫描响应中提供完整名称；重新扫描后应显示 `ESP32-Ring-XXXX`。若仍显示旧名称，请关闭并重新打开管理窗口以清除扫描结果缓存。
 
@@ -629,7 +637,7 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 | 组件 | 方案 | 说明 |
 |:-----|:-----|:-----|
 | LED 驱动 | FastLED | 成熟稳定，内置 sin8/fade/调色板 |
-| BLE | h2zero/NimBLE-Arduino 2.x | BLE 先于 WiFi 初始化；主广播携带 UUID + 短名，扫描响应携带完整名 |
+| BLE | h2zero/NimBLE-Arduino 2.x | BLE 先于 WiFi 初始化；主广播携带 UUID + 短名，扫描响应携带完整名；断连后自检并恢复广播 |
 | HTTP | 内置 WebServer | 同步模式，C3 上比 AsyncTCP 稳定 |
 | MQTT | PubSubClient | 轻量，兼容 HA |
 | JSON | ArduinoJson v7 | 按需求文档 |
@@ -640,7 +648,7 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 
 | 资源 | 占用 | 上限 | 占比 |
 |:-----|:-----|:-----|:-----|
-| Flash | 1,078,688 字节（~1.03MB） | 3,145,728 字节（~3.2MB，huge_app 分区） | 34.3% |
+| Flash | 1,078,758 字节（~1.03MB） | 3,145,728 字节（~3.2MB，huge_app 分区） | 34.3% |
 | RAM | 49,708 字节（~48.5KB） | 327,680 字节（~320KB） | 15.2% |
 
 > 全功能固件实际仅占 Flash 34.3%，远低于 huge_app 分区上限，留有充足余量。实测库版本：FastLED 3.10.3、ArduinoJson 7.4.3、PubSubClient 2.8.0、NimBLE-Arduino 2.5.0。

@@ -22,6 +22,7 @@ static bool                  s_connected = false;
 static bool                  s_init_failed = false;
 static volatile int8_t       s_pending_toggle = -1;
 static String                s_ble_name;
+static uint32_t              s_last_adv_check_ms = 0;
 
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo) override {
@@ -215,17 +216,40 @@ void begin() {
 
 void loop() {
   const int8_t pending = s_pending_toggle;
-  if (pending < 0) return;
+  if (pending >= 0) {
+    s_pending_toggle = -1;
+    if (pending == 0) {
+      stop();
+      return;
+    }
 
-  s_pending_toggle = -1;
-  if (pending == 0) {
-    stop();
-    return;
+    if (!s_running) {
+      s_init_failed = false;
+      begin();
+    }
   }
 
-  if (!s_running) {
-    s_init_failed = false;
-    begin();
+  // Some ESP32-C3/NimBLE disconnect paths do not reliably resume advertising,
+  // especially while WiFi coexistence is active. Keep the GATT server alive and
+  // repair advertising instead of reporting BLE as running but undiscoverable.
+  if (!s_running || s_connected || !NimBLEDevice::isInitialized()) return;
+  const uint32_t now = millis();
+  if (now - s_last_adv_check_ms < 2000) return;
+  s_last_adv_check_ms = now;
+
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (!advertising) {
+    state.ble_running = false;
+    return;
+  }
+  if (!advertising->isAdvertising()) {
+    if (advertising->start()) {
+      state.ble_running = true;
+      Serial.println(F("[ble] advertising automatically resumed"));
+    } else {
+      state.ble_running = false;
+      Serial.println(F("[ble] advertising resume failed; retrying"));
+    }
   }
 }
 
@@ -239,6 +263,7 @@ void stop() {
   s_char_state = nullptr;
   s_running = false;
   s_connected = false;
+  s_last_adv_check_ms = 0;
   state.ble_running = false;
   conn.ble = false;
   Serial.println(F("[ble] stopped"));
