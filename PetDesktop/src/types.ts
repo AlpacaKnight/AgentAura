@@ -38,17 +38,19 @@ export type InstalledPet = {
   frameHeight: number;
   columns: number;
   rows: number;
+  spriteVersion: number;
   builtIn: boolean;
   animations: Record<string, AnimationSpec>;
 };
 
-export type HardwareTransport = 'disabled' | 'http' | 'udp' | 'serial';
+export type HardwareTransport = 'disabled' | 'http' | 'udp' | 'serial' | 'ble';
 
 export type HardwareConfig = {
   transport: HardwareTransport;
   host: string;
   port: number;
   serialPort: string;
+  bleAddress: string;
   baud: number;
   autoDiscover: boolean;
 };
@@ -75,6 +77,7 @@ export type AppSettings = {
   lanEnabled: boolean;
   lanToken: string;
   hardware: HardwareConfig;
+  petBubble: PetBubbleSettings;
 };
 
 export type AppSnapshot = {
@@ -89,6 +92,7 @@ export type AppSnapshot = {
   settings: AppSettings;
   hardware: HardwareStatus;
   logs: LogEntry[];
+  petMessages: PetMessage[];
 };
 
 export type LogEntry = {
@@ -113,6 +117,12 @@ export type SerialPortInfo = {
   portType: string;
 };
 
+export type BleDeviceInfo = {
+  name: string;
+  address: string;
+  rssi?: number;
+};
+
 export const STATE_LABELS: Record<AgentState, string> = {
   init: '初始化',
   running: '运行中',
@@ -124,7 +134,43 @@ export const STATE_LABELS: Record<AgentState, string> = {
   upgrade: '升级中',
 };
 
-export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw';
+/** 没有事件摘要时，按状态显示的本地化气泡模板。 */
+export const STATE_TEMPLATES: Record<AgentState, string> = {
+  init: '正在初始化…',
+  running: '正在处理任务…',
+  busy: '正在使用工具…',
+  waiting: '等待你的确认',
+  error: '操作出现错误',
+  idle: '任务已完成',
+  offline: 'Agent 已离线',
+  upgrade: '正在更新…',
+};
+
+export type PetMessageKind = 'state' | 'activity' | 'success' | 'warning' | 'error';
+
+export type PetMessage = {
+  id: string;
+  agentInstanceId?: string;
+  kind: PetMessageKind;
+  text: string;
+  source: string;
+  priority: number;
+  createdAt: string;
+  ttlMs: number;
+};
+
+export type PetBubbleMode = 'state' | 'events' | 'both';
+
+export type PetBubbleSettings = {
+  enabled: boolean;
+  mode: PetBubbleMode;
+  durationSeconds: number;
+  maxCharacters: number;
+  fontScale: number;
+  showSource: boolean;
+};
+
+export type PluginProvider = 'claude' | 'codex' | 'copilot' | 'kimi-code' | 'qwencode' | 'qwenpaw' | 'zcode';
 export type PluginPackageInspection = {
   path: string; fileName: string; sha256: string; format: string; provider?: PluginProvider;
   version?: string; valid: boolean; error?: string; warnings: string[];
@@ -132,6 +178,7 @@ export type PluginPackageInspection = {
 export type ManagedPluginStatus = {
   provider: PluginProvider; installed: boolean; version?: string; hooksInstalled: boolean;
   hooksSupported: boolean; configPath?: string;
+  importPath?: string;
   managedInstalled: boolean; globalInstalled: boolean; externalInstalled: boolean;
   preferredSource?: 'managed' | 'global' | 'external';
   managedVersion?: string; globalVersion?: string; externalVersion?: string;

@@ -79,6 +79,9 @@ if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
+# 清理旧版本 zip（保留 index.js 前端构建产物）
+Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "$pluginId-*.zip" } | Remove-Item -Force
+
 $zipName = "$pluginId-$version.zip"
 $zipPath = Join-Path $OutDir $zipName
 if (Test-Path -LiteralPath $zipPath) {
@@ -93,7 +96,8 @@ if (Test-Path -LiteralPath $zipPath) {
 $excludeDirs = @(
     'ui\dist', 'ui/dist',
     'node_modules', 'ui\node_modules', 'ui/node_modules',
-    '__pycache__', '.pytest_cache', '.mypy_cache', '.git'
+    '__pycache__', '.pytest_cache', '.mypy_cache', '.git',
+    'tests'
 )
 $excludeFiles = @('.gitignore', 'package-lock.json')
 

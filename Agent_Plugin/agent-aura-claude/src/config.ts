@@ -22,6 +22,16 @@ export interface Config {
 export interface RuntimeState {
   hookSuppressedUntil?: number;
   hookSuppressionReason?: string;
+  lastState?: string;
+  lastSentAt?: number;
+  lastActivityAt?: number;
+  unreachableUntil?: number;
+  discoveryRetryAfter?: number;
+  lastError?: string;
+  httpTarget?: 'petdesktop' | 'firmware';
+  petDesktopRegistered?: boolean;
+  heartbeatToken?: string;
+  heartbeatIntervalMs?: number;
   [key: string]: unknown;
 }
 

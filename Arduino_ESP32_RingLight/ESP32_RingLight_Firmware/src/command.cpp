@@ -15,6 +15,7 @@
 #include "storage.h"
 #include "network.h"
 #include "led_driver.h"
+#include "ble_server.h"
 #include <ArduinoJson.h>
 
 namespace cmd {
@@ -266,10 +267,18 @@ String handleText(const String& rawLine) {
     return String("ERR unknown agent state: ") + rest;
   }
 
+  if (head == "bluetooth" || head == "ble") {
+    bool on = (rest == "on" || rest == "1" || rest == "true");
+    bool off = (rest == "off" || rest == "0" || rest == "false");
+    if (!on && !off) return F("ERR bluetooth on|off");
+    bleServer::toggle(on);
+    return on ? F("OK bluetooth enabling") : F("OK bluetooth disabling");
+  }
+
   if (head == "help" || head == "?") {
     return F("cmds: rgb R,G,B | effect NAME [params] | brightness N | "
              "speed N | power on|off | state | reset | factory | "
-             "wifi SSID,PASS | agent STATE | help");
+             "wifi SSID,PASS | agent STATE | bluetooth on|off | help");
   }
 
   return String("ERR unknown cmd: ") + head;

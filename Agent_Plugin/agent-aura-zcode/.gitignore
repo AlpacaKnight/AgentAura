@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+coverage/
+*.log
+.DS_Store
+
+# ZCode runtime artifacts (generated in cache during plugin install/dev)
+.zcode-plugin-seed.json
+*.disabled

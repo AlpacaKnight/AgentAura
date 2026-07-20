@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { confirm, open } from '@tauri-apps/plugin-dialog';
 import { ChevronDown, ChevronUp, Download, FileArchive, LoaderCircle, RefreshCw, Save, SquareX, Wrench } from 'lucide-react';
 import { api, isTauri, onPluginOperationLog } from './api';
+import Dropdown from './Dropdown';
 import type { PluginOperationLog } from './api';
 import type { ManagedPluginStatus, PluginPackageInspection, PluginProvider } from './types';
 
@@ -28,9 +29,10 @@ const names: Record<PluginProvider, string> = {
   'kimi-code': 'Kimi Code',
   qwencode: 'Qwen Code',
   qwenpaw: 'QwenPaw',
+  zcode: 'ZCode',
 };
 
-const PROVIDERS: PluginProvider[] = ['claude', 'codex', 'copilot', 'kimi-code', 'qwencode', 'qwenpaw'];
+const PROVIDERS: PluginProvider[] = ['claude', 'codex', 'copilot', 'kimi-code', 'qwencode', 'qwenpaw', 'zcode'];
 
 const sourceLabel = (item: ManagedPluginStatus) => {
   const parts: string[] = [];
@@ -58,9 +60,9 @@ const defaults = (provider: PluginProvider): PluginConfig => ({
   debounceMs: 500,
   cooldownMs: 3000,
   timeoutMs: 650,
-  ...(provider === 'codex' ? { idleFallbackMs: 5000 } : {}),
+  ...(provider === 'codex' || provider === 'zcode' ? { idleFallbackMs: 5000 } : {}),
   autoDiscover: false,
-  ...(['codex', 'kimi-code', 'qwencode'].includes(provider) ? { authToken: '' } : {}),
+  ...(['codex', 'kimi-code', 'qwencode', 'zcode'].includes(provider) ? { authToken: '' } : {}),
 });
 
 export function PluginsPanel() {
@@ -161,6 +163,31 @@ export function PluginsPanel() {
     } finally {
       busyRef.current = false;
       setBusy(false);
+    }
+  };
+
+  const copyText = async (text: string): Promise<void> => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  };
+
+  const copyInstallPath = async (provider: PluginProvider, installPath?: string) => {
+    if (provider !== 'zcode' || !installPath) return;
+    try {
+      await copyText(installPath);
+      setMessage(`已复制 ZCode 安装地址:\n${installPath}`);
+    } catch (error) {
+      setMessage(`复制失败: ${String(error)}`);
     }
   };
 
@@ -279,6 +306,9 @@ export function PluginsPanel() {
               </button>}
             </>}
             {item.configPath && <button onClick={() => void edit(item.provider)}>配置连接</button>}
+            {item.provider === 'zcode' && item.importPath && (
+              <button onClick={() => void copyInstallPath(item.provider, item.importPath)}>复制安装地址</button>
+            )}
             {item.installed && <button disabled={busy} onClick={() => void confirm('确认卸载该插件？', {
               title: '确认卸载', kind: 'warning',
             }).then(ok => { if (ok) return run(() => api.uninstallPlugin(item.provider)); }).catch(() => {})}>卸载</button>}
@@ -300,9 +330,7 @@ export function PluginsPanel() {
       </div>
 
       <div className="config-form">
-        <label>连接方式<select value={config.transport} onChange={event => update('transport', event.target.value as PluginConfig['transport'])}>
-          <option value="http">HTTP（推荐）</option><option value="udp">UDP</option><option value="serial">USB 串口</option>
-        </select><small>HTTP 可连接 PetDesktop 或硬件；UDP 直接发送到硬件。</small></label>
+        <label>连接方式<Dropdown value={config.transport} options={[{ value: 'http', label: 'HTTP（推荐）' }, { value: 'udp', label: 'UDP' }, { value: 'serial', label: 'USB 串口' }]} onChange={value => update('transport', value as PluginConfig['transport'])} /><small>HTTP 可连接 PetDesktop 或硬件；UDP 直接发送到硬件。</small></label>
 
         {config.transport !== 'serial' ? <>
           <label>主机地址<input value={config.host} onChange={event => update('host', event.target.value)} placeholder="127.0.0.1 或 192.168.1.100"/><small>本机桌宠填 127.0.0.1，硬件填设备局域网 IP。</small></label>

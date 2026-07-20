@@ -1,0 +1,29 @@
+{
+  "build": {
+    "core": "esp32",
+    "f_cpu": "160000000L",
+    "f_flash": "80000000L",
+    "flash_mode": "qio",
+    "mcu": "esp32c6",
+    "variant": "esp32c6"
+  },
+  "connectivity": [
+    "wifi",
+    "bluetooth",
+    "zigbee",
+    "thread"
+  ],
+  "frameworks": [
+    "arduino"
+  ],
+  "name": "Waveshare ESP32-C6-Touch-AMOLED-1.8",
+  "upload": {
+    "flash_size": "16MB",
+    "maximum_ram_size": 524288,
+    "maximum_size": 16777216,
+    "require_upload_port": true,
+    "speed": 460800
+  },
+  "vendor": "Waveshare",
+  "url": "https://www.waveshare.com/esp32-c6-touch-amoled-1.8.htm"
+}

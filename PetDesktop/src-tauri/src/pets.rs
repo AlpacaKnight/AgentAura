@@ -124,10 +124,15 @@ fn find_pet_root(stage: &Path) -> anyhow::Result<PathBuf> {
 
 fn validate_pet_dir(root: &Path) -> anyhow::Result<InstalledPet> {
     let manifest_path = root.join("pet.json");
-    let raw: Value =
-        serde_json::from_slice(&fs::read(&manifest_path).map_err(|error| {
-            anyhow::anyhow!("cannot read {}: {error}", manifest_path.display())
-        })?)?;
+    let content = fs::read(&manifest_path)
+        .map_err(|error| anyhow::anyhow!("cannot read {}: {error}", manifest_path.display()))?;
+    // Strip UTF-8 BOM (\u{FEFF}) if present, since serde_json does not handle it
+    let content = if content.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        &content[3..]
+    } else {
+        &content
+    };
+    let raw: Value = serde_json::from_slice(content)?;
     let object = raw
         .as_object()
         .ok_or_else(|| anyhow::anyhow!("pet.json must contain a JSON object"))?;
@@ -167,13 +172,15 @@ fn validate_pet_dir(root: &Path) -> anyhow::Result<InstalledPet> {
         .with_guessed_format()?
         .into_dimensions()
         .map_err(|error| anyhow::anyhow!("invalid WebP spritesheet: {error}"))?;
-    if width % 8 != 0 || height % 9 != 0 {
+    let sprite_version = u32_field(object, &["spriteVersion", "spriteVersionNumber"]).unwrap_or(1);
+    let rows = if sprite_version >= 2 { 11 } else { 9 };
+    if width % 8 != 0 || height % rows != 0 {
         anyhow::bail!(
-            "spritesheet dimensions must be divisible by the Codex 8x9 grid; got {width}x{height}"
+            "spritesheet dimensions must be divisible by the Codex 8x{rows} grid; got {width}x{height}"
         );
     }
     let frame_width = width / 8;
-    let frame_height = height / 9;
+    let frame_height = height / rows;
     if frame_width == 0 || frame_height == 0 || frame_width > 1024 || frame_height > 1024 {
         anyhow::bail!("invalid spritesheet frame size: {frame_width}x{frame_height}");
     }
@@ -186,9 +193,10 @@ fn validate_pet_dir(root: &Path) -> anyhow::Result<InstalledPet> {
         frame_width,
         frame_height,
         columns: 8,
-        rows: 9,
+        rows,
+        sprite_version,
         built_in: false,
-        animations: default_animations(),
+        animations: default_animations(sprite_version),
     })
 }
 
@@ -200,6 +208,17 @@ fn string_field(object: &serde_json::Map<String, Value>, fields: &[&str]) -> Opt
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
+    })
+}
+
+fn u32_field(object: &serde_json::Map<String, Value>, fields: &[&str]) -> Option<u32> {
+    fields.iter().find_map(|field| {
+        object.get(*field).and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
+                .map(|number| number as u32)
+        })
     })
 }
 

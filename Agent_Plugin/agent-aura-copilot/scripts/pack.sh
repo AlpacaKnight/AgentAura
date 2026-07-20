@@ -17,6 +17,9 @@ npm install
 echo "=== Compiling TypeScript ==="
 npm run compile
 
+# 清理旧版本产物，避免版本迭代后残留
+rm -f *.vsix
+
 echo "=== Packaging VSIX ==="
 npx @vscode/vsce package --allow-missing-repository
 

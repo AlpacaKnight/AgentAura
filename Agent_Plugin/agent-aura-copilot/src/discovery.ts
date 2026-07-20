@@ -7,6 +7,7 @@
 
 import * as vscode from 'vscode';
 import * as dgram from 'dgram';
+import * as os from 'os';
 
 export interface DiscoveredDevice {
     device: string;
@@ -21,6 +22,20 @@ export interface DiscoveredDevice {
 
 const DISCOVERY_TIMEOUT_MS = 3000;
 const DISCOVERY_PORT = 8888;
+
+export function discoveryBroadcastAddresses(): string[] {
+    const addresses = new Set<string>(['255.255.255.255']);
+    for (const entries of Object.values(os.networkInterfaces())) {
+        for (const entry of entries || []) {
+            if (entry.family !== 'IPv4' || entry.internal) { continue; }
+            const ip = entry.address.split('.').map(Number);
+            const mask = entry.netmask.split('.').map(Number);
+            if (ip.length !== 4 || mask.length !== 4 || ip.some(Number.isNaN) || mask.some(Number.isNaN)) { continue; }
+            addresses.add(ip.map((octet, index) => ((octet & mask[index]) | (~mask[index] & 255)) >>> 0).join('.'));
+        }
+    }
+    return [...addresses];
+}
 
 export class DeviceDiscovery {
     private _outputChannel: vscode.OutputChannel;
@@ -96,16 +111,19 @@ export class DeviceDiscovery {
                         socket.setBroadcast(true);
                         const message = Buffer.from('discover\n');
 
-                        // Send to broadcast address
-                        socket.send(message, DISCOVERY_PORT, '255.255.255.255', (err) => {
-                            if (err) {
-                                this._outputChannel.appendLine(
-                                    `[AgentAura] Discovery send failed: ${err.message}`
-                                );
-                            }
-                        });
+                        for (const address of discoveryBroadcastAddresses()) {
+                            socket.send(message, DISCOVERY_PORT, address, (err) => {
+                                if (err) {
+                                    this._outputChannel.appendLine(
+                                        `[AgentAura] Discovery send to ${address} failed: ${err.message}`
+                                    );
+                                }
+                            });
+                        }
 
-                        this._outputChannel.appendLine('[AgentAura] Discovery broadcast sent');
+                        this._outputChannel.appendLine(
+                            `[AgentAura] Discovery broadcast sent to ${discoveryBroadcastAddresses().join(', ')}`
+                        );
                     });
                 });
             }

@@ -2,7 +2,7 @@
   "name": "agent-aura-claude",
   "displayName": "AgentAura - Claude Ring Light",
   "description": "Sync Claude Code lifecycle events to AgentAura ESP32 Ring Light hardware",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "AgentAura",
   "license": "MIT",
   "type": "commonjs",
@@ -23,6 +23,7 @@
     "build": "npm test",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "package": "bash scripts/build.sh --pack",
     "test": "npm run compile && node --test test/*.test.js",
     "prepare": "npm run compile",
     "prepack": "npm run compile"

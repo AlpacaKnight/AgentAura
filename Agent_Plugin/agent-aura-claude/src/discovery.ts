@@ -1,8 +1,23 @@
 'use strict';
 
 import * as dgram from 'node:dgram';
+import * as os from 'node:os';
 
 export const DISCOVERY_PORT = 8888;
+
+export function discoveryBroadcastAddresses(): string[] {
+  const addresses = new Set<string>(['255.255.255.255']);
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue;
+      const ip = entry.address.split('.').map(Number);
+      const mask = entry.netmask.split('.').map(Number);
+      if (ip.length !== 4 || mask.length !== 4 || ip.some(Number.isNaN) || mask.some(Number.isNaN)) continue;
+      addresses.add(ip.map((octet, index) => ((octet & mask[index]) | (~mask[index] & 255)) >>> 0).join('.'));
+    }
+  }
+  return [...addresses];
+}
 
 export interface DiscoveredDevice {
   mac?: string;
@@ -61,13 +76,11 @@ export function discoverDevices(timeoutMs = 2500): Promise<DiscoveredDevice[]> {
         // Some network stacks refuse broadcast toggles; send still may work.
       }
       const payload = Buffer.from('discover\n', 'utf8');
-      socket.send(payload, DISCOVERY_PORT, '255.255.255.255', (error?: Error | null) => {
-        if (error) {
-          debugLog(`discovery send error: ${error.message}`);
-          clearTimeout(timer);
-          finish();
-        }
-      });
+      for (const address of discoveryBroadcastAddresses()) {
+        socket.send(payload, DISCOVERY_PORT, address, (error?: Error | null) => {
+          if (error) debugLog(`discovery send to ${address} failed: ${error.message}`);
+        });
+      }
     });
   });
 }

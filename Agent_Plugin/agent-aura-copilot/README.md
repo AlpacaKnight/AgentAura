@@ -1,6 +1,8 @@
 # AgentAura - Copilot Ring Light
 
-将 GitHub Copilot 的工作状态实时同步到 ESP32 环形灯硬件，让你在物理世界中"看到" AI 的活动状态。
+将 GitHub Copilot 的工作状态实时同步到 PetDesktop 桌宠或 ESP32 硬件，让你在桌面与物理设备上看到 AI 的活动状态。
+
+HTTP 模式会自动识别目标：PetDesktop 使用 `/api/v1/agents/*` 完成注册、10 秒心跳、状态、气泡与断开注销；ESP32 固件继续使用 `/api/agent` 和 `/api/cmd`。UDP 发现会探测所有 IPv4 网卡，兼容同时安装虚拟网卡、VPN 与 Wi-Fi 的环境。
 
 ## 功能特性
 
@@ -86,7 +88,7 @@
 ### 安装 VSIX
 
 ```bash
-code --install-extension agent-aura-copilot-0.1.0.vsix
+code --install-extension agent-aura-copilot-0.3.0.vsix
 ```
 
 或在 VS Code 中: Extensions 面板 → `...` → **Install from VSIX...**

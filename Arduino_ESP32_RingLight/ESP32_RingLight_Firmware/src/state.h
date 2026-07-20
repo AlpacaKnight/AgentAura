@@ -17,6 +17,8 @@ struct RuntimeState {
   uint8_t    brightness = DEFAULT_BRIGHTNESS;
   uint8_t    speed    = DEFAULT_SPEED;
   bool       power    = DEFAULT_POWER;
+  bool       ble_running  = false;
+  bool       ble_enabled  = BLE_ENABLED;
 };
 
 extern RuntimeState state;

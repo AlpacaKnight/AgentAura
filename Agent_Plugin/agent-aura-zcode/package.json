@@ -1,0 +1,53 @@
+{
+  "name": "agent-aura-zcode",
+  "displayName": "AgentAura - ZCode Ring Light",
+  "description": "Sync ZCode hook lifecycle events to AgentAura ESP32 Ring Light and PetDesktop",
+  "version": "0.3.0",
+  "author": "AgentAura",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "agent-aura-zcode": "./out/index.js"
+  },
+  "files": [
+    ".zcode-plugin/**",
+    "hooks/**",
+    "commands/**",
+    "bin/**",
+    "out/**",
+    "scripts/**",
+    "AGENTS.md",
+    "marketplace.json",
+    ".gitignore",
+    ".npmignore",
+    "agent-aura-zcode.config.example.json",
+    "README.md",
+    "tsconfig.json",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "bash scripts/pack.sh",
+    "package:win": "powershell -ExecutionPolicy Bypass -File scripts/pack.ps1",
+    "test": "npm run compile && node --test test/*.test.js"
+  },
+  "keywords": [
+    "zcode",
+    "agentaura",
+    "esp32",
+    "petdesktop",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  }
+}

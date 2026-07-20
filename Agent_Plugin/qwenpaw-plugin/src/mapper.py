@@ -48,6 +48,34 @@ EVENT_TO_AGENT_STATE: dict[str, str | None] = {
     "approval.bulk_cancel": "idle",
 }
 
+EVENT_TO_MESSAGE: dict[str, tuple[str, str, int]] = {
+    "qwenpaw.startup": ("QwenPaw 已启动", "state", 20),
+    "query.received": ("收到新的 QwenPaw 请求", "activity", 20),
+    "query.running": ("QwenPaw 正在思考", "activity", 20),
+    "tool.detected": ("QwenPaw 正在调用工具", "activity", 30),
+    "tool.result": ("工具执行完成", "success", 40),
+    "query.done": ("QwenPaw 任务已完成", "success", 50),
+    "query.cancelled": ("QwenPaw 任务已取消", "warning", 50),
+    "query.error": ("QwenPaw 执行出错", "error", 80),
+    "approval.pending": ("QwenPaw 等待操作授权", "warning", 70),
+    "approval.approved": ("操作已获授权", "success", 50),
+    "approval.denied": ("操作授权被拒绝", "error", 80),
+    "approval.timed_out": ("操作授权已超时", "warning", 70),
+}
+
+
+def _event_message(event: str, payload: dict[str, Any]) -> tuple[str, str, int] | None:
+    message = EVENT_TO_MESSAGE.get(event)
+    if message is None:
+        return None
+    text, kind, priority = message
+    detail = payload.get("text")
+    if event in {"tool.detected", "tool.result", "query.error"} and isinstance(detail, str):
+        detail = detail.strip()
+        if detail:
+            text = detail[:160]
+    return text, kind, priority
+
 
 def dispatch_sync(event: str, **payload: Any) -> None:
     """Sync entry point — sends the mapped state to the device.
@@ -59,7 +87,12 @@ def dispatch_sync(event: str, **payload: Any) -> None:
         logger.debug("agentaura: event %s has no mapping (skip)", event)
         return
     try:
-        RingLightClient().set_agent_state(state)
+        client = RingLightClient()
+        client.set_agent_state(state)
+        message = _event_message(event, payload)
+        if message:
+            text, kind, priority = message
+            client.send_message(text, kind, priority)
     except Exception:
         logger.debug("agentaura: dispatch_sync %s failed", event, exc_info=True)
 

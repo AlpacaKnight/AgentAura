@@ -1,134 +1,286 @@
 /*
- * ============================================================
- *  ble_server.cpp — BLE GATT 服务 (NimBLE)
+ * BLE GATT server for the ESP32-C3 ring light.
  *
- *  Service: RING_SERVICE_UUID
- *  Char COLOR (WRITE): 收到字符串 -> cmd::handleText
- *  Char STATE (READ):  返回状态 JSON
- *
- *  使用 h2zero/NimBLE-Arduino 2.x — 自带 NimBLE 控制器,
- *  不依赖 SDK 的 Bluedroid BT 库。不要强制定义 CONFIG_BT_* 宏。
- *
- *  ESP32-C3 单天线共存要点:
- *   - WiFi PS=NONE 减少射频休眠, 让 BLE 广播有更多时间片
- *   - 广播间隔 20~40ms 提高可发现性
- *   - TX 功率设为最大 (+9dBm)
- * ============================================================
+ * The 128-bit service UUID is placed in the primary advertising packet so
+ * service-filtered scans can discover the device. The complete device name
+ * is placed in the scan response because both fields do not fit in 31 bytes.
  */
 #include "ble_server.h"
-#include "config.h"
 #include "command.h"
+#include "config.h"
 #include "state.h"
 
-#if BLE_ENABLED
 #include <NimBLEDevice.h>
-#include <esp_wifi.h>
 
 namespace bleServer {
 
-static NimBLEServer*        server    = nullptr;
-static NimBLEService*       service   = nullptr;
-static NimBLECharacteristic* charColor = nullptr;
-static NimBLECharacteristic* charState = nullptr;
+static NimBLEServer*         s_server = nullptr;
+static NimBLECharacteristic* s_char_color = nullptr;
+static NimBLECharacteristic* s_char_state = nullptr;
+static bool                  s_running = false;
+static bool                  s_connected = false;
+static bool                  s_init_failed = false;
+static volatile int8_t       s_pending_toggle = -1;
+static String                s_ble_name;
+static uint32_t              s_last_adv_check_ms = 0;
 
-// ---------- 回调 ----------
+class ServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo) override {
+    s_connected = server->getConnectedCount() > 0;
+    conn.ble = s_connected;
+    Serial.printf("[ble] connected: %s\n",
+                  connInfo.getAddress().toString().c_str());
+  }
+
+  void onDisconnect(NimBLEServer* server,
+                    NimBLEConnInfo& connInfo,
+                    int reason) override {
+    s_connected = server->getConnectedCount() > 0;
+    conn.ble = s_connected;
+    Serial.printf("[ble] disconnected: reason=%d, clients=%u\n",
+                  reason,
+                  static_cast<unsigned>(server->getConnectedCount()));
+  }
+};
+
 class ColorCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
-    std::string v = c->getValue();
-    String s = v.c_str();
-    s.trim();
-    if (s.length() == 0) return;
-    String resp = cmd::handleText(s);
-    if (resp.length() > 0) {
-      c->setValue((const uint8_t*)resp.c_str(), resp.length());
-      c->notify();
+  void onWrite(NimBLECharacteristic* characteristic,
+               NimBLEConnInfo& connInfo) override {
+    std::string value = characteristic->getValue();
+    String text = value.c_str();
+    text.trim();
+    if (text.length() == 0) return;
+
+    String response = cmd::handleText(text);
+    if (response.length() > 0) {
+      characteristic->setValue(
+          reinterpret_cast<const uint8_t*>(response.c_str()),
+          response.length());
+      characteristic->notify(connInfo.getConnHandle());
+    }
+
+    if (s_char_state) {
+      String stateJson = getStateJson();
+      s_char_state->setValue(
+          reinterpret_cast<const uint8_t*>(stateJson.c_str()),
+          stateJson.length());
+      s_char_state->notify(connInfo.getConnHandle());
     }
   }
 };
 
 class StateCallbacks : public NimBLECharacteristicCallbacks {
-  void onRead(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
-    String s = getStateJson();
-    c->setValue((const uint8_t*)s.c_str(), s.length());
+  void onRead(NimBLECharacteristic* characteristic,
+              NimBLEConnInfo& connInfo) override {
+    String stateJson = getStateJson();
+    characteristic->setValue(
+        reinterpret_cast<const uint8_t*>(stateJson.c_str()),
+        stateJson.length());
   }
 };
 
 static String deviceName() {
-  uint64_t m = ESP.getEfuseMac();
-  uint16_t lo = (uint16_t)(m & 0xFFFF);
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%02X%02X", (lo >> 8) & 0xFF, lo & 0xFF);
-  return String(BLE_DEVICE_PREFIX) + String(buf);
+  const uint16_t suffix = static_cast<uint16_t>(ESP.getEfuseMac() & 0xFFFF);
+  char text[5];
+  snprintf(text, sizeof(text), "%04X", suffix);
+  return String(BLE_DEVICE_PREFIX) + text;
+}
+
+static String shortDeviceName() {
+  const uint16_t suffix = static_cast<uint16_t>(ESP.getEfuseMac() & 0xFFFF);
+  char text[9];
+  snprintf(text, sizeof(text), "Ring%04X", suffix);
+  return String(text);
+}
+
+static bool setupGattAndAdvertising() {
+  s_server = NimBLEDevice::createServer();
+  if (!s_server) {
+    Serial.println(F("[ble] createServer failed"));
+    return false;
+  }
+
+  s_server->setCallbacks(new ServerCallbacks());
+  s_server->advertiseOnDisconnect(true);
+
+  NimBLEService* service = s_server->createService(RING_SERVICE_UUID);
+  if (!service) {
+    Serial.println(F("[ble] createService failed"));
+    return false;
+  }
+
+  s_char_color = service->createCharacteristic(
+      CHAR_COLOR_UUID,
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR |
+          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  if (!s_char_color) {
+    Serial.println(F("[ble] create COLOR characteristic failed"));
+    return false;
+  }
+  s_char_color->setValue("");
+  s_char_color->setCallbacks(new ColorCallbacks());
+
+  s_char_state = service->createCharacteristic(
+      CHAR_STATE_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  if (!s_char_state) {
+    Serial.println(F("[ble] create STATE characteristic failed"));
+    return false;
+  }
+  s_char_state->setValue("init");
+  s_char_state->setCallbacks(new StateCallbacks());
+
+  s_server->start();
+
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (!advertising) {
+    Serial.println(F("[ble] getAdvertising failed"));
+    return false;
+  }
+
+  NimBLEAdvertisementData primaryData;
+  const String shortName = shortDeviceName();
+  if (!primaryData.setFlags(BLE_HS_ADV_F_DISC_GEN |
+                            BLE_HS_ADV_F_BREDR_UNSUP) ||
+      !primaryData.addServiceUUID(RING_SERVICE_UUID) ||
+      !primaryData.setShortName(shortName.c_str())) {
+    Serial.println(F("[ble] primary advertising data is too large"));
+    return false;
+  }
+
+  NimBLEAdvertisementData scanResponse;
+  if (!scanResponse.setName(s_ble_name.c_str())) {
+    Serial.println(F("[ble] scan response data is too large"));
+    return false;
+  }
+
+  advertising->enableScanResponse(true);
+  advertising->setMinInterval(0x20);
+  advertising->setMaxInterval(0x40);
+
+  if (!advertising->setAdvertisementData(primaryData) ||
+      !advertising->setScanResponseData(scanResponse) ||
+      !advertising->start()) {
+    Serial.println(F("[ble] advertising start failed"));
+    return false;
+  }
+
+  s_running = true;
+  state.ble_running = true;
+  Serial.printf("[ble] advertising as \"%s\", address=%s\n",
+                s_ble_name.c_str(),
+                NimBLEDevice::getAddress().toString().c_str());
+  return true;
 }
 
 void begin() {
-  Serial.println(F("[ble] ========== BLE init start =========="));
+  if (!state.ble_enabled) {
+    Serial.println(F("[ble] disabled at runtime"));
+    return;
+  }
+  if (s_running) return;
+  if (s_init_failed) {
+    Serial.println(F("[ble] previous init failed; use 'bluetooth on' to retry"));
+    return;
+  }
 
-  // ---- 1. WiFi 关闭省电 (减少射频争抢, 让 BLE 广播有更多时间片) ----
-  esp_wifi_set_ps(WIFI_PS_NONE);
-  Serial.println(F("[ble] WiFi PS=NONE"));
+  s_ble_name = deviceName();
+  Serial.printf("[ble] initializing \"%s\"...\n", s_ble_name.c_str());
 
-  // ---- 2. NimBLE 初始化 (内部自动初始化 BT 控制器) ----
-  String name = deviceName();
-  Serial.printf("[ble] calling NimBLEDevice::init(\"%s\")...\n", name.c_str());
-  NimBLEDevice::init(name.c_str());
-  Serial.println(F("[ble] NimBLEDevice::init returned"));
+  if (!NimBLEDevice::init(s_ble_name.c_str()) ||
+      !NimBLEDevice::isInitialized()) {
+    Serial.printf("[ble] init failed; free heap=%u\n",
+                  static_cast<unsigned>(ESP.getFreeHeap()));
+    s_init_failed = true;
+    state.ble_running = false;
+    conn.ble = false;
+    return;
+  }
 
-  // ---- 3. TX 功率最大 ----
-  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-  Serial.println(F("[ble] TX power = +9dBm"));
+  if (!NimBLEDevice::setPower(ESP_PWR_LVL_P9)) {
+    Serial.println(F("[ble] warning: failed to set TX power to +9 dBm"));
+  }
 
-  // ---- 4. 创建 GATT 服务和特征值 ----
-  server  = NimBLEDevice::createServer();
-  service = server->createService(RING_SERVICE_UUID);
-
-  charColor = service->createCharacteristic(
-      CHAR_COLOR_UUID,
-      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  const char* empty = "";
-  charColor->setValue((const uint8_t*)empty, 0);
-  charColor->setCallbacks(new ColorCallbacks());
-
-  charState = service->createCharacteristic(
-      CHAR_STATE_UUID,
-      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  charState->setCallbacks(new StateCallbacks());
-  const char* initStr = "init";
-  charState->setValue((const uint8_t*)initStr, strlen(initStr));
-
-  Serial.println(F("[ble] GATT service + chars created"));
-  Serial.printf("[ble]   service UUID: %s\n", RING_SERVICE_UUID);
-  Serial.printf("[ble]   COLOR  UUID:  %s\n", CHAR_COLOR_UUID);
-  Serial.printf("[ble]   STATE  UUID:  %s\n", CHAR_STATE_UUID);
-
-  // ---- 5. 启动广播 ----
-  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  adv->addServiceUUID(RING_SERVICE_UUID);
-  adv->setName(name.c_str());
-  adv->enableScanResponse(true);
-
-  // 广播间隔 20~40ms (0x20~0x40 * 0.625ms)
-  adv->setMinInterval(0x20);
-  adv->setMaxInterval(0x40);
-
-  bool advOk = adv->start();
-  Serial.printf("[ble] advertising start: %s\n", advOk ? "OK" : "FAIL");
-  Serial.printf("[ble]   name: \"%s\"\n", name.c_str());
-  Serial.printf("[ble]   interval: 20~40ms\n");
-  Serial.println(F("[ble] ========== BLE init done =========="));
-
-  conn.ble = advOk;
+  if (!setupGattAndAdvertising()) {
+    NimBLEDevice::deinit(true);
+    s_server = nullptr;
+    s_char_color = nullptr;
+    s_char_state = nullptr;
+    s_running = false;
+    s_connected = false;
+    state.ble_running = false;
+    conn.ble = false;
+    s_init_failed = true;
+  }
 }
 
 void loop() {
-  // NimBLE 自带 FreeRTOS task 处理异步事件
+  const int8_t pending = s_pending_toggle;
+  if (pending >= 0) {
+    s_pending_toggle = -1;
+    if (pending == 0) {
+      stop();
+      return;
+    }
+
+    if (!s_running) {
+      s_init_failed = false;
+      begin();
+    }
+  }
+
+  // Some ESP32-C3/NimBLE disconnect paths do not reliably resume advertising,
+  // especially while WiFi coexistence is active. Keep the GATT server alive and
+  // repair advertising instead of reporting BLE as running but undiscoverable.
+  if (!s_running || s_connected || !NimBLEDevice::isInitialized()) return;
+  const uint32_t now = millis();
+  if (now - s_last_adv_check_ms < 2000) return;
+  s_last_adv_check_ms = now;
+
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (!advertising) {
+    state.ble_running = false;
+    return;
+  }
+  if (!advertising->isAdvertising()) {
+    if (advertising->start()) {
+      state.ble_running = true;
+      Serial.println(F("[ble] advertising automatically resumed"));
+    } else {
+      state.ble_running = false;
+      Serial.println(F("[ble] advertising resume failed; retrying"));
+    }
+  }
 }
 
-} // namespace bleServer
+void stop() {
+  if (NimBLEDevice::isInitialized()) {
+    NimBLEDevice::deinit(true);
+  }
 
-#else // BLE_ENABLED = false
-namespace bleServer {
-void begin() { Serial.println(F("[ble] disabled at compile time")); }
-void loop() {}
-} // namespace bleServer
-#endif
+  s_server = nullptr;
+  s_char_color = nullptr;
+  s_char_state = nullptr;
+  s_running = false;
+  s_connected = false;
+  s_last_adv_check_ms = 0;
+  state.ble_running = false;
+  conn.ble = false;
+  Serial.println(F("[ble] stopped"));
+}
+
+bool toggle(bool on) {
+  state.ble_enabled = on;
+  s_pending_toggle = on ? 1 : 0;
+  return true;
+}
+
+bool isConnected() {
+  return s_connected;
+}
+
+bool isRunning() {
+  return s_running;
+}
+
+}  // namespace bleServer

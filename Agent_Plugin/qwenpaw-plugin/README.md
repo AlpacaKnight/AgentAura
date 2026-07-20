@@ -1,6 +1,6 @@
 # AgentAura Plugin
 
-将 QwenPaw 智能体（AI Agent）的生命周期事件实时同步到 ESP32 环形灯硬件。
+将 QwenPaw 智能体（AI Agent）的生命周期事件实时同步到 PetDesktop 桌宠或 ESP32 硬件。
 当 QwenPaw 启动、收到消息、思考、调用工具、等待审批、出错、关闭时，
 环形灯会切换到对应的灯效，让智能体的运行状态一目了然。
 
@@ -37,9 +37,8 @@ ApprovalService ─────┘                                        │
 2. **事件映射**：`mapper.py` 把 QwenPaw 事件映射到固件的
    `agent <状态>` 指令（见下表），并通过去抖避免相同状态频繁重启灯效。
 3. **设备控制**：`client.py` 通过策略模式支持三种传输方式（HTTP REST /
-   UDP 数据报 / USB 串口），带 350ms 超时和离线冷却，绝不阻塞 QwenPaw 主流程。
-4. **设备发现**：`discovery.py` 通过 UDP 广播（端口 8888）自动发现
-   局域网内的 ESP32 Ring Light 设备。
+   UDP 数据报 / USB 串口）。HTTP 自动识别 PetDesktop v1 API 或 ESP32 固件；连接 PetDesktop 时注册独立 Agent、维持 10 秒心跳并发送状态与气泡。
+4. **设备发现**：`discovery.py` 向每个 IPv4 网卡的广播地址及全局广播地址发送 UDP 探测，虚拟网卡或 VPN 不会遮蔽局域网设备。
 
 ## 事件 → 灯效映射
 
@@ -84,7 +83,7 @@ ApprovalService ─────┘                                        │
 
 ```bash
 # 先用打包脚本生成 zip（见下方"打包"小节）
-qwenpaw plugin install ./agentaura-0.2.0.zip
+qwenpaw plugin install ./agentaura-0.3.0.zip
 ```
 
 > **注意**：本插件支持热加载——安装后无需手动重启 QwenPaw。路由挂载、
@@ -93,8 +92,9 @@ qwenpaw plugin install ./agentaura-0.2.0.zip
 
 ### Python 依赖
 
-- `httpx>=0.27` — HTTP/UDP 传输（QwenPaw 本身已有）
+- `httpx>=0.27` — HTTP 传输（QwenPaw 本身已有）
 - `pyserial>=3.5` — USB 串口传输（仅使用 serial 模式时需要）
+- `psutil>=5.9` — 枚举所有网卡用于 UDP 设备发现
 
 若 QwenPaw 未自动解析插件依赖，手动安装：
 

@@ -96,6 +96,14 @@ run_dev() {
 
 run_build() {
     echo "📦 生成安装包 ($PLATFORM_LABEL)..."
+    bundle_dir="$PROJECT_ROOT/src-tauri/target/release/bundle"
+    expected_bundle="$PROJECT_ROOT/src-tauri/target/release/bundle"
+    if [[ "$bundle_dir" != "$expected_bundle" ]]; then
+        echo "❌ 拒绝清理 PetDesktop 目录之外的路径: $bundle_dir" >&2
+        exit 1
+    fi
+    echo "🧹 清理旧安装包: $bundle_dir"
+    rm -rf -- "$bundle_dir"
     npm run tauri -- build
     echo "✅ 打包完成: src-tauri/target/release/bundle/"
 }

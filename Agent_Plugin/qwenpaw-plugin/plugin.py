@@ -197,6 +197,7 @@ class AgentAuraPlugin:
         """Emit ``offline``, restore patches."""
         try:
             dispatch_sync("qwenpaw.shutdown", text="QwenPaw shutdown")
+            RingLightClient().disconnect_agent()
         except Exception:
             logger.warning(
                 "AgentAura: shutdown event emit failed",
@@ -217,7 +218,7 @@ def _patch_frontend_entry_cache_buster(api: PluginApi | None) -> None:
     """Append ``?v=<version>`` to the frontend entry URL in-memory.
 
     The plugin manifest stays clean (``dist/index.js``) but the running
-    loader sees ``dist/index.js?v=0.2.0`` so the browser always fetches
+    loader sees ``dist/index.js?v=<version>`` so the browser always fetches
     the bundle matching the currently installed version. Without this,
     re-installing the plugin would leave the console serving the
     previously-cached ``index.js`` until the user does a hard refresh.

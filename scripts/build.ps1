@@ -6,8 +6,8 @@
     Builds all submodules and collects artifacts into a single output directory.
 .PARAMETER SkipDesktop
     Skip PetDesktop build.
-.PARAMOnly
-    Build only the specified module.
+.PARAM Only
+    Build only the specified module (claude, codex, copilot, kimi-code, qwencode, qwenpaw, zcode, desktop).
 .PARAMETER OutDir
     Custom output directory.
 .EXAMPLE
@@ -106,6 +106,7 @@ Build-Module "copilot"   (Join-Path $PluginsDir "agent-aura-copilot")   "scripts
 Build-Module "kimi-code" (Join-Path $PluginsDir "agent-aura-kimi-code") "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-kimi-code\dist"))
 Build-Module "qwencode"  (Join-Path $PluginsDir "agent-aura-qwencode")  "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-qwencode\dist"))
 Build-Module "qwenpaw"   (Join-Path $PluginsDir "qwenpaw-plugin")       "scripts\pack.ps1"  @((Join-Path $PluginsDir "qwenpaw-plugin\dist"))
+Build-Module "zcode"     (Join-Path $PluginsDir "agent-aura-zcode")     "scripts\pack.ps1"  @((Join-Path $PluginsDir "agent-aura-zcode\dist"))
 
 # --- PetDesktop ---
 if (-not $SkipDesktop -and (-not $Only -or $Only -eq "desktop")) {
@@ -136,14 +137,16 @@ if (-not $SkipDesktop -and (-not $Only -or $Only -eq "desktop")) {
         Set-Location $prevDir
     }
 
-    # Collect installers
+    # Collect installers — 每种格式只复制最新的文件，避免旧版本残留
     $Bundle = Join-Path $RootDir "PetDesktop\src-tauri\target\release\bundle"
     $Patterns = @("msi\*.msi", "nsis\*.exe", "deb\*.deb", "appimage\*.AppImage", "dmg\*.dmg", "portable\*.zip")
     foreach ($pattern in $Patterns) {
-        $src = Join-Path $Bundle $pattern
-        if (Test-Path $src) {
-            Get-ChildItem $src | ForEach-Object {
-                Copy-Item $_.FullName (Join-Path $DesktopOut $_.Name) -Force
+        $srcDir = Join-Path $Bundle (Split-Path $pattern -Parent)
+        $srcPattern = Split-Path $pattern -Leaf
+        if (Test-Path $srcDir) {
+            $latest = Get-ChildItem $srcDir -Filter $srcPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latest) {
+                Copy-Item $latest.FullName (Join-Path $DesktopOut $latest.Name) -Force
             }
         }
     }

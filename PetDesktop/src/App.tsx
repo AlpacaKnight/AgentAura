@@ -19,10 +19,12 @@ import {
   Settings,
   Trash2,
   Unlock,
+  Unplug,
   Usb,
   Wifi,
 } from 'lucide-react';
 import { api, onSnapshot } from './api';
+import Dropdown from './Dropdown';
 import { PluginsPanel } from './PluginsPanel';
 import {
   AGENT_STATES,
@@ -30,6 +32,7 @@ import {
   type AgentState,
   type AppSettings,
   type AppSnapshot,
+  type BleDeviceInfo,
   type DiscoveredHardware,
   type SerialPortInfo,
 } from './types';
@@ -259,36 +262,52 @@ function Pets({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
 function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [form, setForm] = useState<AppSettings>(snapshot.settings);
   const [devices, setDevices] = useState<DiscoveredHardware[]>([]);
+  const [bleDevices, setBleDevices] = useState<BleDeviceInfo[]>([]);
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
   const patchHardware = (patch: Partial<AppSettings['hardware']>) => setForm(value => ({ ...value, hardware: { ...value.hardware, ...patch } }));
   const scan = async () => {
-    const [found, serial] = await Promise.all([api.discoverHardware(), api.serialPorts()]);
-    setDevices(found);
-    setPorts(serial);
+    setScanning(true);
+    setScanError('');
+    const results = await Promise.allSettled([api.discoverHardware(), api.bleDevices(), api.serialPorts()]);
+    if (results[0].status === 'fulfilled') setDevices(results[0].value);
+    if (results[1].status === 'fulfilled') setBleDevices(results[1].value);
+    if (results[2].status === 'fulfilled') setPorts(results[2].value);
+    const labels = ['局域网', '蓝牙', '串口'];
+    const errors = results.flatMap((result, index) => result.status === 'rejected' ? [`${labels[index]}：${String(result.reason)}`] : []);
+    setScanError(errors.join('；'));
+    setScanning(false);
   };
   return (
     <section className="split-layout">
       <article className="panel">
         <div className="panel-title"><div><p className="eyebrow">ACTIVE DEVICE</p><h2>硬件连接</h2></div><span className={`status-dot ${snapshot.hardware.connected ? 'online' : ''}`} /></div>
         <div className="segmented">
-          {(['disabled', 'http', 'udp', 'serial'] as const).map(transport => <button className={form.hardware.transport === transport ? 'active' : ''} key={transport} onClick={() => patchHardware({ transport })}>{transport}</button>)}
+          {(['disabled', 'http', 'udp', 'serial', 'ble'] as const).map(transport => <button className={form.hardware.transport === transport ? 'active' : ''} key={transport} onClick={() => patchHardware({ transport })}>{transport}</button>)}
         </div>
         {form.hardware.transport === 'http' || form.hardware.transport === 'udp' ? <>
           <label>主机地址<input value={form.hardware.host} placeholder="192.168.1.100" onChange={event => patchHardware({ host: event.target.value })} /></label>
           <label>端口<input type="number" value={form.hardware.port} onChange={event => patchHardware({ port: Number(event.target.value) })} /></label>
         </> : null}
         {form.hardware.transport === 'serial' && <>
-          <label>串口<select value={form.hardware.serialPort} onChange={event => patchHardware({ serialPort: event.target.value })}><option value="">选择串口</option>{ports.map(port => <option key={port.name} value={port.name}>{port.name} · {port.portType}</option>)}</select></label>
+          <label>串口<Dropdown value={form.hardware.serialPort} placeholder="选择串口" options={[{ value: '', label: '选择串口' }, ...ports.map(port => ({ value: port.name, label: `${port.name} · ${port.portType}` }))]} onChange={value => patchHardware({ serialPort: value })} /></label>
           <label>波特率<input type="number" value={form.hardware.baud} onChange={event => patchHardware({ baud: Number(event.target.value) })} /></label>
         </>}
-        <div className="form-actions"><button className="secondary" onClick={() => void scan()}><RefreshCw size={16} />扫描</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button></div>
+        {form.hardware.transport === 'ble' && <>
+          <label>BLE 设备<Dropdown value={form.hardware.bleAddress} placeholder="选择 AgentAura BLE 设备" options={[{ value: '', label: '自动选择第一个 AgentAura 设备' }, ...bleDevices.map(device => ({ value: device.address, label: `${device.name} · ${device.address}${device.rssi == null ? '' : ` · ${device.rssi} dBm`}` }))]} onChange={value => patchHardware({ bleAddress: value })} /></label>
+        </>}
+        <p className="muted">扫描只查找候选设备；点击结果后需要保存连接。HTTP 适合同一局域网，BLE 适合无线直连，串口适合 USB 调试或无网络环境。</p>
+        <div className="form-actions"><button className="secondary" disabled={scanning} onClick={() => void scan()}><RefreshCw size={16} />{scanning ? '扫描中' : '扫描'}</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button><button className="secondary danger" disabled={!snapshot.hardware.connected && snapshot.settings.hardware.transport === 'disabled'} onClick={() => run(() => api.disconnectHardware())}><Unplug size={16} />断开连接</button></div>
+        {scanError && <p className="inline-error">{scanError}</p>}
         {snapshot.hardware.lastError && <p className="inline-error">{snapshot.hardware.lastError}</p>}
       </article>
       <article className="panel">
         <div className="panel-title"><div><p className="eyebrow">DISCOVERY</p><h2>发现结果</h2></div></div>
-        {devices.length === 0 && ports.length === 0 ? <Empty text="点击扫描查找局域网设备和本机串口。" /> : <div className="device-list">
+        {devices.length === 0 && bleDevices.length === 0 && ports.length === 0 ? <Empty text="点击扫描查找局域网、BLE 设备和本机串口。" /> : <div className="device-list">
           {devices.map(device => <button key={`${device.ip}-${device.mac}`} onClick={() => patchHardware({ transport: 'http', host: device.ip, port: device.http ?? 80 })}><Wifi /><span><strong>{device.device ?? device.model ?? 'AgentAura'}</strong><small>{device.ip}:{device.http ?? 80}</small></span></button>)}
+          {bleDevices.map(device => <button key={device.address} onClick={() => patchHardware({ transport: 'ble', bleAddress: device.address })}><Radio /><span><strong>{device.name}</strong><small>{device.address}{device.rssi == null ? '' : ` · ${device.rssi} dBm`}</small></span></button>)}
           {ports.map(port => <button key={port.name} onClick={() => patchHardware({ transport: 'serial', serialPort: port.name, baud: 115200 })}><Usb /><span><strong>{port.name}</strong><small>{port.portType}</small></span></button>)}
         </div>}
       </article>
@@ -338,6 +357,13 @@ function SettingsPanel({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         <label>宠物缩放 <output>{Math.round(form.petScale * 100)}%</output><input type="range" min="0.5" max="2" step="0.05" value={form.petScale} onInput={event => previewScale(Number(event.currentTarget.value))} /></label>
         <label>闲逛间隔（秒）<input type="number" min="10" max="600" value={form.roamIntervalSeconds} onChange={event => patch({ roamIntervalSeconds: Number(event.target.value) })} /></label>
         <label>闲逛速度<input type="number" min="20" max="300" value={form.roamSpeed} onChange={event => patch({ roamSpeed: Number(event.target.value) })} /></label>
+        <div className="panel-divider" />
+        <Toggle label="桌宠文字气泡" checked={form.petBubble.enabled} set={enabled => patch({ petBubble: { ...form.petBubble, enabled } })} />
+        <label>气泡内容模式<Dropdown value={form.petBubble.mode} options={[{ value: 'both', label: '状态 + 事件' }, { value: 'state', label: '仅状态' }, { value: 'events', label: '仅事件' }]} onChange={value => patch({ petBubble: { ...form.petBubble, mode: value } })} /></label>
+        <label>气泡显示时长（秒）<output>{form.petBubble.durationSeconds}</output><input type="range" min="1" max="30" step="1" value={form.petBubble.durationSeconds} onInput={event => patch({ petBubble: { ...form.petBubble, durationSeconds: Number(event.currentTarget.value) } })} /></label>
+        <label>最大字符数<input type="number" min="40" max="500" value={form.petBubble.maxCharacters} onChange={event => patch({ petBubble: { ...form.petBubble, maxCharacters: Number(event.target.value) } })} /></label>
+        <label>气泡字体缩放 <output>{Math.round(form.petBubble.fontScale * 100)}%</output><input type="range" min="0.75" max="2" step="0.05" value={form.petBubble.fontScale} onInput={event => patch({ petBubble: { ...form.petBubble, fontScale: Number(event.currentTarget.value) } })} /></label>
+        <Toggle label="气泡显示来源" checked={form.petBubble.showSource} set={showSource => patch({ petBubble: { ...form.petBubble, showSource } })} />
       </article>
       <article className="panel settings-form">
         <div className="panel-title"><div><p className="eyebrow">SERVICE</p><h2>服务与启动</h2></div></div>

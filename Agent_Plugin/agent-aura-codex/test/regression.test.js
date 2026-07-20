@@ -10,7 +10,7 @@ const http = require('node:http');
 const { RingLightClient } = require('../out/deviceClient');
 const { loadRuntimeState, saveRuntimeState } = require('../out/config');
 const { loadConfig, saveConfig } = require('../out/config');
-const { mapCodexEventToAgentState, shouldArmIdleFallback } = require('../out/hooks');
+const { buildCodexMessage, mapCodexEventToAgentState, shouldArmIdleFallback } = require('../out/hooks');
 const { installCodexHooks } = require('../out/installHooks');
 
 const ENV_KEYS = [
@@ -30,27 +30,36 @@ function withIsolatedEnv(fn) {
   for (const key of ENV_KEYS) {
     delete process.env[key];
   }
-  try {
-    return fn();
-  } finally {
+  const restore = () => {
     for (const key of ENV_KEYS) {
       const value = previous.get(key);
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
     }
+  };
+  try {
+    const result = fn();
+    if (result && typeof result.then === 'function') return result.finally(restore);
+    restore();
+    return result;
+  } catch (error) {
+    restore();
+    throw error;
   }
 }
 
 function withTempCodexHome(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-aura-codex-test-'));
+  const cleanup = () => fs.rmSync(dir, { recursive: true, force: true });
   try {
     process.env.CODEX_HOME = dir;
-    return fn(dir);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    const result = fn(dir);
+    if (result && typeof result.then === 'function') return result.finally(cleanup);
+    cleanup();
+    return result;
+  } catch (error) {
+    cleanup();
+    throw error;
   }
 }
 
@@ -155,6 +164,7 @@ test('installCodexHooks installs only Codex-supported hook events', () => {
 
     const document = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
     assert.ok(document.hooks.SessionStart);
+    assert.ok(document.hooks.UserPromptSubmit);
     assert.ok(document.hooks.PreToolUse);
     assert.ok(document.hooks.PermissionRequest);
     assert.ok(document.hooks.PostToolUse);
@@ -162,14 +172,18 @@ test('installCodexHooks installs only Codex-supported hook events', () => {
     assert.ok(document.hooks.PostCompact);
     assert.ok(document.hooks.SubagentStart);
     assert.ok(document.hooks.SubagentStop);
+    assert.ok(document.hooks.Stop);
+    assert.equal(document.hooks.PostToolUseFailure, undefined);
+    assert.equal(document.hooks.StopFailure, undefined);
+    assert.equal(document.hooks.SessionEnd, undefined);
     assert.equal(document.hooks.Notification, undefined);
     assert.equal(document.hooks.PermissionDenied, undefined);
-    assert.equal(document.hooks.SessionEnd, undefined);
   }));
 });
 
 test('Codex supported hook events map to stable agent states', () => {
   assert.equal(mapCodexEventToAgentState('SessionStart'), 'init');
+  assert.equal(mapCodexEventToAgentState('UserPromptSubmit'), 'running');
   assert.equal(mapCodexEventToAgentState('PermissionRequest'), 'waiting');
   assert.equal(mapCodexEventToAgentState('PreToolUse', { permission_mode: 'ask', tool_name: 'Bash' }), 'busy');
   assert.equal(mapCodexEventToAgentState('PostToolUse', { permission_mode: 'ask', tool_name: 'Bash' }), 'running');
@@ -177,6 +191,7 @@ test('Codex supported hook events map to stable agent states', () => {
   assert.equal(mapCodexEventToAgentState('PostCompact'), 'running');
   assert.equal(mapCodexEventToAgentState('SubagentStart'), 'busy');
   assert.equal(mapCodexEventToAgentState('SubagentStop'), 'running');
+  assert.equal(mapCodexEventToAgentState('Stop'), 'idle');
 });
 
 test('idle fallback arms only after recoverable running states', () => {
@@ -391,4 +406,19 @@ test('PetDesktop heartbeat loop refreshes presence until the token changes', asy
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   }));
+});
+
+test('buildCodexMessage builds bubble text for tool events', () => {
+  const tool = { tool_name: 'Bash' };
+  assert.deepEqual(buildCodexMessage('PreToolUse', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
+  assert.deepEqual(buildCodexMessage('PermissionRequest', 'waiting', tool), { text: 'Bash 等待授权', kind: 'warning', priority: 60 });
+  assert.deepEqual(buildCodexMessage('PostToolUse', 'running', tool), { text: 'Bash 已完成', kind: 'success' });
+  assert.deepEqual(buildCodexMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false }), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildCodexMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false, error: 'command failed' }), { text: 'command failed', kind: 'error', priority: 80 });
+  assert.equal(buildCodexMessage('PostToolUseFailure', 'error', tool), undefined);
+  assert.deepEqual(buildCodexMessage('Stop', 'idle'), { text: '任务已完成', kind: 'success' });
+  assert.deepEqual(buildCodexMessage('PreToolUse', 'busy', {}), { text: '正在运行 工具', kind: 'activity' });
+  assert.equal(buildCodexMessage('Unknown', 'running'), undefined);
+  assert.equal(buildCodexMessage('SessionEnd', 'offline'), undefined);
+  assert.deepEqual(buildCodexMessage('  PreToolUse  ', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
 });

@@ -69,11 +69,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: npm ci && npm test
         working-directory: Agent_Plugin/agent-aura-codex
       - run: npm ci && npm test
         working-directory: Agent_Plugin/agent-aura-claude
-      - run: npm ci && npm run compile
+      - run: npm ci && npm test
         working-directory: Agent_Plugin/agent-aura-copilot
-      - run: python -m py_compile plugin.py src/client.py src/mapper.py src/router.py
+      - run: npm ci && npm test
+        working-directory: Agent_Plugin/agent-aura-kimi-code
+      - run: npm ci && npm test
+        working-directory: Agent_Plugin/agent-aura-zcode
+      - run: npm ci && npm test
+        working-directory: Agent_Plugin/agent-aura-qwencode
+      - run: pip install -r requirements.txt && python -m unittest discover -s tests -v
         working-directory: Agent_Plugin/qwenpaw-plugin

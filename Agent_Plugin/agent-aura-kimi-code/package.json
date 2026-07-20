@@ -2,7 +2,7 @@
   "name": "agent-aura-kimi-code",
   "displayName": "AgentAura - Kimi Code Ring Light",
   "description": "Sync Kimi Code CLI hook lifecycle events to AgentAura ESP32 Ring Light and PetDesktop",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "AgentAura",
   "license": "MIT",
   "type": "commonjs",

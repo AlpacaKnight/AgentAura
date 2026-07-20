@@ -1,7 +1,7 @@
 {
   "name": "agent-aura-claude",
   "displayName": "AgentAura - Claude Ring Light",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Sync Claude Code lifecycle events to AgentAura ESP32 Ring Light hardware.",
   "author": {
     "name": "AgentAura"

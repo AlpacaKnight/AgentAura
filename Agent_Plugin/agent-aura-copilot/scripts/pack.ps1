@@ -10,6 +10,9 @@ npm install
 Write-Host "=== Compiling TypeScript ===" -ForegroundColor Cyan
 npm run compile
 
+# 清理旧版本产物，避免版本迭代后残留
+Get-ChildItem -LiteralPath $ProjectDir -Filter "*.vsix" -File -ErrorAction SilentlyContinue | Remove-Item -Force
+
 Write-Host "=== Packaging VSIX ===" -ForegroundColor Cyan
 npx @vscode/vsce package --allow-missing-repository
 

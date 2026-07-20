@@ -28,6 +28,8 @@ export interface DeviceState {
 }
 
 const UNREACHABLE_COOLDOWN_MS = 3000;
+const PETDESKTOP_HEARTBEAT_MS = 10_000;
+const PLUGIN_VERSION = '0.3.0';
 
 export class DeviceClient implements vscode.Disposable {
     private _transport: Transport = 'http';
@@ -42,6 +44,10 @@ export class DeviceClient implements vscode.Disposable {
     private _serialHandle: any = null;
     private _outputChannel: vscode.OutputChannel;
     private _lastState: AgentState | null = null;
+    private _httpTarget: 'unknown' | 'petdesktop' | 'firmware' = 'unknown';
+    private _heartbeatTimer: NodeJS.Timeout | null = null;
+    private _sessionGeneration = 0;
+    private readonly _instanceId = `copilot-${vscode.env.machineId.slice(0, 12)}-${process.pid}`;
 
     private readonly _onDidChangeConnection = new vscode.EventEmitter<boolean>();
     readonly onDidChangeConnection = this._onDidChangeConnection.event;
@@ -60,17 +66,40 @@ export class DeviceClient implements vscode.Disposable {
 
     reloadConfig() {
         const config = vscode.workspace.getConfiguration('agentAura');
-        this._transport = config.get<Transport>('transport') || 'http';
-        this._host = config.get<string>('host') || '';
-        this._httpPort = config.get<number>('httpPort') || 80;
-        this._udpPort = config.get<number>('udpPort') || 8888;
-        this._serialPort = config.get<string>('serialPort') || '';
-        this._serialBaud = config.get<number>('serialBaud') || 115200;
-        this._authToken = config.get<string>('authToken') || '';
+        const nextTransport = config.get<Transport>('transport') || 'http';
+        const nextHost = config.get<string>('host') || '';
+        const nextHttpPort = config.get<number>('httpPort') || 80;
+        const nextUdpPort = config.get<number>('udpPort') || 8888;
+        const nextSerialPort = config.get<string>('serialPort') || '';
+        const nextSerialBaud = config.get<number>('serialBaud') || 115200;
+        const nextAuthToken = config.get<string>('authToken') || '';
+        const connectionChanged =
+            nextTransport !== this._transport ||
+            nextHost !== this._host ||
+            nextHttpPort !== this._httpPort ||
+            nextUdpPort !== this._udpPort ||
+            nextSerialPort !== this._serialPort ||
+            nextSerialBaud !== this._serialBaud ||
+            nextAuthToken !== this._authToken;
+
+        this._transport = nextTransport;
+        this._host = nextHost;
+        this._httpPort = nextHttpPort;
+        this._udpPort = nextUdpPort;
+        this._serialPort = nextSerialPort;
+        this._serialBaud = nextSerialBaud;
+        this._authToken = nextAuthToken;
+        if (connectionChanged) {
+            this._resetPetDesktopSession();
+            if (this._connected) {
+                this._setLastState(null);
+            }
+        }
     }
 
     async connect(): Promise<void> {
         this.reloadConfig();
+        this._resetPetDesktopSession();
         this._outputChannel.appendLine(`[AgentAura] Connecting via ${this._transport}...`);
         if (this._serialHandle || this._connected) {
             await this._closeSerialHandle();
@@ -94,6 +123,10 @@ export class DeviceClient implements vscode.Disposable {
     }
 
     disconnect() {
+        if (this._httpTarget === 'petdesktop') {
+            void this._httpRequest('DELETE', `/api/v1/agents/${encodeURIComponent(this._instanceId)}`);
+        }
+        this._resetPetDesktopSession();
         this._connected = false;
         this._setLastState(null);
         void this._closeSerialHandle();
@@ -105,7 +138,10 @@ export class DeviceClient implements vscode.Disposable {
      * This is the primary API used by the CopilotWatcher.
      */
     async sendAgentState(state: AgentState): Promise<boolean> {
-        if (state === this._lastState) {
+        if (
+            state === this._lastState &&
+            !(this._transport === 'http' && this._httpTarget === 'unknown')
+        ) {
             return true; // No-op if state hasn't changed
         }
         if (!this._connected) {
@@ -117,12 +153,16 @@ export class DeviceClient implements vscode.Disposable {
             return false;
         }
         this._outputChannel.appendLine(`[AgentAura] State → ${state}`);
+        const generation = this._sessionGeneration;
 
         let ok: boolean;
         if (this._transport === 'http') {
-            ok = await this._httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '');
+            ok = await this._sendHttpAgentState(state, generation);
         } else {
             ok = await this.sendRawCommand(`agent ${state}`);
+        }
+        if (generation !== this._sessionGeneration || !this._connected) {
+            return false;
         }
         if (ok) {
             this._setLastState(state);
@@ -131,6 +171,42 @@ export class DeviceClient implements vscode.Disposable {
             this._outputChannel.appendLine(`[AgentAura] State → ${state} FAILED (transport: ${this._transport}, host: ${this._host})`);
         }
         return ok;
+    }
+
+    async sendMessage(
+        text: string,
+        kind: 'activity' | 'success' | 'warning' | 'error' | 'state' = 'activity',
+        priority?: number,
+        ttlMs = 5000
+    ): Promise<boolean> {
+        if (!text.trim() || this._transport !== 'http' || !this._connected) { return false; }
+        const generation = this._sessionGeneration;
+        if (this._httpTarget === 'unknown') {
+            await this._registerPetDesktop(this._lastState || 'running', generation);
+        }
+        if (
+            generation !== this._sessionGeneration ||
+            !this._connected ||
+            this._httpTarget !== 'petdesktop'
+        ) { return false; }
+        let result = await this._httpRequest(
+            'POST',
+            `/api/v1/agents/${encodeURIComponent(this._instanceId)}/message`,
+            JSON.stringify({ text: text.trim().slice(0, 500), kind, priority, ttlMs }),
+            'application/json'
+        );
+        if (result.status === 404) {
+            this._httpTarget = 'unknown';
+            if (await this._registerPetDesktop(this._lastState || 'running', generation)) {
+                result = await this._httpRequest(
+                    'POST',
+                    `/api/v1/agents/${encodeURIComponent(this._instanceId)}/message`,
+                    JSON.stringify({ text: text.trim().slice(0, 500), kind, priority, ttlMs }),
+                    'application/json'
+                );
+            }
+        }
+        return generation === this._sessionGeneration && this._connected && result.ok;
     }
 
     /**
@@ -210,10 +286,22 @@ export class DeviceClient implements vscode.Disposable {
     // ─── Private Transport Methods ───────────────────────────────────
 
     private _httpPost(path: string, body: string): Promise<boolean> {
+        return this._httpRequest('POST', path, body, 'text/plain').then(result => result.ok);
+    }
+
+    private _httpRequest(
+        method: string,
+        path: string,
+        body = '',
+        contentType = 'application/json'
+    ): Promise<{ ok: boolean; status: number; json?: any }> {
         return new Promise((resolve) => {
             const headers: http.OutgoingHttpHeaders = {
-                'Content-Type': 'text/plain',
+                'Content-Type': contentType,
                 'Content-Length': Buffer.byteLength(body),
+                'x-agentaura-client': 'copilot',
+                'x-agentaura-instance': this._instanceId,
+                'x-agentaura-display-name': 'GitHub Copilot',
             };
             if (this._authToken) {
                 headers.authorization = `Bearer ${this._authToken}`;
@@ -222,32 +310,151 @@ export class DeviceClient implements vscode.Disposable {
                 hostname: this._host,
                 port: this._httpPort,
                 path,
-                method: 'POST',
+                method,
                 timeout: 2000,
                 headers,
             };
 
             const req = http.request(options, (res) => {
-                // Consume response data to free up memory
-                res.resume();
-                resolve(res.statusCode === 200);
+                let response = '';
+                res.on('data', chunk => response += chunk);
+                res.on('end', () => {
+                    let json: any;
+                    try { json = response ? JSON.parse(response) : undefined; } catch { /* text response */ }
+                    const status = res.statusCode || 0;
+                    resolve({ ok: status >= 200 && status < 300, status, json });
+                });
             });
 
             req.on('error', (err) => {
                 this._markUnreachable();
                 this._outputChannel.appendLine(`[AgentAura] HTTP error: ${err.message}`);
-                resolve(false);
+                resolve({ ok: false, status: 0 });
             });
 
             req.on('timeout', () => {
                 req.destroy();
                 this._markUnreachable();
-                resolve(false);
+                resolve({ ok: false, status: 0 });
             });
 
             req.write(body);
             req.end();
         });
+    }
+
+    private async _sendHttpAgentState(
+        state: AgentState,
+        expectedGeneration = this._sessionGeneration
+    ): Promise<boolean> {
+        if (this._httpTarget === 'unknown') {
+            await this._registerPetDesktop(state, expectedGeneration);
+        }
+        if (
+            expectedGeneration !== this._sessionGeneration ||
+            !this._connected ||
+            this._transport !== 'http'
+        ) {
+            return false;
+        }
+        if (this._httpTarget === 'petdesktop') {
+            let result = await this._httpRequest(
+                'POST',
+                `/api/v1/agents/${encodeURIComponent(this._instanceId)}/state`,
+                JSON.stringify({ state }),
+                'application/json'
+            );
+            if (result.status === 404) {
+                this._httpTarget = 'unknown';
+                if (await this._registerPetDesktop(state, expectedGeneration)) {
+                    result = await this._httpRequest(
+                        'POST',
+                        `/api/v1/agents/${encodeURIComponent(this._instanceId)}/state`,
+                        JSON.stringify({ state }),
+                        'application/json'
+                    );
+                }
+            }
+            return (
+                expectedGeneration === this._sessionGeneration &&
+                this._connected &&
+                result.ok
+            );
+        }
+        return this._httpPost(`/api/agent?state=${encodeURIComponent(state)}`, '');
+    }
+
+    private async _registerPetDesktop(
+        state: AgentState,
+        expectedGeneration = this._sessionGeneration
+    ): Promise<boolean> {
+        const result = await this._httpRequest(
+            'POST',
+            '/api/v1/agents/register',
+            JSON.stringify({
+                instanceId: this._instanceId,
+                clientId: 'copilot',
+                displayName: 'GitHub Copilot',
+                version: PLUGIN_VERSION,
+                state,
+            }),
+            'application/json'
+        );
+        if (
+            expectedGeneration !== this._sessionGeneration ||
+            !this._connected ||
+            this._transport !== 'http'
+        ) {
+            return false;
+        }
+        if (!result.ok) {
+            this._httpTarget =
+                result.status === 404 || result.status === 405
+                    ? 'firmware'
+                    : 'unknown';
+            return false;
+        }
+        this._httpTarget = 'petdesktop';
+        this._startHeartbeat(
+            Number(result.json?.heartbeatIntervalMs) || PETDESKTOP_HEARTBEAT_MS,
+            expectedGeneration
+        );
+        return true;
+    }
+
+    private _startHeartbeat(intervalMs: number, generation = this._sessionGeneration) {
+        if (this._heartbeatTimer) { clearInterval(this._heartbeatTimer); }
+        const interval = Math.max(3000, Math.min(30_000, intervalMs));
+        this._heartbeatTimer = setInterval(() => {
+            void this._httpRequest(
+                'POST',
+                `/api/v1/agents/${encodeURIComponent(this._instanceId)}/heartbeat`
+            ).then(async result => {
+                if (
+                    generation !== this._sessionGeneration ||
+                    !this._connected ||
+                    this._transport !== 'http'
+                ) {
+                    return;
+                }
+                if (!result.ok) {
+                    this._httpTarget = 'unknown';
+                    if (this._heartbeatTimer) clearInterval(this._heartbeatTimer);
+                    this._heartbeatTimer = null;
+                    await this._registerPetDesktop(this._lastState || 'idle', generation);
+                }
+            });
+        }, interval);
+        this._heartbeatTimer.unref?.();
+    }
+
+    private _resetPetDesktopSession() {
+        this._sessionGeneration += 1;
+        if (this._heartbeatTimer) {
+            clearInterval(this._heartbeatTimer);
+            this._heartbeatTimer = null;
+        }
+        this._httpTarget = 'unknown';
     }
 
     private _udpSend(command: string): Promise<boolean> {

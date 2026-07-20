@@ -1,0 +1,89 @@
+{
+  "name": "agent-aura-zcode",
+  "displayName": "AgentAura - ZCode Ring Light",
+  "version": "0.3.0",
+  "description": "Sync ZCode hook lifecycle events to the AgentAura ESP32 Ring Light and PetDesktop.",
+  "author": {
+    "name": "AgentAura"
+  },
+  "license": "MIT",
+  "keywords": [
+    "zcode",
+    "agentaura",
+    "esp32",
+    "ring-light",
+    "petdesktop",
+    "hooks"
+  ],
+  "commands": "commands",
+  "hooks": "hooks",
+  "contextFileName": "AGENTS.md",
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable ring sync",
+      "description": "Send ZCode lifecycle state changes to the AgentAura ring light.",
+      "default": true
+    },
+    "transport": {
+      "type": "string",
+      "title": "Transport",
+      "description": "Device transport: http, udp, or serial.",
+      "default": "http"
+    },
+    "host": {
+      "type": "string",
+      "title": "Device host",
+      "description": "Ring light IP address for HTTP or UDP. Leave empty to use UDP discovery.",
+      "default": ""
+    },
+    "port": {
+      "type": "number",
+      "title": "Device port",
+      "description": "HTTP defaults to 80. UDP defaults to 8888.",
+      "default": 80
+    },
+    "serial_port": {
+      "type": "string",
+      "title": "Serial port",
+      "description": "USB CDC serial device path, for example /dev/ttyACM0.",
+      "default": ""
+    },
+    "baud": {
+      "type": "number",
+      "title": "Serial baud",
+      "description": "USB CDC baud rate.",
+      "default": 115200
+    },
+    "debounce_ms": {
+      "type": "number",
+      "title": "Debounce milliseconds",
+      "description": "Minimum interval before the same state is sent again.",
+      "default": 500
+    },
+    "cooldown_ms": {
+      "type": "number",
+      "title": "Failure cooldown milliseconds",
+      "description": "How long to pause sending after a device or discovery failure.",
+      "default": 3000
+    },
+    "timeout_ms": {
+      "type": "number",
+      "title": "Device timeout milliseconds",
+      "description": "Timeout for a single device request.",
+      "default": 650
+    },
+    "auto_discover": {
+      "type": "boolean",
+      "title": "Auto discover",
+      "description": "Discover the ring light on UDP port 8888 when no host is configured.",
+      "default": true
+    },
+    "auth_token": {
+      "type": "string",
+      "title": "Auth token",
+      "description": "Bearer token sent in the Authorization header for HTTP requests. Leave empty to skip authentication.",
+      "default": ""
+    }
+  }
+}

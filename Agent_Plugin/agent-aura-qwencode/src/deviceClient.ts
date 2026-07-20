@@ -115,6 +115,67 @@ export class RingLightClient {
         }
     }
 
+    /**
+     * 发送桌宠气泡消息摘要到 PetDesktop。仅发往已注册的 PetDesktop Agent API，
+     * 不回退固件（固件环形灯不支持文字消息）。
+     */
+    async sendMessage(
+        text: string,
+        kind: 'state' | 'activity' | 'success' | 'warning' | 'error' = 'activity',
+        priority?: number,
+        ttlMs?: number,
+        context?: SendContext,
+    ): Promise<boolean> {
+        if (!this.config.enabled || isDisabled()) {
+            return true;
+        }
+        await this.maybeAutoDiscover();
+        if (!this.isConfigured) {
+            return false;
+        }
+        const now = Date.now();
+        const runtime = loadRuntimeState();
+        if (runtime.unreachableUntil && runtime.unreachableUntil > now) {
+            return false;
+        }
+        // 仅发往 PetDesktop Agent API。
+        if (runtime.httpTarget !== 'petdesktop' || !runtime.petDesktopRegistered) {
+            return false;
+        }
+
+        const instanceId = this.agentIdentity().instanceId;
+        let result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/message`, {
+            kind,
+            text,
+            priority,
+            ttlMs,
+        }, context);
+        // 404 时尝试重新注册一次再发。
+        if (!result.ok && result.statusCode === 404) {
+            const reRegistered = await this.registerPetDesktop(runtime.lastState || 'init', runtime.heartbeatIntervalMs || 10_000, false);
+            if (!reRegistered) {
+                return false;
+            }
+            result = await this.httpJsonRequest('POST', `/api/v1/agents/${encodeURIComponent(instanceId)}/message`, {
+                kind,
+                text,
+                priority,
+                ttlMs,
+            }, context);
+        }
+        if (!result.ok) {
+            return false;
+        }
+
+        // 刷新 lastActivityAt 以保持心跳活跃，不覆盖 lastState（消息不是状态转换）。
+        const latest = loadRuntimeState();
+        saveRuntimeState({
+            ...latest,
+            lastActivityAt: now,
+        });
+        return true;
+    }
+
     async disconnectPetDesktop(): Promise<void> {
         const instanceId = this.agentIdentity().instanceId;
         await this.httpJsonRequest('DELETE', `/api/v1/agents/${encodeURIComponent(instanceId)}`, undefined);
@@ -352,7 +413,7 @@ export class RingLightClient {
         });
     }
 
-    private httpJsonRequest(method: string, requestPath: string, body?: unknown): Promise<JsonRequestResult> {
+    private httpJsonRequest(method: string, requestPath: string, body?: unknown, context?: SendContext): Promise<JsonRequestResult> {
         const text = body === undefined ? '' : JSON.stringify(body);
         return new Promise((resolve) => {
             const req = http.request({
@@ -362,7 +423,7 @@ export class RingLightClient {
                 method,
                 timeout: Math.max(this.config.timeoutMs, 1200),
                 headers: {
-                    ...this.httpHeaders(),
+                    ...this.httpHeaders(context),
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(text),
                 },

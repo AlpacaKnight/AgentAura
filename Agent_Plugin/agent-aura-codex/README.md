@@ -7,6 +7,7 @@
 | Codex hook | AgentAura 状态 | 环形灯表现 |
 | :--- | :--- | :--- |
 | `SessionStart` | `init` | 初始化动画 |
+| `UserPromptSubmit` | `running` | 用户提交请求 |
 | `PreToolUse` | `busy` | 黄色跑马，正在调用工具 |
 | `PermissionRequest` | `waiting` | 黄色闪烁，等待审批 |
 | `PostToolUse` | `running` | 绿色呼吸，工具结束后继续工作 |

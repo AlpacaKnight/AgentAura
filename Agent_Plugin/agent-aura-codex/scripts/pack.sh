@@ -16,6 +16,9 @@ npm run compile
 
 mkdir -p "$OUT_DIR"
 
+# 清理旧版本产物，避免版本迭代后残留
+rm -f "$OUT_DIR"/agent-aura-codex-*.tgz "$OUT_DIR"/agent-aura-codex-*.zip
+
 echo "=== Creating npm package ==="
 npm pack --pack-destination "$OUT_DIR"
 

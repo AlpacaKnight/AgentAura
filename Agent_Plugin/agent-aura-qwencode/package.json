@@ -2,7 +2,7 @@
   "name": "agent-aura-qwencode",
   "displayName": "AgentAura - Qwen Code Ring Light",
   "description": "Sync Qwen Code hook lifecycle events to AgentAura ESP32 Ring Light and PetDesktop",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "AgentAura",
   "license": "MIT",
   "type": "commonjs",

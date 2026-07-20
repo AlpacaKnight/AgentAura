@@ -35,6 +35,7 @@ export interface RuntimeState {
     lastSentAt?: number;
     unreachableUntil?: number;
     lastError?: string;
+    lastSessionId?: string;
     idleFallbackToken?: string;
     idleFallbackDueAt?: number;
     lastActivityAt?: number;
@@ -73,4 +74,8 @@ export function isAgentState(value: string): value is AgentState {
 
 export function isTransportName(value: string): value is TransportName {
     return (TRANSPORTS as readonly string[]).includes(value);
+}
+
+export interface SendContext {
+    sessionId?: string;
 }

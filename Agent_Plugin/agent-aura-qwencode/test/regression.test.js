@@ -7,7 +7,7 @@ const http = require('node:http');
 
 const { loadConfig, saveConfig, loadRuntimeState, saveRuntimeState } = require('../out/config');
 const { RingLightClient } = require('../out/deviceClient');
-const { mapQwenEventToAgentState } = require('../out/hooks');
+const { buildQwenMessage, mapQwenEventToAgentState } = require('../out/hooks');
 const { installQwenHooks, uninstallQwenHooks, buildHookCommand } = require('../out/installHooks');
 
 const ENV_KEYS = [
@@ -319,4 +319,20 @@ test('http mode prefers PetDesktop registration and preserves firmware command p
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
   }));
+});
+
+test('buildQwenMessage builds bubble text for tool events', () => {
+  const tool = { tool_name: 'Bash' };
+  assert.deepEqual(buildQwenMessage('PreToolUse', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
+  assert.deepEqual(buildQwenMessage('PermissionRequest', 'waiting', tool), { text: 'Bash 等待授权', kind: 'warning', priority: 60 });
+  assert.deepEqual(buildQwenMessage('PostToolUse', 'running', tool), { text: 'Bash 已完成', kind: 'success' });
+  assert.deepEqual(buildQwenMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false }), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildQwenMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false, error: 'command failed' }), { text: 'command failed', kind: 'error', priority: 80 });
+  assert.deepEqual(buildQwenMessage('PostToolUseFailure', 'error', { tool_name: 'Bash', error: 'timeout' }), { text: 'timeout', kind: 'error', priority: 80 });
+  assert.deepEqual(buildQwenMessage('PostToolUseFailure', 'error', tool), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildQwenMessage('Stop', 'idle'), { text: '任务已完成', kind: 'success' });
+  assert.deepEqual(buildQwenMessage('SessionEnd', 'offline'), { text: '任务已完成', kind: 'success' });
+  assert.deepEqual(buildQwenMessage('PreToolUse', 'busy', {}), { text: '正在运行 工具', kind: 'activity' });
+  assert.equal(buildQwenMessage('Unknown', 'running'), undefined);
+  assert.deepEqual(buildQwenMessage('  PreToolUse  ', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
 });

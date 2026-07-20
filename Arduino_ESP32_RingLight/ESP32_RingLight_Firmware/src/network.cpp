@@ -83,7 +83,7 @@ void begin() {
   if (!w.valid) {
     w.ssid   = DEFAULT_WIFI_SSID;
     w.pass   = DEFAULT_WIFI_PASS;
-    w.valid  = true;
+    w.valid  = w.ssid.length() > 0;
     Serial.println(F("[net] no saved wifi, using default config"));
   }
   bool staOk = false;
@@ -104,9 +104,15 @@ void begin() {
       Serial.println();
       Serial.print(F("[net] STA IP: ")); Serial.println(WiFi.localIP());
       Serial.print(F("[net] RSSI: "));   Serial.println(WiFi.RSSI());
-      // WiFi-BLE 共存: 关闭省电, 让 BLE 有更多射频时间
-      esp_wifi_set_ps(WIFI_PS_NONE);
-      Serial.println(F("[net] WiFi PS=NONE for BLE coexistence"));
+      // ESP32-C3 requires WiFi modem sleep while Bluetooth is enabled.
+      // WIFI_PS_NONE aborts inside the IDF 4.4 WiFi coexistence layer.
+      const esp_err_t psResult = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+      if (psResult == ESP_OK) {
+        Serial.println(F("[net] WiFi PS=MIN_MODEM for BLE coexistence"));
+      } else {
+        Serial.printf("[net] warning: WiFi power save failed: %d\n",
+                      static_cast<int>(psResult));
+      }
     } else {
       Serial.println(F("\n[net] STA failed"));
     }

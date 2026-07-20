@@ -27,6 +27,9 @@ if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 
+# 清理旧版本产物，避免版本迭代后残留
+Get-ChildItem -LiteralPath $OutDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'agent-aura-qwencode-*.tgz' -or $_.Name -like 'agent-aura-qwencode-*.zip' } | Remove-Item -Force
+
 Write-Host '=== Creating npm package ===' -ForegroundColor Cyan
 npm pack --pack-destination $OutDir
 

@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { loadConfig, saveConfig } = require('../out/config');
-const { mapKimiEventToAgentState } = require('../out/hooks');
+const { buildKimiMessage, mapKimiEventToAgentState } = require('../out/hooks');
 const { installKimiHooks, uninstallKimiHooks } = require('../out/installHooks');
 
 const ENV_KEYS = [
@@ -141,4 +141,19 @@ test('Kimi payload metadata can still infer waiting or error states', () => {
   assert.equal(mapKimiEventToAgentState('UnknownEvent', { approval_request: { pending: true } }), 'waiting');
   assert.equal(mapKimiEventToAgentState('UnknownEvent', { hookSpecificOutput: { permissionDecision: 'deny' } }), 'error');
   assert.equal(mapKimiEventToAgentState('UnknownEvent', { tool_response: { success: false } }), 'error');
+});
+
+test('buildKimiMessage builds bubble text for tool events', () => {
+  const tool = { tool_name: 'Bash' };
+  assert.deepEqual(buildKimiMessage('PreToolUse', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
+  assert.deepEqual(buildKimiMessage('PermissionRequest', 'waiting', tool), { text: 'Bash 等待授权', kind: 'warning', priority: 60 });
+  assert.deepEqual(buildKimiMessage('PostToolUse', 'running', tool), { text: 'Bash 已完成', kind: 'success' });
+  assert.deepEqual(buildKimiMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false }), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildKimiMessage('PostToolUse', 'running', { tool_name: 'Bash', success: false, error: 'command failed' }), { text: 'command failed', kind: 'error', priority: 80 });
+  assert.deepEqual(buildKimiMessage('PostToolUseFailure', 'error', tool), { text: 'Bash 执行出错', kind: 'error', priority: 80 });
+  assert.deepEqual(buildKimiMessage('Stop', 'idle'), { text: '任务已完成', kind: 'success' });
+  assert.deepEqual(buildKimiMessage('PreToolUse', 'busy', {}), { text: '正在运行 工具', kind: 'activity' });
+  assert.equal(buildKimiMessage('Unknown', 'running'), undefined);
+  assert.equal(buildKimiMessage('SessionEnd', 'offline'), undefined);
+  assert.deepEqual(buildKimiMessage('  PreToolUse  ', 'busy', tool), { text: '正在运行 Bash', kind: 'activity' });
 });

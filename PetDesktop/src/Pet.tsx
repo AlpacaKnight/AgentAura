@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { currentMonitor, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { currentMonitor, getCurrentWindow, LogicalPosition, LogicalSize, PhysicalPosition } from '@tauri-apps/api/window';
 import { api, isTauri, onPetScalePreview, onSnapshot } from './api';
+import PetBubble from './PetBubble';
 import type { AnimationSpec, AppSnapshot } from './types';
 
 const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
@@ -13,12 +14,14 @@ const DEFAULT_ANIMATIONS: Record<string, AnimationSpec> = {
   waiting: { row: 6, frames: 6, durationsMs: [150, 150, 150, 150, 150, 260] },
   running: { row: 7, frames: 6, durationsMs: [120, 120, 120, 120, 120, 220] },
   review: { row: 8, frames: 6, durationsMs: [150, 150, 150, 150, 150, 280] },
+  'look-directions-a': { row: 9, frames: 8, durationsMs: [200, 200, 200, 200, 200, 200, 200, 300] },
+  'look-directions-b': { row: 10, frames: 8, durationsMs: [180, 180, 180, 180, 180, 180, 180, 260] },
 };
 
 const STATE_ANIMATION: Record<string, string> = {
   init: 'waving',
   running: 'running',
-  busy: 'running',
+  busy: 'review',
   waiting: 'waiting',
   idle: 'idle',
   error: 'failed',
@@ -26,13 +29,40 @@ const STATE_ANIMATION: Record<string, string> = {
   upgrade: 'jumping',
 };
 
+type LookFrame = { animationName: 'look-directions-a' | 'look-directions-b'; frame: number };
+
+function resolveLookDirection(direction: number | undefined, spriteVersion: number): LookFrame | undefined {
+  if (
+    spriteVersion < 2 ||
+    direction === undefined ||
+    !Number.isInteger(direction) ||
+    direction < 0 ||
+    direction > 15
+  ) return undefined;
+  return direction < 8
+    ? { animationName: 'look-directions-a', frame: direction }
+    : { animationName: 'look-directions-b', frame: direction - 8 };
+}
+
+function resolveActiveLookDirection(
+  direction: number | undefined,
+  spriteVersion: number,
+  state: string,
+  moving: boolean,
+): LookFrame | undefined {
+  if (state !== 'idle' || moving) return undefined;
+  return resolveLookDirection(direction, spriteVersion);
+}
+
 export default function Pet() {
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
   const [asset, setAsset] = useState('');
   const [frame, setFrame] = useState(0);
+  const [lookDirection, setLookDirection] = useState<number>();
   const [moving, setMoving] = useState<'running-left' | 'running-right'>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewScale, setPreviewScale] = useState<number>();
+  const [bubbleHeight, setBubbleHeight] = useState(0);
   const roamTimer = useRef<number | undefined>(undefined);
 
   const refresh = useCallback(async () => {
@@ -57,8 +87,20 @@ export default function Pet() {
     return () => stop?.();
   }, []);
 
-  const animationName = moving ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
-  const animation = snapshot?.selectedPet?.animations[animationName] ?? DEFAULT_ANIMATIONS[animationName] ?? DEFAULT_ANIMATIONS.idle;
+  const lookFrame = resolveActiveLookDirection(
+    lookDirection,
+    snapshot?.selectedPet?.spriteVersion ?? 1,
+    snapshot?.effectiveState ?? 'idle',
+    moving !== undefined,
+  );
+  const animationName = moving ?? lookFrame?.animationName ?? STATE_ANIMATION[snapshot?.effectiveState ?? 'idle'];
+  // 回退时校验目标行不超出当前宠物的实际行数，避免 V1 宠物渲染越界（空白帧）。
+  const petRows = snapshot?.selectedPet?.rows ?? 9;
+  const fallbackAnimation = DEFAULT_ANIMATIONS[animationName];
+  const animation =
+    snapshot?.selectedPet?.animations[animationName] ??
+    (fallbackAnimation && fallbackAnimation.row < petRows ? fallbackAnimation : undefined) ??
+    DEFAULT_ANIMATIONS.idle;
   const scale = previewScale ?? snapshot?.settings.petScale ?? 1;
 
   useEffect(() => {
@@ -66,19 +108,74 @@ export default function Pet() {
   }, [animationName]);
 
   useEffect(() => {
+    if (lookFrame) return;
     const duration = animation.durationsMs[frame] ?? animation.durationsMs.at(-1) ?? 150;
     const timer = window.setTimeout(() => setFrame(value => (value + 1) % animation.frames), duration);
     return () => window.clearTimeout(timer);
-  }, [animation, frame]);
+  }, [animation, frame, lookFrame]);
+
+  useEffect(() => {
+    const canLook =
+      (snapshot?.selectedPet?.spriteVersion ?? 1) >= 2 &&
+      snapshot?.effectiveState === 'idle' &&
+      !moving;
+    if (!canLook) {
+      setLookDirection(undefined);
+      return;
+    }
+    const delay = lookDirection === undefined
+      ? 4000 + Math.random() * 4000
+      : 700 + Math.random() * 500;
+    const timer = window.setTimeout(() => {
+      setLookDirection(current => current === undefined ? Math.floor(Math.random() * 16) : undefined);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [snapshot?.selectedPet?.spriteVersion, snapshot?.effectiveState, moving, lookDirection]);
+
+  const bubbleEnabled = snapshot?.settings.petBubble.enabled ?? false;
+  // 气泡可见但高度尚未测量到时，用 60px 估计值确保窗口足够高，避免被 overflow:hidden 裁切。
+  const effectiveBubbleHeight = bubbleEnabled ? (bubbleHeight > 0 ? bubbleHeight : 60) : 0;
 
   useEffect(() => {
     if (!isTauri() || !snapshot) return;
     const windowHandle = getCurrentWindow();
+    let cancelled = false;
     void windowHandle.setAlwaysOnTop(snapshot.settings.alwaysOnTop);
     void windowHandle.setIgnoreCursorEvents(snapshot.settings.clickThrough);
-    void windowHandle.setSize(new LogicalSize(220 * scale, 240 * scale));
+
+    // 气泡的 CSS 尺寸不随 petScale 缩小（只有 sprite 缩放），所以气泡高度
+    // 按实际 CSS 像素参与窗口计算，不乘 scale；宠物区域才乘 scale。
+    const bubbleVisible = bubbleEnabled && effectiveBubbleHeight > 0;
+    const width = (bubbleVisible ? 320 : 220) * scale;
+    const height = 240 * scale + (bubbleVisible ? effectiveBubbleHeight : 0);
+    void (async () => {
+      // 气泡高度变化时上移窗口保持脚底屏幕坐标不变。
+      if (bubbleEnabled && effectiveBubbleHeight > 0) {
+        const monitor = await currentMonitor();
+        const factor = monitor?.scaleFactor || 1;
+        const prev = await windowHandle.outerSize();
+        if (cancelled) return;
+        const prevH = prev.height / factor;
+        const deltaLogical = height - prevH;
+        if (Math.abs(deltaLogical) > 0.5) {
+          const pos = await windowHandle.outerPosition();
+          if (cancelled) return;
+          const newY = pos.y - Math.round(deltaLogical * factor);
+          await windowHandle.setPosition(new PhysicalPosition(pos.x, newY));
+        }
+      }
+      if (cancelled) return;
+      await windowHandle.setSize(new LogicalSize(width, height));
+      if (cancelled) return;
+      // 窗口尺寸调整后执行显示器夹取，确保不被裁切。
+      await clampToMonitor(windowHandle, () => cancelled);
+    })();
+
     snapshot.settings.petVisible ? void windowHandle.show() : void windowHandle.hide();
-  }, [snapshot?.settings.alwaysOnTop, snapshot?.settings.clickThrough, snapshot?.settings.petVisible, scale]);
+    return () => { cancelled = true; };
+  }, [snapshot?.settings.alwaysOnTop, snapshot?.settings.clickThrough, snapshot?.settings.petVisible, bubbleEnabled, effectiveBubbleHeight, scale]);
+
+  const handleBubbleHeight = useCallback((height: number) => setBubbleHeight(height), []);
 
   useEffect(() => {
     if (!snapshot?.settings.roamEnabled || snapshot.effectiveState === 'busy' || snapshot.effectiveState === 'waiting' || snapshot.effectiveState === 'error' || !isTauri()) {
@@ -91,9 +188,10 @@ export default function Pet() {
       const monitor = await currentMonitor();
       if (!monitor) return;
       const factor = monitor.scaleFactor || 1;
-      const width = 220 * scale * factor;
+      // 气泡可见时窗口宽度为 320，否则 220，需与窗口尺寸 effect 一致。
+      const winWidth = (snapshot.settings.petBubble.enabled && effectiveBubbleHeight > 0 ? 320 : 220) * scale * factor;
       const minX = monitor.position.x;
-      const maxX = monitor.position.x + monitor.size.width - width;
+      const maxX = monitor.position.x + monitor.size.width - winWidth;
       const distance = Math.min(220 * factor, Math.max(80 * factor, (maxX - minX) * 0.15));
       const direction = Math.random() > 0.5 ? 1 : -1;
       const destination = Math.max(minX, Math.min(maxX, position.x + distance * direction));
@@ -112,7 +210,7 @@ export default function Pet() {
     };
     roamTimer.current = window.setInterval(() => void roam(), snapshot.settings.roamIntervalSeconds * 1000);
     return () => window.clearInterval(roamTimer.current);
-  }, [snapshot?.settings.roamEnabled, snapshot?.settings.roamIntervalSeconds, snapshot?.settings.roamSpeed, snapshot?.effectiveState, scale]);
+  }, [snapshot?.settings.roamEnabled, snapshot?.settings.roamIntervalSeconds, snapshot?.settings.roamSpeed, snapshot?.effectiveState, scale, bubbleEnabled, effectiveBubbleHeight]);
 
   const spriteStyle = useMemo(() => {
     const pet = snapshot?.selectedPet;
@@ -121,15 +219,34 @@ export default function Pet() {
       width: pet.frameWidth,
       height: pet.frameHeight,
       backgroundImage: `url(${asset})`,
-      backgroundPosition: `${-frame * pet.frameWidth}px ${-animation.row * pet.frameHeight}px`,
+      backgroundPosition: `${-(lookFrame?.frame ?? frame) * pet.frameWidth}px ${-animation.row * pet.frameHeight}px`,
       transform: `scale(${scale})`,
       transformOrigin: 'bottom center',
     };
-  }, [snapshot?.selectedPet, asset, animation.row, frame, scale]);
+  }, [snapshot?.selectedPet, asset, animation.row, frame, lookFrame?.frame, scale]);
 
   const drag = (event: React.MouseEvent) => {
     if (menuOpen) return;
     if (event.button === 0 && isTauri()) void getCurrentWindow().startDragging();
+  };
+
+  // Pet 窗口动态尺寸后的显示器夹取，与 Rust 端 clamp_to_monitor 逻辑一致。
+  const clampToMonitor = async (win: ReturnType<typeof getCurrentWindow>, cancelled?: () => boolean) => {
+    const monitor = await currentMonitor();
+    if (!monitor || cancelled?.()) return;
+    const position = await win.outerPosition();
+    if (cancelled?.()) return;
+    const size = await win.outerSize();
+    if (cancelled?.()) return;
+    const origin = monitor.position;
+    const bounds = monitor.size;
+    const maxX = Math.max(origin.x + bounds.width - size.width, origin.x);
+    const maxY = Math.max(origin.y + bounds.height - size.height, origin.y);
+    const x = Math.min(Math.max(position.x, origin.x), maxX);
+    const y = Math.min(Math.max(position.y, origin.y), maxY);
+    if (x !== position.x || y !== position.y) {
+      await win.setPosition(new PhysicalPosition(x, y));
+    }
   };
 
   const contextMenu = (event: React.MouseEvent) => {
@@ -149,7 +266,8 @@ export default function Pet() {
   if (!snapshot) return null;
 
   return (
-    <div className={`pet-window state-${snapshot.effectiveState}`} onMouseDown={drag} onContextMenu={contextMenu} onDoubleClick={() => void api.showManagement()}>
+    <div className={`pet-window state-${snapshot.effectiveState}`} style={{ '--pet-scale': scale } as React.CSSProperties} onMouseDown={drag} onContextMenu={contextMenu} onDoubleClick={() => void api.showManagement()}>
+      <PetBubble snapshot={snapshot} settings={snapshot.settings.petBubble} menuOpen={menuOpen} onHeightChange={handleBubbleHeight} />
       {asset ? <div className="sprite" style={spriteStyle} /> : <div className="fallback-pet">✦<span>{snapshot.effectiveState}</span></div>}
       <div className="pet-state-badge">{snapshot.effectiveState}</div>
       {menuOpen && <div className="pet-context-menu" onMouseDown={event => event.stopPropagation()}>
@@ -161,4 +279,4 @@ export default function Pet() {
   );
 }
 
-export { DEFAULT_ANIMATIONS, STATE_ANIMATION };
+export { DEFAULT_ANIMATIONS, STATE_ANIMATION, resolveLookDirection, resolveActiveLookDirection };

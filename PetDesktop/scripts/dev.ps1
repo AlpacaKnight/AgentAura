@@ -53,6 +53,68 @@ function Get-AppVersion {
     return $conf.version
 }
 
+function Remove-ProjectBuildDirectory([string]$Path) {
+    $ProjectFullPath = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $TargetFullPath = [System.IO.Path]::GetFullPath($Path)
+    $ExpectedPrefix = $ProjectFullPath + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $TargetFullPath.StartsWith(
+        $ExpectedPrefix,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to remove a build directory outside PetDesktop: $TargetFullPath"
+    }
+    if (Test-Path -LiteralPath $TargetFullPath) {
+        $LastError = $null
+        for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
+            try {
+                Remove-Item -LiteralPath $TargetFullPath -Recurse -Force
+                return
+            }
+            catch {
+                $LastError = $_
+                if ($Attempt -lt 3) {
+                    Start-Sleep -Milliseconds 300
+                }
+            }
+        }
+        throw $LastError
+    }
+}
+
+function Stop-ProjectBundleProcesses([string]$BundlePath) {
+    $BundleFullPath = [System.IO.Path]::GetFullPath($BundlePath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $BundlePrefix = $BundleFullPath + [System.IO.Path]::DirectorySeparatorChar
+    $Processes = Get-Process -Name "AgentAura-PetDesktop" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Path -and $_.Path.StartsWith(
+                $BundlePrefix,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        }
+
+    foreach ($Process in $Processes) {
+        Write-Host "Stopping old bundled PetDesktop process (PID $($Process.Id))..." -ForegroundColor DarkGray
+        [void]$Process.CloseMainWindow()
+    }
+
+    if ($Processes) {
+        $Processes | Wait-Process -Timeout 2 -ErrorAction SilentlyContinue
+        $Processes = $Processes | Where-Object { -not $_.HasExited }
+        foreach ($Process in $Processes) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction Stop
+        }
+        if ($Processes) {
+            $Processes | Wait-Process -Timeout 5 -ErrorAction Stop
+        }
+    }
+}
+
 # --- actions ---
 switch ($Action) {
     "dev" {
@@ -70,14 +132,23 @@ switch ($Action) {
 
         Write-Host "Building ($PlatformLabel)..." -ForegroundColor Green
 
-        # 1. tauri build (MSI + NSIS)
+        # 1. Remove all previous installers/portable packages. Keep the rest
+        # of target/release so Rust incremental compilation can still be reused.
+        Write-Host "Removing previous bundle outputs..." -ForegroundColor DarkGray
+        Stop-ProjectBundleProcesses $BundleDir
+        Remove-ProjectBuildDirectory $BundleDir
+        @("msi", "nsis", "portable") | ForEach-Object {
+            New-Item -ItemType Directory -Path (Join-Path $BundleDir $_) -Force | Out-Null
+        }
+
+        # 2. tauri build (MSI + NSIS)
         npm run tauri -- build
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Build failed" -ForegroundColor Red
             exit 1
         }
 
-        # 2. portable exe
+        # 3. portable exe
         Write-Host "Collecting portable files..." -ForegroundColor Green
         if (Test-Path $PortableDir) { Remove-Item -Recurse -Force $PortableDir }
         if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
@@ -115,7 +186,7 @@ switch ($Action) {
             "[Features]",
             "- Desktop pet showing AI Agent status",
             "- Codex / Claude Code / Kimi Code / GitHub Copilot / QwenPaw",
-            "- HTTP/UDP/Serial hardware bridge (ESP32 RingLight)",
+            "- HTTP/UDP/Serial/BLE hardware bridge (ESP32)",
             "- System tray, autostart, multi-monitor",
             "",
             "[API]",
@@ -131,7 +202,7 @@ switch ($Action) {
         Write-Host "Creating portable zip..." -ForegroundColor Green
         Compress-Archive -Path "$PortableDir\*" -DestinationPath $ZipPath -Force
 
-        # 3. summary
+        # 4. summary
         $ExeSize = [math]::Round((Get-Item $DstExe).Length / 1MB, 2)
         $ZipSize = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
 

@@ -73,6 +73,9 @@ fi
 
 mkdir -p "$OUT_DIR"
 
+# 清理旧版本 zip（保留 index.js 前端构建产物）
+rm -f "$OUT_DIR"/${PLUGIN_ID}-*.zip
+
 ZIP_NAME="${PLUGIN_ID}-${VERSION}.zip"
 ZIP_PATH="${OUT_DIR%/}/${ZIP_NAME}"
 rm -f "$ZIP_PATH"

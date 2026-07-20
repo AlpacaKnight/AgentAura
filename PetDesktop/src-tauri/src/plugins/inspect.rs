@@ -159,6 +159,8 @@ fn identify(v: &Value, f: &str) -> Option<PluginProvider> {
         Some(PluginProvider::KimiCode)
     } else if s.contains("qwencode") {
         Some(PluginProvider::Qwencode)
+    } else if s.contains("zcode") {
+        Some(PluginProvider::ZCode)
     } else if s.contains("qwenpaw") || s.contains("agentaura") {
         Some(PluginProvider::Qwenpaw)
     } else if s.contains("claude") {

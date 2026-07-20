@@ -19,8 +19,8 @@ use tokio::{
 };
 
 use crate::{
-    core::{AppCore, RegisterAgent},
-    model::{AgentState, LogLevel, APP_VERSION, HTTP_PORT, UDP_PORT},
+    core::{AppCore, RegisterAgent, SubmitMessageError},
+    model::{AgentState, LogLevel, PetMessageKind, APP_VERSION, HTTP_PORT, UDP_PORT},
 };
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -55,6 +55,15 @@ struct RegisterRequest {
 struct StateRequest {
     state: AgentState,
     session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MessageRequest {
+    kind: PetMessageKind,
+    text: String,
+    priority: Option<u16>,
+    ttl_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +109,7 @@ async fn serve_http(core: AppCore, mut http_lan_rx: watch::Receiver<bool>) -> Re
             .route("/api/v1/agents/selection", put(select_agent))
             .route("/api/v1/agents/{instance_id}/heartbeat", post(heartbeat))
             .route("/api/v1/agents/{instance_id}/state", post(v1_state))
+            .route("/api/v1/agents/{instance_id}/message", post(submit_message))
             .route("/api/v1/agents/{instance_id}", delete(disconnect_agent))
             .with_state(core.clone());
 
@@ -220,6 +230,7 @@ async fn register_agent(
 ) -> ApiResult<Json<Value>> {
     authorize(&core, &headers, remote)?;
     validate_identity(&request.client_id, &request.instance_id)?;
+    let identity = identity_from_headers(&headers);
     let instance_id = request.instance_id;
     core.register_agent(RegisterAgent {
         instance_id: instance_id.clone(),
@@ -229,7 +240,7 @@ async fn register_agent(
         client_id: request.client_id,
         version: request.version,
         state: request.state.unwrap_or(AgentState::Init),
-        session_id: request.session_id,
+        session_id: request.session_id.or(identity.session_id),
     });
     Ok(Json(
         json!({ "ok": true, "instanceId": instance_id, "heartbeatIntervalMs": 10_000 }),
@@ -262,7 +273,7 @@ async fn v1_state(
         &identity.client_id,
         &identity.display_name,
         request.state,
-        request.session_id,
+        request.session_id.or(identity.session_id),
     );
     Ok(Json(json!({ "ok": true, "state": request.state })))
 }
@@ -277,6 +288,39 @@ async fn disconnect_agent(
     core.disconnect_agent(&instance_id)
         .map_err(|error| ApiError(StatusCode::NOT_FOUND, error))?;
     Ok(Json(OkResponse { ok: true }))
+}
+
+/// 接收 Agent 发送的桌宠气泡消息摘要。复用现有 Agent 身份、来源限制和认证逻辑；
+/// 旧插件不发送消息时继续正常工作。
+async fn submit_message(
+    State(core): State<AppCore>,
+    ConnectInfo(remote): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(instance_id): Path<String>,
+    Json(request): Json<MessageRequest>,
+) -> ApiResult<Json<Value>> {
+    authorize(&core, &headers, remote)?;
+    let identity = identity_from_headers(&headers);
+    let source = if !identity.display_name.is_empty() {
+        identity.display_name
+    } else if !identity.client_id.is_empty() {
+        identity.client_id
+    } else {
+        "unknown".to_string()
+    };
+    core.submit_message(
+        &instance_id,
+        request.kind,
+        &request.text,
+        &source,
+        request.priority,
+        request.ttl_ms,
+    )
+    .map_err(|error| match error {
+        SubmitMessageError::NotFound(msg) => ApiError(StatusCode::NOT_FOUND, msg),
+        SubmitMessageError::BadRequest(msg) => ApiError(StatusCode::BAD_REQUEST, msg),
+    })?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 async fn list_agents(
@@ -536,7 +580,11 @@ fn bad_request(error: impl ToString) -> ApiError {
 mod tests {
     use super::*;
     use crate::core::AppCore;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::Request;
     use tempfile::tempdir;
+    use tower::ServiceExt;
 
     #[test]
     fn firmware_command_allowlist_rejects_configuration_commands() {
@@ -590,5 +638,89 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "Bearer secret".parse().unwrap());
         assert!(authorize(&core, &headers, remote).is_ok());
+    }
+
+    fn test_router(core: AppCore) -> Router {
+        Router::new()
+            .route("/health", get(health))
+            .route("/api/state", get(api_state))
+            .route("/api/agent", post(api_agent))
+            .route("/api/cmd", post(api_command))
+            .route("/api/v1/agents/register", post(register_agent))
+            .route("/api/v1/agents", get(list_agents))
+            .route("/api/v1/agents/selection", put(select_agent))
+            .route("/api/v1/agents/{instance_id}/heartbeat", post(heartbeat))
+            .route("/api/v1/agents/{instance_id}/state", post(v1_state))
+            .route("/api/v1/agents/{instance_id}/message", post(submit_message))
+            .route("/api/v1/agents/{instance_id}", delete(disconnect_agent))
+            .with_state(core)
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
+    }
+
+    async fn send_message_request(
+        core: AppCore,
+        instance_id: &str,
+        body: &str,
+    ) -> axum::http::StatusCode {
+        let router = test_router(core);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/agents/{instance_id}/message"))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    #[tokio::test]
+    async fn message_endpoint_accepts_for_registered_agent() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(dir.path().to_path_buf()).unwrap();
+        core.register_agent(RegisterAgent {
+            instance_id: "codex-test".into(),
+            client_id: "codex".into(),
+            display_name: "Codex".into(),
+            version: None,
+            state: AgentState::Running,
+            session_id: None,
+        });
+        let body = r#"{"kind":"activity","text":"正在运行 cargo test","priority":20,"ttlMs":5000}"#;
+        let status = send_message_request(core.clone(), "codex-test", body).await;
+        assert_eq!(status, StatusCode::OK);
+        let snap = core.snapshot();
+        assert_eq!(snap.pet_messages.len(), 1);
+        assert_eq!(snap.pet_messages[0].text, "正在运行 cargo test");
+    }
+
+    #[tokio::test]
+    async fn message_endpoint_returns_404_for_unknown_agent() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(dir.path().to_path_buf()).unwrap();
+        let body = r#"{"kind":"activity","text":"hi"}"#;
+        let status = send_message_request(core, "ghost", body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn message_endpoint_returns_400_for_empty_text() {
+        let dir = tempdir().unwrap();
+        let core = AppCore::new(dir.path().to_path_buf()).unwrap();
+        core.register_agent(RegisterAgent {
+            instance_id: "codex-test".into(),
+            client_id: "codex".into(),
+            display_name: "Codex".into(),
+            version: None,
+            state: AgentState::Running,
+            session_id: None,
+        });
+        let body = r#"{"kind":"activity","text":"   "}"#;
+        let status = send_message_request(core.clone(), "codex-test", body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(core.snapshot().pet_messages.len(), 0);
     }
 }

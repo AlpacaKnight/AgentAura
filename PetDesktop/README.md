@@ -12,13 +12,17 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 - 八种 Agent 状态及多 Agent 优先级仲裁、来源锁定和 30 秒心跳过期。
 - Codex `pet.json + spritesheet.webp` 宠物目录/ZIP 安装，资源复制到应用数据目录。
 - 透明桌宠、拖拽、位置记忆、多显示器边界约束、缩放、置顶、点击穿透和随机闲逛。
+- 桌宠文字气泡：状态模板 + Agent Hook 事件摘要，可关闭、可配置（模式、时长、字符数、字体缩放、显示来源）。
 - 系统托盘、Agent 管理、宠物管理、硬件配置、运行日志。
 - HTTP/UDP 固件兼容接口和 Agent 注册/心跳扩展接口。
-- HTTP、UDP、USB 串口硬件桥接。
+- HTTP、UDP、USB 串口、BLE GATT 硬件桥接。
+- 对 AgentAura AMOLED 固件同步 8 种 Agent 状态；当前有效 Agent 的气泡消息会转发为设备端 `pet speak`。
 
 ## 当前状态
 
 当前代码已覆盖透明桌宠、管理页、托盘、宠物安装、Agent 仲裁、本地 HTTP/UDP 接口和硬件桥接等主功能。状态优先级为 `error > waiting > upgrade > busy > running > init > idle > offline`；锁定来源在线时优先于自动仲裁，来源超过 30 秒未刷新后会离线并解除锁定，且只有最终状态改变时才向硬件发送新状态。
+
+硬件页的“扫描”会并行执行局域网 UDP 发现、AgentAura Service UUID 的 BLE 扫描和本机串口枚举，各通道失败互不影响。扫描只生成候选项，点击设备后仍需“保存连接”才会启用对应传输。HTTP 适合同一局域网内的稳定连接，BLE 适合无需 Wi-Fi 的无线直连，串口适合 USB 调试或无网络环境。BLE 会保持连接并在通信失败后自动重连一次，长响应会自动拼接多个 Notify；点击“断开连接”会释放 BLE 会话并将硬件传输切换为 `disabled`，避免后续状态变化再次自动连接。
 
 ## 发布状态
 
@@ -98,6 +102,9 @@ xcode-select --install
 .\scripts\dev.ps1 clean     # 清理编译缓存
 ```
 
+`build` 会先删除 `src-tauri/target/release/bundle/` 中的旧安装包和 portable
+压缩包，再生成当前版本产物；不会删除 `target/release` 中的 Rust 增量编译缓存。
+
 ### 手动操作
 
 如果不使用脚本，也可以手动执行：
@@ -142,7 +149,12 @@ npm run tauri -- build
 }
 ```
 
-图集为 8 列 × 9 行 WebP。各行依次为 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。导入器拒绝路径穿越、符号链接、超大压缩包和无效图集。
+图集支持两种版本，自动按 `pet.json` 的 `spriteVersion` 字段识别（缺省为 1，兼容 `spriteVersionNumber`）：
+
+- **V1（`spriteVersion` 缺省或 `1`）**：8 列 × 9 行 WebP，各行依次为 `idle`、`running-right`、`running-left`、`waving`、`jumping`、`failed`、`waiting`、`running`、`review`。
+- **V2（`spriteVersion: 2`）**：8 列 × 11 行 WebP，在 V1 九行基础上追加 `look-directions-a`（第 9 行）与 `look-directions-b`（第 10 行），且 `idle` 扩展为 7 帧。桌宠空闲时会随机短暂显示 0–15 的固定观察方向；V1 宠物不会访问新增行。
+
+导入器拒绝路径穿越、符号链接、超大压缩包和无效图集。
 
 ## 本地接口
 
@@ -156,6 +168,7 @@ npm run tauri -- build
 - Agent 注册：`POST /api/v1/agents/register`
 - 心跳：`POST /api/v1/agents/{instanceId}/heartbeat`
 - 状态：`POST /api/v1/agents/{instanceId}/state`
+- 气泡消息：`POST /api/v1/agents/{instanceId}/message`
 
 开启局域网模式后需要重启应用。访问令牌可选：留空时允许局域网客户端直接连接；设置令牌后，HTTP 请求必须携带 `Authorization: Bearer <token>`，UDP 远程命令格式为 `auth <token> <command>`。局域网发现命令始终可匿名调用。
 
@@ -164,4 +177,5 @@ npm run tauri -- build
 - 已明确配置硬件主机或串口的插件继续直连硬件。
 - 网络目标为空且自动发现开启时，插件先探测本机 PetDesktop，再回退到原 ESP32 UDP 发现。
 - Copilot 与 QwenPaw 是常驻进程，会注册并每 10 秒发送心跳。
+- 手动硬件扫描会向所有 IPv4 网卡的定向广播地址发送 UDP 探测，因此 Wi-Fi、有线网卡与虚拟网卡可并存。
 - Codex、Claude Code 与 Kimi Code 使用短生命周期 hook 进程，通过兼容请求头提供稳定实例身份，每次生命周期事件刷新在线状态。
