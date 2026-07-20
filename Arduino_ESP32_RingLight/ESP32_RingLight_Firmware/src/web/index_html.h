@@ -52,7 +52,7 @@ a.cfg{color:#38bdf8;text-decoration:none;font-size:12px}
 <body>
 <div class="wrap">
   <h1>🌈 ESP32 Ring Light</h1>
-  <div class="sub">v1.0 · 5 连接 · 15 灯效 · <a class="cfg" href="/config">配置</a></div>
+  <div class="sub">v1.1 · 5 连接 · 15 灯效 · <a class="cfg" href="/config">配置</a></div>
 
   <div class="card">
     <h3>电源 / 亮度 / 速度</h3>

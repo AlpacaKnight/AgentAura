@@ -113,6 +113,10 @@ String getStateJson() {
   c["udp"]  = conn.udp;
   c["mqtt"] = conn.mqtt;
   c["ble"]  = conn.ble;
+  c["ble_running"] = state.ble_running;
+
+  JsonObject settings = doc["settings"].to<JsonObject>();
+  settings["ble_enabled"] = state.ble_enabled;
 
   String out;
   serializeJson(doc, out);

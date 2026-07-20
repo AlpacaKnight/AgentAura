@@ -74,7 +74,7 @@
 
 | 子目录 | 用途 |
 |--------|------|
-| `ESP32_RingLight_Firmware/` | ESP32-C3 固件，驱动 24 颗 WS2812B LED，集成 REST API、UDP 指令、MQTT、BLE GATT、USB CDC 串口、Web 控制面板，支持 `init`/`running`/`busy`/`waiting`/`idle`/`error`/`offline`/`upgrade` 共 15 种灯效与 Agent 状态映射 |
+| `ESP32_RingLight_Firmware/` | ESP32-C3 固件，驱动 24 颗 WS2812B LED，集成 REST API、UDP 指令、MQTT、BLE GATT、USB CDC 串口、Web 控制面板；BLE 已完成 C3 实机共存修复，PetDesktop 可按 UUID 扫描 `ESP32-Ring-XXXX`；支持 `init`/`running`/`busy`/`waiting`/`idle`/`error`/`offline`/`upgrade` 共 15 种灯效与 Agent 状态映射 |
 | `ESP32_RingLight_Demo/` | 环形灯演示程序，用于快速验证硬件与通信协议 |
 
 ---

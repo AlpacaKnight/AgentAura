@@ -9,7 +9,7 @@
 #define RING_CONFIG_H
 
 // -------------------- 固件信息 --------------------
-#define FW_VERSION       "1.0.0"
+#define FW_VERSION       "1.1.0"
 #define FW_NAME          "ESP32-Ring"
 #define DEVICE_MODEL     "RingLight-C3"
 
@@ -52,7 +52,7 @@
 
 // -------------------- BLE (NimBLE) --------------------
 #define BLE_DEVICE_PREFIX   "ESP32-Ring-"
-#define BLE_ENABLED         false       // TODO: ESP32-C3 NimBLE 初始化崩溃, 暂时关闭排查
+#define BLE_ENABLED         true
 
 // 自定义 128-bit UUID (用随机 base + 后缀)
 #define RING_SERVICE_UUID   "8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0"

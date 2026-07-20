@@ -98,7 +98,7 @@ flowchart LR
 
   subgraph DEVICE["ESP32 Ring Light 固件"]
     direction TB
-    NET["网络 / 接口入口<br/>REST HTTP :80<br/>UDP :8888<br/>USB Serial 115200<br/>BLE GATT<br/>MQTT Broker / topic"]:::hardware
+    NET["网络 / 接口入口<br/>REST HTTP :80<br/>UDP :8888<br/>USB Serial 115200<br/>BLE GATT · ESP32-Ring-XXXX<br/>MQTT Broker / topic"]:::hardware
     PARSER["统一 Command Parser<br/>状态与灯控文本命令"]:::hardware
     STATE["Agent 状态映射 + Effect Engine<br/>init/running/busy/waiting/idle/error/offline/upgrade<br/>→ 对应颜色、呼吸、跑马、闪烁等"]:::hardware
     LED["LED Driver<br/>FastLED → WS2812B 圆环"]:::hardware
@@ -110,7 +110,7 @@ flowchart LR
   HTTP -->|"插件直连路线"| NET
   UDP -->|"插件直连路线"| NET
   SERIAL -->|"插件直连路线"| NET
-  BRIDGE -->|"HTTP :80 / UDP :8888 / Serial 115200"| NET
+  BRIDGE -->|"HTTP :80 / UDP :8888 / Serial 115200 / BLE GATT"| NET
   DISC -. "发现响应" .-> DSERV
   DISC -. "发现响应" .-> NET
   WEB --> NET
@@ -136,7 +136,7 @@ flowchart LR
 | 各插件 | PetDesktop / ESP32 | UDP 广播 `:8888` | `discover`，返回设备 JSON；随后通常切为 HTTP |
 | Agent 插件（v1 API） | PetDesktop | HTTP `/api/v1/agents/*` | 注册实例、10 秒心跳（detached 子进程）、独立状态、气泡消息、断开 |
 | PetDesktop React UI | Rust 后端 | Tauri `invoke` + `snapshot-changed` | 配置、Agent 锁定、宠物/硬件管理、实时快照 |
-| PetDesktop | ESP32 | HTTP `:80` / UDP `:8888` / Serial `115200` | 仲裁后的有效状态与白名单灯控命令 |
+| PetDesktop | ESP32 | HTTP `:80` / UDP `:8888` / Serial `115200` / BLE GATT | 仲裁后的有效状态与白名单灯控命令；BLE 按 Service UUID 过滤发现 |
 | Web / MQTT / BLE 客户端 | ESP32 | HTTP / MQTT / BLE GATT | 配网、手动控制、自动化控制 |
 | ESP32 命令解析器 | Effect Engine / LED Driver | 固件内部函数调用 | 状态 → 灯效 → FastLED → WS2812B |
 
@@ -144,6 +144,7 @@ flowchart LR
 
 - 插件不会同时使用三种传输；每个插件按配置选择 HTTP、UDP 或 Serial。
 - PetDesktop 是可选中间层。插件直连 ESP32 时没有多 Agent 仲裁和桌宠联动；连接 PetDesktop 时，状态会先仲裁，再驱动桌宠，并可继续桥接到 ESP32。
+- ESP32-C3 环形灯的固件初始化顺序为 LED → BLE → WiFi，避免 IDF 4.4 在 WiFi 已启动后启用 BLE 控制器时进入 `coex_core_enable()` 崩溃。BLE 主广播携带 Service UUID + `RingXXXX` 短名，扫描响应携带 `ESP32-Ring-XXXX` 完整名。
 - PetDesktop 的 `/api/agent` 是兼容入口；`/api/v1/agents/*` 才能保留多个 Agent 实例身份、心跳和选择信息。
 - 七个插件均可向 PetDesktop 发送气泡消息摘要；消息仅在已注册 PetDesktop Agent 时发送，不回退固件。Claude / Kimi / Codex / Qwen / ZCode 从 Hook 构建摘要，Copilot 从 transcript 事件构建摘要，QwenPaw 从 AgentRunner / ApprovalService 事件构建摘要。
 - 气泡消息仅在内存队列中保留（每 Agent 最多 20 条），PetDesktop 重启后丢失；桌宠窗口只显示当前有效 Agent 的气泡。

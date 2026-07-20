@@ -275,9 +275,20 @@ Agent 生命周期事件
 
 #### 4.6.1 修复 ESP32 RingLight BLE
 
-- **问题**：`config.h:55` — `#define BLE_ENABLED false // TODO: ESP32-C3 NimBLE 初始化崩溃, 暂时关闭排查`
-- **目标**：排查 ESP32-C3 NimBLE 初始化崩溃，恢复 BLE 支持
-- **影响文件**：`Arduino_ESP32_RingLight/ESP32_RingLight_Firmware/src/config.h`、`ble_server.cpp`
+> ✅ 已完成（2026-07-21）：通过实机串口和 ELF 地址解码定位到
+> `NimBLEDevice::init → esp_bt_controller_enable → coex_core_enable`
+> 崩溃。根因是 Arduino-ESP32 2.0.17 / ESP-IDF 4.4 下 WiFi STA/AP
+> 已启动后再首次启用 BLE 控制器，而不是 FastLED 与 BLE 抢占 RMT。
+> 固件改为 LED → BLE → WiFi 初始化，恢复 `BLE_ENABLED=true`；
+> 同时修复空 SSID 无效等待、GATT 服务启动、断线自动广播和运行时
+> BLE 开关。广播主包现包含 128-bit Service UUID 与短名 `RingXXXX`，
+> 扫描响应包含完整名 `ESP32-Ring-XXXX`，兼容 PetDesktop 的 UUID
+> 过滤。COM3 实机已验证广播、过滤扫描、GATT 连接/服务枚举、WiFi AP
+> 和 FastLED `agent running` 灯效共存，未再重启。
+
+- **原问题（已解决）**：修复前 `config.h` 默认关闭 BLE，ESP32-C3 在 WiFi 启动后初始化 NimBLE 会反复崩溃重启
+- **完成结果**：当前 `BLE_ENABLED=true`，BLE 先于 WiFi 初始化，PetDesktop 可发现并连接环形灯
+- **影响文件**：`Arduino_ESP32_RingLight/ESP32_RingLight_Firmware/src/config.h`、`main.cpp`、`network.cpp`、`ble_server.cpp/.h`、`command.cpp`、`state.cpp/.h`、`doc/API.md`、`README.md`
 
 #### 4.6.2 AMOLED 桌宠 Apps 页面
 
@@ -331,13 +342,13 @@ Agent 生命周期事件
 | 13 | 更新过时文档 | 小 | #1-#7 | ✅ 已完成 |
 | 14 | （长期）气泡持久化 | 大 | 无 | 待开发 |
 | 15 | （长期）多 Agent 气泡展示 | 大 | 无 | 待开发 |
-| 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | 待开发 |
+| 16 | （长期）修复 ESP32 BLE | 中 | 硬件调试 | ✅ 已完成 |
 | 17 | （长期）AMOLED Apps 页面 | 中 | 无 | ✅ 已完成 |
 | 18 | （长期）三平台 CI 产物验证 | 中 | 无 | 待开发 |
 | 19 | 为全部插件添加 BLE 传输支持 | 大 | 无 | 待开发 |
 | 20 | Claude 插件清单版本同步 | 极小 | 无 | ✅ 已完成 |
 
-> 进度更新（2026-07-20）：
+> 进度更新（2026-07-21）：
 > - #1 统一签名、#2 Session ID、#3 任务完成气泡 已完成
 > - #4 Codex 补 `UserPromptSubmit`，覆盖官方全部 10 个事件已完成；`PostToolUseFailure`/`StopFailure`/`SessionEnd` 经查证非官方 Codex 事件，不纳入
 > - #5 清理 Qwen/ZCode 调试日志 已完成
@@ -348,8 +359,9 @@ Agent 生命周期事件
 > - #10 Claude 自动安装暂不做；#12 v2 观察方向动画已完成
 > - #13 README 气泡列 + AMOLED API 文档 已完成
 > - #17 AMOLED Apps 页面 + Boot 长按 已完成（App 启动器：页面导航 + 快捷开关，编译通过）
-> - 固件和 PetDesktop 已完成 BLE 支持（v0.3.0），但插件侧未跟进
-> - 剩余：#14 气泡持久化、#15 多 Agent 展示、#16 ESP32 BLE、#18 三平台 CI、#19 插件 BLE 传输
+> - #16 ESP32-C3 RingLight BLE 已完成（2026-07-21）：修复 WiFi/BLE 初始化顺序、广播布局、GATT 服务与运行时开关，并通过实机扫描/连接/灯效共存验证
+> - 固件和 PetDesktop 已完成 BLE 支持，但插件侧未跟进
+> - 剩余：#14 气泡持久化、#15 多 Agent 展示、#18 三平台 CI、#19 插件 BLE 传输
 
 ---
 

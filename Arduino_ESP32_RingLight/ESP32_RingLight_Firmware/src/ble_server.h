@@ -15,6 +15,10 @@ namespace bleServer {
 
 void begin();
 void loop();
+void stop();
+bool toggle(bool on);
+bool isConnected();
+bool isRunning();
 
 } // namespace bleServer
 

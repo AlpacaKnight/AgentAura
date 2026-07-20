@@ -1,4 +1,4 @@
-# 🌈 ESP32 圆环灯板全能固件 v1.0
+# 🌈 ESP32 圆环灯板全能固件 v1.1
 
 基于 **ESP32-C3 + WS2812B 圆环 24 灯** 的全能控制固件，支持 **5 种连接方式**（USB 串口 / WiFi HTTP / WiFi UDP / WiFi MQTT / 蓝牙 BLE）与 **15 种灯效**，内置 **Home Assistant 自动发现**、**NVS 持久化**与**智能体状态映射**，可直接作为智能体运行状态的可视化指示灯。
 
@@ -322,7 +322,15 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 
 ### 5.5 蓝牙 BLE（NimBLE）
 
-无需 WiFi，手机 BLE 调试 APP 直连控制。广播名 `ESP32-Ring-XXXX`（后 4 位 MAC）。
+无需 WiFi，PetDesktop 或手机 BLE 调试 App 可直连控制。主动扫描显示完整广播名
+`ESP32-Ring-XXXX`（XXXX 为 MAC 后 4 位）；主广播包同时携带短名
+`RingXXXX` 和 128-bit Service UUID，确保 Windows/PetDesktop 按 UUID
+过滤时不会因为名称位于扫描响应包而漏掉设备。
+
+> ESP32-C3 使用 Arduino-ESP32 2.0.17 / ESP-IDF 4.4 时必须先初始化 BLE，
+> 再启动 WiFi STA/AP。反向初始化会在 `coex_core_enable()` 中触发
+> `abort()`，表现为绿色启动跑马灯不断从头执行。该问题与 FastLED
+> 占用 RMT 通道无关，也不需要切换到 I2S。
 
 | 特征值 UUID | 读写 | 载荷 | 说明 |
 |:------------|:----:|:-----|:-----|
@@ -330,6 +338,10 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 | `8e7f1a03-2b3c-4d5e-9f01-a1b2c3d4e5f0` (CHAR_STATE) | 读 | JSON | 读取当前状态 |
 
 > Service UUID: `8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0`
+
+推荐在 PetDesktop 的“硬件连接 → BLE → 扫描”中选择设备，或使用
+nRF Connect / LightBlue 等 BLE GATT 工具。通用 GATT 设备不保证出现在
+手机系统的普通“蓝牙配对”列表中。
 
 ---
 
@@ -477,7 +489,7 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 ```json
 {
   "device": "ESP32-Ring",
-  "firmware": "1.0.0",
+  "firmware": "1.1.0",
   "uptime": 3600,
   "wifi": {
     "connected": true,
@@ -517,7 +529,8 @@ mosquitto_sub -h 192.168.1.100 -t ring/status
 4. **打开配置页**：浏览器访问 `http://192.168.4.1`
 5. **填写配置**：输入 WiFi SSID/密码，按需填写 MQTT Broker
 6. **保存重启**：设备自动重启并连接路由器
-7. **开始使用**：访问 `http://ringlight.local` 或串口/IP 控制灯效
+7. **开始使用**：访问 `http://ringlight.local`，或通过
+   PetDesktop BLE 扫描选择 `ESP32-Ring-XXXX`
 
 ---
 
@@ -588,11 +601,14 @@ A：① 检查 `config.h` 的 `LED_PIN`（默认 GPIO3）是否和接线一致�
 **Q：一通电就全亮爆闪？**
 A：供电不足。24 灯全亮白光电流约 1.4A，USB 口带不动，请用独立 5V 电源并与 ESP32 共地。
 
-**Q：BLE 连接不稳定？**
-A：ESP32-C3 的 BLE 与 WiFi 并存时，大数据传输可能影响 WiFi。本固件 BLE 只传短指令，影响可控。如需彻底关闭 BLE，在 `config.h` 设 `BLE_ENABLED false` 重新编译。
+**Q：BLE 搜不到，或绿色启动跑马灯一直重复？**
+A：重复启动动画表示设备在重启，不是 `running` 灯效。当前固件已将 BLE 初始化提前到 WiFi STA/AP 之前，避免 ESP-IDF 4.4 的 `coex_core_enable()` 崩溃。扫描时使用 PetDesktop 或 BLE GATT App，不要只看系统配对列表；完整名称为 `ESP32-Ring-XXXX`，短名为 `RingXXXX`。
+
+**Q：PetDesktop 扫描结果为什么显示 `AgentAura`？**
+A：这是客户端在尚未收到扫描响应名称时使用的兜底名称。当前固件把短名和 Service UUID 一起放入主广播包，并在扫描响应中提供完整名称；重新扫描后应显示 `ESP32-Ring-XXXX`。若仍显示旧名称，请关闭并重新打开管理窗口以清除扫描结果缓存。
 
 **Q：FastLED 在 C3 上灯不亮？**
-A：FastLED 已支持 ESP32-C3 的 RMT 时序（实测 3.10.3）。如个别板子仍有问题，确认 Flash 供电稳定，或降低 `DEFAULT_BRIGHTNESS` 测试。
+A：当前 FastLED 3.10.3 在 Arduino-ESP32 2.0.17 上使用 RMT 输出 WS2812B，已实测可与 BLE 广播、GATT 连接及 WiFi AP 同时运行。BLE 控制器不占用 RMT 外设，因此不要启用 C3 不兼容的 `FASTLED_ESP32_I2S`。如灯效异常，优先检查 5V 供电、共地、DIN 接线和亮度。
 
 **Q：如何恢复出厂设置？**
 A：串口发 `factory`，或 Web 面板 `GET /reset`（恢复默认保留 WiFi）；`factory` 清空全部含 WiFi。
@@ -613,7 +629,7 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 | 组件 | 方案 | 说明 |
 |:-----|:-----|:-----|
 | LED 驱动 | FastLED | 成熟稳定，内置 sin8/fade/调色板 |
-| BLE | h2zero/NimBLE-Arduino 2.x | 独立库，C3 上比板包内置 Bluedroid 省 Flash |
+| BLE | h2zero/NimBLE-Arduino 2.x | BLE 先于 WiFi 初始化；主广播携带 UUID + 短名，扫描响应携带完整名 |
 | HTTP | 内置 WebServer | 同步模式，C3 上比 AsyncTCP 稳定 |
 | MQTT | PubSubClient | 轻量，兼容 HA |
 | JSON | ArduinoJson v7 | 按需求文档 |
@@ -624,10 +640,10 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 
 | 资源 | 占用 | 上限 | 占比 |
 |:-----|:-----|:-----|:-----|
-| Flash | 1,066,226 字节（~1.04MB） | 3,145,728 字节（~3.2MB，huge_app 分区） | 33.9% |
-| RAM | 49,660 字节（~48KB） | 327,680 字节（~320KB） | 15.2% |
+| Flash | 1,078,688 字节（~1.03MB） | 3,145,728 字节（~3.2MB，huge_app 分区） | 34.3% |
+| RAM | 49,708 字节（~48.5KB） | 327,680 字节（~320KB） | 15.2% |
 
-> 全功能固件实际仅占 Flash 33.9%，远低于 huge_app 分区上限，留有充足余量。实测库版本：FastLED 3.10.3、ArduinoJson 7.4.3、PubSubClient 2.8.0、NimBLE-Arduino 2.5.0。
+> 全功能固件实际仅占 Flash 34.3%，远低于 huge_app 分区上限，留有充足余量。实测库版本：FastLED 3.10.3、ArduinoJson 7.4.3、PubSubClient 2.8.0、NimBLE-Arduino 2.5.0。
 
 ### 不在当前范围
 
@@ -643,4 +659,4 @@ A：当前使用 huge_app 分区（无 OTA 空间），需 USB 线重新烧录�
 
 ---
 
-*固件版本：v1.0.0 · 编译验证通过 · 日期：2026-06-21*
+*固件版本：v1.1.0 · 编译验证通过 · 日期：2026-07-21*

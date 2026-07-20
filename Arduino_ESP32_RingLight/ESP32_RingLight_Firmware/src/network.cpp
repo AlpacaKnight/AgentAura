@@ -83,7 +83,7 @@ void begin() {
   if (!w.valid) {
     w.ssid   = DEFAULT_WIFI_SSID;
     w.pass   = DEFAULT_WIFI_PASS;
-    w.valid  = true;
+    w.valid  = w.ssid.length() > 0;
     Serial.println(F("[net] no saved wifi, using default config"));
   }
   bool staOk = false;

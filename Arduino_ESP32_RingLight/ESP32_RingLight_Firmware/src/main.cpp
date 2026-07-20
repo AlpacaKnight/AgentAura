@@ -1,6 +1,6 @@
 /*
  * ============================================================
- *  ESP32 圆环灯板全能固件 v1.0 — 主程序
+ *  ESP32 圆环灯板全能固件 v1.1 — 主程序
  *  目标硬件: ESP32-C3 + WS2812B 圆环 24 灯 (DIN=GPIO3)
  *
  *  连接方式: USB 串口 / WiFi HTTP / WiFi UDP / WiFi MQTT / BLE
@@ -112,14 +112,27 @@ void setup() {
   Serial.println(F("[main] LED init done"));
   Serial.flush(); delay(200);
 
-  // 3. 网络 (STA 或 AP 配置页)
+  // 3. BLE must be initialized before WiFi on ESP32-C3 with the IDF 4.4
+  // controller. Enabling the BT controller after WiFi/AP can abort inside
+  // coex_core_enable on this framework version.
+  if (state.ble_enabled) {
+    Serial.println(F("[main] >>> BLE begin..."));
+    Serial.flush();
+    bleServer::begin();
+    Serial.println(F("[main] <<< BLE done"));
+    Serial.flush(); delay(200);
+  } else {
+    Serial.println(F("[main] BLE disabled by config"));
+  }
+
+  // 4. 网络 (STA 或 AP 配置页)
   Serial.println(F("[main] >>> network begin..."));
   Serial.flush();
   net::begin();
   Serial.println(F("[main] <<< network done"));
   Serial.flush(); delay(200);
 
-  // 4. 若 STA 成功, 启用 HTTP/UDP/MQTT
+  // 5. 若 STA 成功, 启用 HTTP/UDP/MQTT
   if (net::isSTA()) {
     Serial.println(F("[main] STA ok, starting http/udp/mqtt..."));
     Serial.flush();
@@ -133,15 +146,6 @@ void setup() {
     Serial.println(F("[main] AP mode only"));
     Serial.flush(); delay(200);
   }
-
-  // 5. BLE (编译期开关控制)
-#if BLE_ENABLED
-  Serial.println(F("[main] >>> BLE begin..."));
-  Serial.flush();
-  bleServer::begin();
-  Serial.println(F("[main] <<< BLE done"));
-  Serial.flush(); delay(200);
-#endif
 
   Serial.println(F("[main] setup done. type 'help' for commands."));
   Serial.flush();

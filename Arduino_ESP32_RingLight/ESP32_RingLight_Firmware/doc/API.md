@@ -1,4 +1,4 @@
-# ESP32 Ring Light 固件 v1.0 — 接口文档
+# ESP32 Ring Light 固件 v1.1 — 接口文档
 
 ## 目录
 
@@ -8,7 +8,7 @@
 - [4. HTTP REST API](#4-http-rest-api)
 - [5. UDP 指令 & 设备发现](#5-udp-指令--设备发现)
 - [6. MQTT (含 Home Assistant 自动发现)](#6-mqtt-含-home-assistant-自动发现)
-- [7. BLE GATT 服务](#7-ble-gatt-服务) *(当前编译期关闭)*
+- [7. BLE GATT 服务](#7-ble-gatt-服务)
 - [8. 统一状态 JSON](#8-统一状态-json)
 - [9. 智能体状态映射](#9-智能体状态映射)
 - [10. WLED 兼容接口](#10-wled-兼容接口)
@@ -19,7 +19,7 @@
 
 | 项目 | 说明 |
 |---|---|
-| 固件名 | `ESP32-Ring` v1.0.0 |
+| 固件名 | `ESP32-Ring` v1.1.0 |
 | 硬件 | ESP32-C3 + WS2812B × 24 (GPIO3) |
 | 灯效数 | 15 种 |
 | 控制通道 | USB/HTTP/UDP/MQTT/BLE |
@@ -321,7 +321,7 @@ print(resp.decode())   # OK rgb
 广播 `discover` / `ping` / `who` 到端口 8888，设备回送 JSON:
 ```
 UDP → discover
-UDP ← {"device":"ESP32-Ring","model":"RingLight-C3","fw":"1.0.0","ip":"192.168.1.100","mac":"AA:BB:CC:DD:EE:FF","udp":8888,"http":80,"effect":"breath"}
+UDP ← {"device":"ESP32-Ring","model":"RingLight-C3","fw":"1.1.0","ip":"192.168.1.100","mac":"AA:BB:CC:DD:EE:FF","udp":8888,"http":80,"effect":"breath"}
 ```
 
 ---
@@ -355,24 +355,42 @@ HA 会识别为一个支持 RGB + 效果列表 + 亮度的灯光实体。
 
 ## 7. BLE GATT 服务
 
-> ⚠️ **当前状态**: BLE 在编译期已关闭 (`BLE_ENABLED = false`)，
-> 因为 ESP32-C3 NimBLE 初始化存在兼容性问题，待后续修复。
-
-### 广播
-
-| 参数 | 值 |
+| 项目 | 说明 |
 |---|---|
-| 设备名 | `ESP32-Ring-XXXX` (MAC 后 4 位) |
+| 完整设备名 | `ESP32-Ring-XXXX`（主动扫描；XXXX 为 MAC 后 4 位十六进制） |
+| 主广播短名 | `RingXXXX`（与 Service UUID 同包，供硬件过滤和被动扫描识别） |
 | 广播间隔 | 20-40ms |
 | TX 功率 | +9dBm |
-| Service UUID | `8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0` |
+| 库 | NimBLE-Arduino v2.x |
+| 默认状态 | 启用（`BLE_ENABLED=true`）；`bluetooth on/off` 仅修改本次运行状态 |
+| 广播布局 | 主广播：Flags + 128-bit Service UUID + 短名；扫描响应：完整设备名 |
+| 初始化顺序 | LED → BLE → WiFi；ESP32-C3 / IDF 4.4 不得在 WiFi STA/AP 启动后首次初始化 BLE |
 
-### GATT 特征
+### 服务与特征
 
-| 特征 | UUID | 属性 | 说明 |
+| 类型 | UUID | 属性 | 说明 |
 |---|---|---|---|
-| COLOR | `8e7f1a02-...` | WRITE/READ/NOTIFY | 写入文本指令, 回写响应 |
-| STATE | `8e7f1a03-...` | READ/NOTIFY | 读取状态 JSON |
+| Service | `8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0` | — | 主服务 |
+| COLOR | `8e7f1a02-2b3c-4d5e-9f01-a1b2c3d4e5f0` | `WRITE \| WRITE_NR \| READ \| NOTIFY` | 写入文本指令，回写响应 |
+| STATE | `8e7f1a03-2b3c-4d5e-9f01-a1b2c3d4e5f0` | `READ \| NOTIFY` | 读取状态 JSON |
+
+- 写入 COLOR 特征的文本会作为文本指令解析，响应通过 NOTIFY 推出
+- STATE 主动读取返回完整状态 JSON
+- `connections.ble` 表示当前是否有客户端连接；`connections.ble_running` 表示 GATT 服务是否已启动
+- `bluetooth on/off` 命令控制 BLE 运行时开关
+- PetDesktop 使用 Service UUID 过滤扫描；UUID 必须位于主广播包。完整名称在主动扫描取得扫描响应后显示
+- 通用 BLE GATT 设备不保证出现在手机系统配对页，应使用 PetDesktop、nRF Connect 或 LightBlue 扫描
+
+### ESP32-C3 共存说明
+
+旧实现先启动 WiFi STA/AP、再调用 `NimBLEDevice::init()`，会在
+Arduino-ESP32 2.0.17 / ESP-IDF 4.4 的 `coex_core_enable()` 中触发
+`abort()`，造成设备重启并反复播放绿色启动跑马灯。当前实现通过
+“BLE 先于 WiFi 初始化”修复。实机已验证 BLE UUID 过滤发现、GATT
+连接、服务枚举、WiFi AP 与 FastLED 灯效可同时工作。
+
+BLE 控制器不使用 RMT 外设；FastLED 的 RMT 输出不是本次崩溃根因。
+ESP32-C3 不应通过 `FASTLED_ESP32_I2S` 规避该问题。
 
 ---
 
@@ -381,7 +399,7 @@ HA 会识别为一个支持 RGB + 效果列表 + 亮度的灯光实体。
 ```json
 {
   "device": "ESP32-Ring",
-  "firmware": "1.0.0",
+  "firmware": "1.1.0",
   "uptime": 12345,
 
   "wifi": {
@@ -410,7 +428,12 @@ HA 会识别为一个支持 RGB + 效果列表 + 亮度的灯光实体。
     "http": true,
     "udp":  true,
     "mqtt": true,
-    "ble":  false
+    "ble":  false,
+    "ble_running": true
+  },
+
+  "settings": {
+    "ble_enabled": true
   }
 }
 ```
@@ -455,4 +478,4 @@ GET /win?R=255&G=165&B=0&A=128&T=200&FX=9
 
 ---
 
-> 文档版本: v1.0 | 固件: ESP32-Ring v1.0.0 | 硬件: ESP32-C3 / WS2812B × 24
+> 文档版本: v1.1 | 固件: ESP32-Ring v1.1.0 | 硬件: ESP32-C3 / WS2812B × 24

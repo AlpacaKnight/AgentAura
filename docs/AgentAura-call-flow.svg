@@ -63,14 +63,14 @@
     <rect x="1080" y="680" width="145" height="64" class="box out"/><text x="1097" y="710" class="h">React 管理 App</text><text x="1097" y="732" class="tiny">snapshot-changed</text>
     <rect x="1255" y="680" width="145" height="64" class="box out"/><text x="1275" y="708" class="h">透明桌宠</text><text x="1275" y="730" class="tiny">动画 + 气泡</text>
   </g>
-  <g><rect x="1050" y="770" width="380" height="150" class="box desk"/><text x="1080" y="810" class="h">Hardware Worker</text><text x="1080" y="842" class="t">mpsc 队列 · effectiveState</text><text x="1080" y="870" class="t">HTTP / UDP / Serial 桥接</text><text x="1080" y="896" class="tiny">透传：rgb / effect / brightness / speed / power / reset</text></g>
+  <g><rect x="1050" y="770" width="380" height="150" class="box desk"/><text x="1080" y="810" class="h">Hardware Worker</text><text x="1080" y="842" class="t">mpsc 队列 · effectiveState</text><text x="1080" y="870" class="t">HTTP / UDP / Serial / BLE 桥接</text><text x="1080" y="896" class="tiny">BLE UUID 过滤 · rgb / effect / brightness / speed / power / reset</text></g>
   <path d="M975 332 H1080" class="line"/><path d="M975 517 C1030 517 1020 411 1080 411" class="line"/><path d="M975 677 C1010 677 1010 845 1050 845" class="line"/>
   <path d="M1240 660 V680" class="line"/><path d="M1328 660 C1328 670 1328 670 1328 680" class="line"/><path d="M1240 660 V770" class="line"/>
   <path d="M330 1170 C760 1420 930 710 1080 710" class="line dash"/>
 
   <!-- ESP32 -->
   <g><rect x="1050" y="965" width="380" height="230" class="box hw"/><text x="1080" y="1005" class="h">ESP32 Ring Light Firmware</text>
-    <rect x="1080" y="1030" width="320" height="45" class="box hw"/><text x="1100" y="1059" class="t">REST :80 · UDP :8888 · Serial · BLE · MQTT</text>
+    <rect x="1080" y="1030" width="320" height="45" class="box hw"/><text x="1100" y="1059" class="t">HTTP · UDP · Serial · BLE · MQTT</text>
     <rect x="1080" y="1095" width="96" height="62" class="box hw"/><text x="1092" y="1123" class="h">Command</text><text x="1092" y="1145" class="tiny">Parser</text>
     <rect x="1192" y="1095" width="96" height="62" class="box hw"/><text x="1204" y="1123" class="h">Effect</text><text x="1204" y="1145" class="tiny">Engine</text>
     <rect x="1304" y="1095" width="96" height="62" class="box hw"/><text x="1317" y="1123" class="h">FastLED</text><text x="1317" y="1145" class="tiny">Driver</text>
@@ -82,7 +82,7 @@
   <!-- outputs/external -->
   <g filter="url(#glow)"><rect x="1510" y="250" width="330" height="150" class="box out"/><text x="1540" y="290" class="h">桌宠动画 + 气泡输出</text><text x="1540" y="322" class="t">effectiveState → spritesheet</text><text x="1540" y="348" class="t">PetBubble 状态模板 + 事件摘要</text><text x="1540" y="376" class="tiny">闲逛 · 置顶 · 鼠标穿透</text></g>
   <g filter="url(#glow)"><rect x="1510" y="965" width="330" height="150" class="box out"/><text x="1540" y="1009" class="h">WS2812B 环形灯</text><text x="1540" y="1043" class="t">颜色 · 呼吸 · 跑马 · 闪烁</text><text x="1540" y="1075" class="tiny">物理状态可视化输出</text></g>
-  <g><rect x="1510" y="500" width="330" height="250" class="box proto" stroke-dasharray="8 6"/><text x="1540" y="540" class="h">ESP32 额外入口</text><text x="1540" y="580" class="t">浏览器 Web 控制页 / AP 配网</text><text x="1540" y="620" class="t">BLE App / GATT Client</text><text x="1540" y="660" class="t">MQTT Broker / 自动化平台</text><text x="1540" y="705" class="tiny">这些路径不经过 Agent 插件</text></g>
+  <g><rect x="1510" y="500" width="330" height="250" class="box proto" stroke-dasharray="8 6"/><text x="1540" y="540" class="h">ESP32 额外入口</text><text x="1540" y="580" class="t">浏览器 Web 控制页 / AP 配网</text><text x="1540" y="620" class="t">BLE App / GATT Client</text><text x="1540" y="647" class="tiny">主广播 UUID + RingXXXX · 响应完整名</text><text x="1540" y="680" class="t">MQTT Broker / 自动化平台</text><text x="1540" y="715" class="tiny">固件顺序：LED → BLE → WiFi</text></g>
   <path d="M1400 712 C1470 712 1460 325 1510 325" class="line"/><path d="M1400 1126 C1460 1126 1460 1040 1510 1040" class="line"/><path d="M1510 625 C1460 625 1460 1053 1400 1053" class="line dash"/>
 
   <!-- discovery -->
