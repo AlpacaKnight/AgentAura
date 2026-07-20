@@ -53,6 +53,24 @@ function Get-AppVersion {
     return $conf.version
 }
 
+function Remove-ProjectBuildDirectory([string]$Path) {
+    $ProjectFullPath = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $TargetFullPath = [System.IO.Path]::GetFullPath($Path)
+    $ExpectedPrefix = $ProjectFullPath + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $TargetFullPath.StartsWith(
+        $ExpectedPrefix,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to remove a build directory outside PetDesktop: $TargetFullPath"
+    }
+    if (Test-Path -LiteralPath $TargetFullPath) {
+        Remove-Item -LiteralPath $TargetFullPath -Recurse -Force
+    }
+}
+
 # --- actions ---
 switch ($Action) {
     "dev" {
@@ -70,14 +88,19 @@ switch ($Action) {
 
         Write-Host "Building ($PlatformLabel)..." -ForegroundColor Green
 
-        # 1. tauri build (MSI + NSIS)
+        # 1. Remove all previous installers/portable packages. Keep the rest
+        # of target/release so Rust incremental compilation can still be reused.
+        Write-Host "Removing previous bundle outputs..." -ForegroundColor DarkGray
+        Remove-ProjectBuildDirectory $BundleDir
+
+        # 2. tauri build (MSI + NSIS)
         npm run tauri -- build
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Build failed" -ForegroundColor Red
             exit 1
         }
 
-        # 2. portable exe
+        # 3. portable exe
         Write-Host "Collecting portable files..." -ForegroundColor Green
         if (Test-Path $PortableDir) { Remove-Item -Recurse -Force $PortableDir }
         if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
@@ -115,7 +138,7 @@ switch ($Action) {
             "[Features]",
             "- Desktop pet showing AI Agent status",
             "- Codex / Claude Code / Kimi Code / GitHub Copilot / QwenPaw",
-            "- HTTP/UDP/Serial hardware bridge (ESP32 RingLight)",
+            "- HTTP/UDP/Serial/BLE hardware bridge (ESP32)",
             "- System tray, autostart, multi-monitor",
             "",
             "[API]",
@@ -131,7 +154,7 @@ switch ($Action) {
         Write-Host "Creating portable zip..." -ForegroundColor Green
         Compress-Archive -Path "$PortableDir\*" -DestinationPath $ZipPath -Force
 
-        # 3. summary
+        # 4. summary
         $ExeSize = [math]::Round((Get-Item $DstExe).Length / 1MB, 2)
         $ZipSize = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
 

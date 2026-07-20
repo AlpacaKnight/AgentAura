@@ -43,13 +43,14 @@ export type InstalledPet = {
   animations: Record<string, AnimationSpec>;
 };
 
-export type HardwareTransport = 'disabled' | 'http' | 'udp' | 'serial';
+export type HardwareTransport = 'disabled' | 'http' | 'udp' | 'serial' | 'ble';
 
 export type HardwareConfig = {
   transport: HardwareTransport;
   host: string;
   port: number;
   serialPort: string;
+  bleAddress: string;
   baud: number;
   autoDiscover: boolean;
 };
@@ -114,6 +115,12 @@ export type DiscoveredHardware = {
 export type SerialPortInfo = {
   name: string;
   portType: string;
+};
+
+export type BleDeviceInfo = {
+  name: string;
+  address: string;
+  rssi?: number;
 };
 
 export const STATE_LABELS: Record<AgentState, string> = {

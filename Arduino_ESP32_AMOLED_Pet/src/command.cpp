@@ -212,12 +212,18 @@ String handleText(const String& cmd) {
   if (verb == "bluetooth" || verb == "ble") {
     args.toLowerCase();
     if (args == "on") {
-      comm::ble_toggle(true);
-      return "OK: bluetooth enabled";
+      if (comm::ble_toggle(true)) {
+        storage::saveBleEnabled(true);
+        return "OK: bluetooth enabled";
+      }
+      return "ERR: bluetooth failed to start; reboot and check BLE logs";
     }
     if (args == "off") {
-      comm::ble_toggle(false);
-      return "OK: bluetooth disabled";
+      if (comm::ble_toggle(false)) {
+        storage::saveBleEnabled(false);
+        return "OK: bluetooth disabled";
+      }
+      return "ERR: bluetooth failed to stop";
     }
     return comm::ble_is_running() ? "BLE: running" : "BLE: stopped";
   }

@@ -42,6 +42,8 @@ void     saveBrightness(uint8_t v);
 uint8_t  loadBrightness(uint8_t def);
 void     saveVolume(uint8_t v);
 uint8_t  loadVolume(uint8_t def);
+void     saveBleEnabled(bool enabled);
+bool     loadBleEnabled(bool def);
 
 } // namespace storage
 

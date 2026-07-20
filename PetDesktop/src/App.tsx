@@ -31,6 +31,7 @@ import {
   type AgentState,
   type AppSettings,
   type AppSnapshot,
+  type BleDeviceInfo,
   type DiscoveredHardware,
   type SerialPortInfo,
 } from './types';
@@ -260,12 +261,14 @@ function Pets({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
 function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [form, setForm] = useState<AppSettings>(snapshot.settings);
   const [devices, setDevices] = useState<DiscoveredHardware[]>([]);
+  const [bleDevices, setBleDevices] = useState<BleDeviceInfo[]>([]);
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
   const patchHardware = (patch: Partial<AppSettings['hardware']>) => setForm(value => ({ ...value, hardware: { ...value.hardware, ...patch } }));
   const scan = async () => {
-    const [found, serial] = await Promise.all([api.discoverHardware(), api.serialPorts()]);
+    const [found, ble, serial] = await Promise.all([api.discoverHardware(), api.bleDevices(), api.serialPorts()]);
     setDevices(found);
+    setBleDevices(ble);
     setPorts(serial);
   };
   return (
@@ -273,7 +276,7 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
       <article className="panel">
         <div className="panel-title"><div><p className="eyebrow">ACTIVE DEVICE</p><h2>硬件连接</h2></div><span className={`status-dot ${snapshot.hardware.connected ? 'online' : ''}`} /></div>
         <div className="segmented">
-          {(['disabled', 'http', 'udp', 'serial'] as const).map(transport => <button className={form.hardware.transport === transport ? 'active' : ''} key={transport} onClick={() => patchHardware({ transport })}>{transport}</button>)}
+          {(['disabled', 'http', 'udp', 'serial', 'ble'] as const).map(transport => <button className={form.hardware.transport === transport ? 'active' : ''} key={transport} onClick={() => patchHardware({ transport })}>{transport}</button>)}
         </div>
         {form.hardware.transport === 'http' || form.hardware.transport === 'udp' ? <>
           <label>主机地址<input value={form.hardware.host} placeholder="192.168.1.100" onChange={event => patchHardware({ host: event.target.value })} /></label>
@@ -283,13 +286,17 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
           <label>串口<Dropdown value={form.hardware.serialPort} placeholder="选择串口" options={[{ value: '', label: '选择串口' }, ...ports.map(port => ({ value: port.name, label: `${port.name} · ${port.portType}` }))]} onChange={value => patchHardware({ serialPort: value })} /></label>
           <label>波特率<input type="number" value={form.hardware.baud} onChange={event => patchHardware({ baud: Number(event.target.value) })} /></label>
         </>}
+        {form.hardware.transport === 'ble' && <>
+          <label>BLE 设备<Dropdown value={form.hardware.bleAddress} placeholder="选择 AgentAura BLE 设备" options={[{ value: '', label: '自动选择第一个 AgentAura 设备' }, ...bleDevices.map(device => ({ value: device.address, label: `${device.name} · ${device.address}${device.rssi == null ? '' : ` · ${device.rssi} dBm`}` }))]} onChange={value => patchHardware({ bleAddress: value })} /></label>
+        </>}
         <div className="form-actions"><button className="secondary" onClick={() => void scan()}><RefreshCw size={16} />扫描</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button></div>
         {snapshot.hardware.lastError && <p className="inline-error">{snapshot.hardware.lastError}</p>}
       </article>
       <article className="panel">
         <div className="panel-title"><div><p className="eyebrow">DISCOVERY</p><h2>发现结果</h2></div></div>
-        {devices.length === 0 && ports.length === 0 ? <Empty text="点击扫描查找局域网设备和本机串口。" /> : <div className="device-list">
+        {devices.length === 0 && bleDevices.length === 0 && ports.length === 0 ? <Empty text="点击扫描查找局域网、BLE 设备和本机串口。" /> : <div className="device-list">
           {devices.map(device => <button key={`${device.ip}-${device.mac}`} onClick={() => patchHardware({ transport: 'http', host: device.ip, port: device.http ?? 80 })}><Wifi /><span><strong>{device.device ?? device.model ?? 'AgentAura'}</strong><small>{device.ip}:{device.http ?? 80}</small></span></button>)}
+          {bleDevices.map(device => <button key={device.address} onClick={() => patchHardware({ transport: 'ble', bleAddress: device.address })}><Radio /><span><strong>{device.name}</strong><small>{device.address}{device.rssi == null ? '' : ` · ${device.rssi} dBm`}</small></span></button>)}
           {ports.map(port => <button key={port.name} onClick={() => patchHardware({ transport: 'serial', serialPort: port.name, baud: 115200 })}><Usb /><span><strong>{port.name}</strong><small>{port.portType}</small></span></button>)}
         </div>}
       </article>

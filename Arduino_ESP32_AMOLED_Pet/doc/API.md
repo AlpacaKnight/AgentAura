@@ -275,7 +275,8 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 | 设备名称 | `AgentAura-XXXX`（XXXX 为 MAC 后 4 位十六进制） |
 | TX 功率 | +9 dBm |
 | 库 | NimBLE-Arduino v2.5 |
-| 默认状态 | 启用（`BLE_ENABLED=true`） |
+| 默认状态 | 启用（`BLE_ENABLED=true`）；网页或 `ble on/off` 的选择写入 NVS |
+| 广播布局 | 主广播包含 Service UUID，扫描响应包含完整设备名称 |
 
 ### 服务与特征
 
@@ -283,10 +284,13 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 |------|------|------|------|
 | Service | `8e7f1a01-2b3c-4d5e-9f01-a1b2c3d4e5f0` | — | 主服务 |
 | CMD | `8e7f1a02-2b3c-4d5e-9f01-a1b2c3d4e5f0` | `WRITE \| WRITE_NR` | 写入文本指令（仅文本，以 `\n` 分隔） |
-| STATE | `8e7f1a03-2b3c-4d5e-9f01-a1b2c3d4e5f0` | `READ \| NOTIFY` | 读取状态 / 推送审批结果通知 |
+| STATE | `8e7f1a03-2b3c-4d5e-9f01-a1b2c3d4e5f0` | `READ \| NOTIFY` | 读取精简状态快照 / 推送命令响应和审批结果 |
 
 - 写入 CMD 特征的文本会逐行解析为文本指令，响应通过 STATE 特征的 NOTIFY 推出
+- STATE 主动读取返回不超过 BLE 512 字节 attribute 上限的 JSON 快照，包含设备、宠物动画、Agent、连接、亮度/音量和电池核心状态
+- `state\n` 等较长命令响应会按连接的 `ATT_MTU - 3` 自动分片为多个 Notify；客户端应按通知顺序拼接，并在短暂静默后将其视为一个完整响应
 - `approval_response` JSON 通过 STATE 特征的 NOTIFY 推送给已连接的客户端
+- `connections.ble` 表示当前是否有客户端连接；`connections.ble_running` 表示 GATT 服务是否已启动并处于可连接状态
 
 ---
 
@@ -318,6 +322,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
     "usb": true,
     "wifi": false,
     "ble": false,
+    "ble_running": true,
     "mqtt": false,
     "ws": false,
     "udp": true

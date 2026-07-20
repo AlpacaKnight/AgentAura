@@ -178,15 +178,18 @@ pub enum HardwareTransport {
     Http,
     Udp,
     Serial,
+    Ble,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct HardwareConfig {
     pub transport: HardwareTransport,
     pub host: String,
     pub port: u16,
     pub serial_port: String,
+    pub ble_address: String,
     pub baud: u32,
     pub auto_discover: bool,
 }
@@ -198,6 +201,7 @@ impl Default for HardwareConfig {
             host: String::new(),
             port: 80,
             serial_port: String::new(),
+            ble_address: String::new(),
             baud: 115_200,
             auto_discover: true,
         }

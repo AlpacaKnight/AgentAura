@@ -144,6 +144,7 @@ String getStateJson() {
   doc["connections"]["usb"]  = conn.usb;
   doc["connections"]["wifi"] = state.wifi_connected;
   doc["connections"]["ble"]  = state.ble_connected;
+  doc["connections"]["ble_running"] = state.ble_running;
   doc["connections"]["mqtt"] = state.mqtt_connected;
   doc["connections"]["ws"]   = state.ws_connected;
   doc["connections"]["udp"]  = conn.udp;
@@ -174,6 +175,37 @@ String getStateJson() {
     doc["approval"]["title"] = state.approval.title;
     doc["approval"]["description"] = state.approval.description;
   }
+
+  String output;
+  serializeJson(doc, output);
+  return output;
+}
+
+String getBleStateJson() {
+  JsonDocument doc;
+  doc["fw"] = FW_VERSION;
+  doc["device"] = DEVICE_MODEL;
+  doc["pet"]["state"] = getPetStateString(state.pet_state);
+  doc["pet"]["sprite_version"] = PET_SPRITE_VERSION;
+  doc["pet"]["assets_ready"] = state.pet_assets_ready;
+  doc["pet"]["animation_row"] = state.pet_animation_row;
+  doc["pet"]["animation_frame"] = state.pet_animation_frame;
+  if (state.pet_message.length() > 0) {
+    doc["pet"]["message"] = state.pet_message;
+  }
+  doc["agent"]["type"] = getAgentTypeString(state.agent_type);
+  doc["agent"]["name"] = state.agent_name;
+  doc["agent"]["state"] = state.agent_state;
+  doc["connections"]["usb"] = conn.usb;
+  doc["connections"]["wifi"] = state.wifi_connected;
+  doc["connections"]["ble"] = state.ble_connected;
+  doc["connections"]["ble_running"] = state.ble_running;
+  doc["connections"]["udp"] = conn.udp;
+  doc["settings"]["brightness"] = state.brightness;
+  doc["settings"]["volume"] = state.volume;
+  doc["settings"]["ble_enabled"] = (state.ble_enabled == RadioState::ON);
+  doc["battery"]["percent"] = state.battery_percent;
+  doc["battery"]["charging"] = state.battery_charging;
 
   String output;
   serializeJson(doc, output);

@@ -152,7 +152,11 @@ void setup() {
   storage::begin();
   state.brightness = storage::loadBrightness(DEFAULT_BRIGHTNESS);
   state.volume     = storage::loadVolume(DEFAULT_VOLUME);
-  Serial.printf("[main] brt=%d vol=%d\n", state.brightness, state.volume);
+  state.ble_enabled = storage::loadBleEnabled(BLE_ENABLED)
+                        ? RadioState::ON : RadioState::OFF;
+  Serial.printf("[main] brt=%d vol=%d ble=%s\n",
+                state.brightness, state.volume,
+                state.ble_enabled == RadioState::ON ? "on" : "off");
 
   // 3. 电源管理 (必须在显示之前初始化, AMOLED 需要 AXP2101 供电)
   hal::pmu_init();

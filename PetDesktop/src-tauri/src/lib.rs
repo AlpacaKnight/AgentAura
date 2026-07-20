@@ -172,6 +172,11 @@ async fn discover_hardware() -> Result<Vec<hardware::DiscoveredHardware>, String
 }
 
 #[tauri::command]
+async fn list_ble_devices() -> Result<Vec<hardware::BleDeviceInfo>, String> {
+    hardware::ble_devices().await
+}
+
+#[tauri::command]
 fn list_serial_ports() -> Result<Vec<hardware::SerialPortInfo>, String> {
     hardware::serial_ports()
 }
@@ -475,6 +480,7 @@ pub fn run() {
             select_pet,
             read_selected_pet_asset,
             discover_hardware,
+            list_ble_devices,
             list_serial_ports,
             test_hardware,
             show_management,

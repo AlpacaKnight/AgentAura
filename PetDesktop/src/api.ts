@@ -5,6 +5,7 @@ import type {
   AppSettings,
   AppSnapshot,
   DiscoveredHardware,
+  BleDeviceInfo,
   SerialPortInfo,
   ManagedPluginStatus,
   PluginOperationResult,
@@ -43,6 +44,7 @@ const browserFallback: AppSnapshot = {
       host: '',
       port: 80,
       serialPort: '',
+      bleAddress: '',
       baud: 115200,
       autoDiscover: true,
     },
@@ -66,7 +68,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   if (!isTauri()) {
     if (command === 'get_snapshot') return browserFallback as T;
     if (command === 'read_selected_pet_asset') return '' as T;
-    if (command === 'discover_hardware' || command === 'list_serial_ports' || command === 'list_managed_plugins' || command === 'inspect_plugin_packages') return [] as T;
+    if (command === 'discover_hardware' || command === 'list_ble_devices' || command === 'list_serial_ports' || command === 'list_managed_plugins' || command === 'inspect_plugin_packages') return [] as T;
     if (command === 'inspect_managed_plugin') {
       const provider = (args?.provider as PluginProvider) ?? 'claude';
       return { provider, installed: false, hooksInstalled: false, hooksSupported: false } as unknown as T;
@@ -89,6 +91,7 @@ export const api = {
   selectPet: (petId: string) => call<AppSnapshot>('select_pet', { petId }),
   selectedPetAsset: () => call<string>('read_selected_pet_asset'),
   discoverHardware: () => call<DiscoveredHardware[]>('discover_hardware'),
+  bleDevices: () => call<BleDeviceInfo[]>('list_ble_devices'),
   serialPorts: () => call<SerialPortInfo[]>('list_serial_ports'),
   testHardware: () => call<void>('test_hardware'),
   showManagement: () => call<void>('show_management'),

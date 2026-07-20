@@ -94,11 +94,12 @@ uv run pio run -e esp32c6 -t monitor --upload-port COM4
 
 ### 连接 PetDesktop
 
-固件兼容 PetDesktop 的 HTTP、UDP 和 USB 串口硬件桥接：
+固件兼容 PetDesktop 的 HTTP、UDP、USB 串口和 BLE 硬件桥接：
 
 - HTTP 主机填写设备 IP，端口填写 `80`。
 - UDP 主机填写设备 IP，端口填写 `8888`；也可以在 PetDesktop 中执行设备发现。
 - USB 串口选择设备端口，波特率填写 `115200`。
+- BLE 点击扫描并选择 `AgentAura-XXXX`；无需填写 IP 和端口。
 
 PetDesktop 的状态会按以下规则映射到宠物动画：
 

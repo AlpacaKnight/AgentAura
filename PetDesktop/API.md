@@ -72,7 +72,7 @@
 - `power ...`
 - `reset`
 
-说明：白名单命令会转发到当前硬件传输配置（HTTP/UDP/Serial）。
+说明：白名单命令会转发到当前硬件传输配置（HTTP/UDP/Serial/BLE）。
 
 ### 3.3 不支持命令
 
@@ -452,4 +452,4 @@ ERR unauthorized
 - `factory`
 - `wifi SSID,PASSWORD`
 - `help`
-- MQTT/BLE/WLED 通道
+- MQTT/WLED 通道

@@ -50,6 +50,7 @@ struct RuntimeState {
   bool      usb_connected  = false;
   bool      wifi_connected = false;
   bool      ble_connected  = false;
+  bool      ble_running    = false;
   bool      mqtt_connected = false;
   bool      ws_connected   = false;
 
@@ -95,6 +96,7 @@ extern ConnectionFlags conn;
 
 // ==================== 函数声明 ====================
 String getStateJson();                    // 生成完整状态 JSON
+String getBleStateJson();                 // 生成不超过 BLE attribute 上限的状态快照
 String getPetStateString(PetState ps);    // 宠物状态转字符串
 String getAgentTypeString(AgentType at);  // Agent 类型转字符串
 

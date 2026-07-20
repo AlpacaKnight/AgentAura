@@ -15,12 +15,14 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 - 桌宠文字气泡：状态模板 + Agent Hook 事件摘要，可关闭、可配置（模式、时长、字符数、字体缩放、显示来源）。
 - 系统托盘、Agent 管理、宠物管理、硬件配置、运行日志。
 - HTTP/UDP 固件兼容接口和 Agent 注册/心跳扩展接口。
-- HTTP、UDP、USB 串口硬件桥接。
+- HTTP、UDP、USB 串口、BLE GATT 硬件桥接。
 - 对 AgentAura AMOLED 固件同步 8 种 Agent 状态；当前有效 Agent 的气泡消息会转发为设备端 `pet speak`。
 
 ## 当前状态
 
 当前代码已覆盖透明桌宠、管理页、托盘、宠物安装、Agent 仲裁、本地 HTTP/UDP 接口和硬件桥接等主功能。状态优先级为 `error > waiting > upgrade > busy > running > init > idle > offline`；锁定来源在线时优先于自动仲裁，来源超过 30 秒未刷新后会离线并解除锁定，且只有最终状态改变时才向硬件发送新状态。
+
+硬件页选择 `ble` 后，点击“扫描”可发现广播 AgentAura Service UUID 的设备；选择 `AgentAura-XXXX` 并保存即可通过 BLE 同步状态、气泡和手动命令。BLE 长响应会自动拼接多个 Notify。
 
 ## 发布状态
 
@@ -99,6 +101,9 @@ xcode-select --install
 .\scripts\dev.ps1 test      # 运行前后端测试
 .\scripts\dev.ps1 clean     # 清理编译缓存
 ```
+
+`build` 会先删除 `src-tauri/target/release/bundle/` 中的旧安装包和 portable
+压缩包，再生成当前版本产物；不会删除 `target/release` 中的 Rust 增量编译缓存。
 
 ### 手动操作
 

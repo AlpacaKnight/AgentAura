@@ -25,7 +25,7 @@ function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       launchAtStartup: false,
       lanEnabled: false,
       lanToken: '',
-      hardware: { transport: 'disabled', host: '', port: 80, serialPort: '', baud: 115200, autoDiscover: true },
+      hardware: { transport: 'disabled', host: '', port: 80, serialPort: '', bleAddress: '', baud: 115200, autoDiscover: true },
       petBubble: bubbleSettings({}),
     },
     hardware: { connected: false, syncing: false },

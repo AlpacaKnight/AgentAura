@@ -79,4 +79,12 @@ uint8_t loadVolume(uint8_t def) {
   return s_prefs.getUChar(NVS_VOLUME, def);
 }
 
+void saveBleEnabled(bool enabled) {
+  s_prefs.putBool(NVS_BLE_ENABLED, enabled);
+}
+
+bool loadBleEnabled(bool def) {
+  return s_prefs.getBool(NVS_BLE_ENABLED, def);
+}
+
 } // namespace storage

@@ -15,7 +15,7 @@ namespace comm {
 void ble_begin();           // 启动 BLE 服务
 void ble_loop();            // 轮询
 void ble_stop();            // 停止 BLE
-void ble_toggle(bool on);   // 开关 BLE
+bool ble_toggle(bool on);   // 开关 BLE，返回目标状态是否生效
 
 bool ble_is_connected();    // 是否有 BLE 客户端连接
 bool ble_is_running();      // BLE 是否在运行
