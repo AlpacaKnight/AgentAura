@@ -85,7 +85,7 @@
 #define TCA9554_PIN_LCD_RST 1           // EXIO1: LCD 复位 (部分版本)
 
 // ==================== 固件信息 ====================
-#define FW_VERSION          "0.1.0"
+#define FW_VERSION          "0.3.0"
 #define FW_NAME             "AgentAura"
 #define DEVICE_MODEL        "ESP32-C6-AMOLED-PET"
 #define MDNS_NAME           "agentaura"

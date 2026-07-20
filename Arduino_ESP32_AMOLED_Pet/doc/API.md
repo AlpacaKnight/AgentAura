@@ -5,7 +5,7 @@
 | 项目 | 说明 |
 |------|------|
 | 固件名称 | AgentAura |
-| 固件版本 | 0.1.0 |
+| 固件版本 | 0.3.0 |
 | 目标硬件 | Waveshare ESP32-C6-Touch-AMOLED-1.8（SH8601 QSPI AMOLED 368×448 + FT3168 触摸 + ES8311 音频 + AXP2101 PMU） |
 | 通信通道 | USB 串口（CDC）、HTTP REST（STA 模式）、BLE GATT、WiFi AP 配网 |
 | 统一命令 | `command.cpp` 文本 + JSON 双协议解析 |
@@ -109,7 +109,7 @@ OK agent waiting
 > brightness 180
 OK: brightness -> 180
 > state
-{"fw":"0.1.0","device":"ESP32-C6-AMOLED-PET",...}
+{"fw":"0.3.0","device":"ESP32-C6-AMOLED-PET",...}
 ```
 
 ---
@@ -300,7 +300,7 @@ WiFi STA 连接失败时自动切换到 AP 模式。
 
 ```json
 {
-  "fw": "0.1.0",
+  "fw": "0.3.0",
   "device": "ESP32-C6-AMOLED-PET",
   "pet": {
     "state": "idle",
@@ -461,4 +461,4 @@ uv run pio device monitor -e esp32c6 -p /dev/ttyACM0 -b 115200
 
 ---
 
-*文档版本：1.0　|　固件版本：0.1.0　|　硬件：Waveshare ESP32-C6-Touch-AMOLED-1.8*
+*文档版本：1.0　|　固件版本：0.3.0　|　硬件：Waveshare ESP32-C6-Touch-AMOLED-1.8*
