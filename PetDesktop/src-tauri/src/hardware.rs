@@ -30,6 +30,7 @@ pub enum HardwareMessage {
     State(AgentState),
     PetMessage(String),
     Command(String, oneshot::Sender<Result<String, String>>),
+    Disconnect(oneshot::Sender<()>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,12 +70,25 @@ pub fn start_worker(core: AppCore) -> mpsc::Sender<HardwareMessage> {
             .build()
             .expect("reqwest client");
         while let Some(message) = receiver.recv().await {
+            if let HardwareMessage::Disconnect(responder) = message {
+                disconnect_ble_session(&mut ble_session).await;
+                let mut status = core.hardware_status();
+                status.connected = false;
+                status.syncing = false;
+                status.last_error = None;
+                status.device = None;
+                core.update_hardware(status);
+                let _ = responder.send(());
+                continue;
+            }
+
             let command = match &message {
                 HardwareMessage::State(state) => format!("agent {}", state.as_str()),
                 HardwareMessage::PetMessage(text) => {
                     format!("pet speak {}", hardware_message_text(text))
                 }
                 HardwareMessage::Command(command, _) => command.clone(),
+                HardwareMessage::Disconnect(_) => unreachable!(),
             };
             let mut status = core.hardware_status();
             status.syncing = true;

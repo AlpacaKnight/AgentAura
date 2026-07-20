@@ -22,7 +22,7 @@ PetDesktop 是 AgentAura 的三平台桌面宠物与硬件桥接器。它接收 
 
 当前代码已覆盖透明桌宠、管理页、托盘、宠物安装、Agent 仲裁、本地 HTTP/UDP 接口和硬件桥接等主功能。状态优先级为 `error > waiting > upgrade > busy > running > init > idle > offline`；锁定来源在线时优先于自动仲裁，来源超过 30 秒未刷新后会离线并解除锁定，且只有最终状态改变时才向硬件发送新状态。
 
-硬件页选择 `ble` 后，点击“扫描”可发现广播 AgentAura Service UUID 的设备；选择 `AgentAura-XXXX` 并保存即可通过 BLE 同步状态、气泡和手动命令。BLE 长响应会自动拼接多个 Notify。
+硬件页的“扫描”会并行执行局域网 UDP 发现、AgentAura Service UUID 的 BLE 扫描和本机串口枚举，各通道失败互不影响。扫描只生成候选项，点击设备后仍需“保存连接”才会启用对应传输。HTTP 适合同一局域网内的稳定连接，BLE 适合无需 Wi-Fi 的无线直连，串口适合 USB 调试或无网络环境。BLE 会保持连接并在通信失败后自动重连一次，长响应会自动拼接多个 Notify；点击“断开连接”会释放 BLE 会话并将硬件传输切换为 `disabled`，避免后续状态变化再次自动连接。
 
 ## 发布状态
 

@@ -19,6 +19,7 @@ import {
   Settings,
   Trash2,
   Unlock,
+  Unplug,
   Usb,
   Wifi,
 } from 'lucide-react';
@@ -263,13 +264,21 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
   const [devices, setDevices] = useState<DiscoveredHardware[]>([]);
   const [bleDevices, setBleDevices] = useState<BleDeviceInfo[]>([]);
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState('');
   useEffect(() => setForm(snapshot.settings), [snapshot.settings]);
   const patchHardware = (patch: Partial<AppSettings['hardware']>) => setForm(value => ({ ...value, hardware: { ...value.hardware, ...patch } }));
   const scan = async () => {
-    const [found, ble, serial] = await Promise.all([api.discoverHardware(), api.bleDevices(), api.serialPorts()]);
-    setDevices(found);
-    setBleDevices(ble);
-    setPorts(serial);
+    setScanning(true);
+    setScanError('');
+    const results = await Promise.allSettled([api.discoverHardware(), api.bleDevices(), api.serialPorts()]);
+    if (results[0].status === 'fulfilled') setDevices(results[0].value);
+    if (results[1].status === 'fulfilled') setBleDevices(results[1].value);
+    if (results[2].status === 'fulfilled') setPorts(results[2].value);
+    const labels = ['局域网', '蓝牙', '串口'];
+    const errors = results.flatMap((result, index) => result.status === 'rejected' ? [`${labels[index]}：${String(result.reason)}`] : []);
+    setScanError(errors.join('；'));
+    setScanning(false);
   };
   return (
     <section className="split-layout">
@@ -289,7 +298,9 @@ function Hardware({ snapshot, run }: { snapshot: AppSnapshot; run: Run }) {
         {form.hardware.transport === 'ble' && <>
           <label>BLE 设备<Dropdown value={form.hardware.bleAddress} placeholder="选择 AgentAura BLE 设备" options={[{ value: '', label: '自动选择第一个 AgentAura 设备' }, ...bleDevices.map(device => ({ value: device.address, label: `${device.name} · ${device.address}${device.rssi == null ? '' : ` · ${device.rssi} dBm`}` }))]} onChange={value => patchHardware({ bleAddress: value })} /></label>
         </>}
-        <div className="form-actions"><button className="secondary" onClick={() => void scan()}><RefreshCw size={16} />扫描</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button></div>
+        <p className="muted">扫描只查找候选设备；点击结果后需要保存连接。HTTP 适合同一局域网，BLE 适合无线直连，串口适合 USB 调试或无网络环境。</p>
+        <div className="form-actions"><button className="secondary" disabled={scanning} onClick={() => void scan()}><RefreshCw size={16} />{scanning ? '扫描中' : '扫描'}</button><button className="primary" onClick={() => run(() => api.saveSettings(form))}>保存连接</button><button className="secondary" onClick={() => run(() => api.testHardware())}>测试</button><button className="secondary danger" disabled={!snapshot.hardware.connected && snapshot.settings.hardware.transport === 'disabled'} onClick={() => run(() => api.disconnectHardware())}><Unplug size={16} />断开连接</button></div>
+        {scanError && <p className="inline-error">{scanError}</p>}
         {snapshot.hardware.lastError && <p className="inline-error">{snapshot.hardware.lastError}</p>}
       </article>
       <article className="panel">

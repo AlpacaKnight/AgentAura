@@ -13,7 +13,7 @@ use std::{
 };
 
 use core::AppCore;
-use model::{AgentState, AppSettings, AppSnapshot, LogLevel};
+use model::{AgentState, AppSettings, AppSnapshot, HardwareTransport, LogLevel};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -184,6 +184,16 @@ fn list_serial_ports() -> Result<Vec<hardware::SerialPortInfo>, String> {
 #[tauri::command]
 async fn test_hardware(core: State<'_, AppCore>) -> Result<(), String> {
     core.forward_command("state".to_string()).await.map(|_| ())
+}
+
+#[tauri::command]
+async fn disconnect_hardware(core: State<'_, AppCore>) -> Result<AppSnapshot, String> {
+    let mut settings = core.settings();
+    settings.hardware.transport = HardwareTransport::Disabled;
+    core.save_settings(settings)
+        .map_err(|error| error.to_string())?;
+    core.disconnect_hardware().await?;
+    Ok(core.snapshot())
 }
 
 #[tauri::command]
@@ -483,6 +493,7 @@ pub fn run() {
             list_ble_devices,
             list_serial_ports,
             test_hardware,
+            disconnect_hardware,
             show_management,
             show_pet,
             inspect_plugin_packages,

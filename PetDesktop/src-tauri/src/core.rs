@@ -552,6 +552,21 @@ impl AppCore {
             .map_err(|_| "hardware worker dropped response".to_string())?
     }
 
+    pub async fn disconnect_hardware(&self) -> Result<(), String> {
+        let sender = self
+            .hardware_tx
+            .lock()
+            .clone()
+            .ok_or_else(|| "hardware worker is unavailable".to_string())?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        sender
+            .send(HardwareMessage::Disconnect(tx))
+            .await
+            .map_err(|_| "hardware worker stopped".to_string())?;
+        rx.await
+            .map_err(|_| "hardware worker dropped disconnect response".to_string())
+    }
+
     pub fn queue_hardware(&self, message: HardwareMessage) {
         let sender = self.hardware_tx.lock().clone();
         if let Some(sender) = sender {

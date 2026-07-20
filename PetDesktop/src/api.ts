@@ -94,6 +94,7 @@ export const api = {
   bleDevices: () => call<BleDeviceInfo[]>('list_ble_devices'),
   serialPorts: () => call<SerialPortInfo[]>('list_serial_ports'),
   testHardware: () => call<void>('test_hardware'),
+  disconnectHardware: () => call<AppSnapshot>('disconnect_hardware'),
   showManagement: () => call<void>('show_management'),
   showPet: (visible: boolean) => call<void>('show_pet', { visible }),
   inspectPluginPackages: (paths: string[]) => call<PluginPackageInspection[]>('inspect_plugin_packages', { paths }),
