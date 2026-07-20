@@ -11,9 +11,11 @@
 | 设备 | 描述 |
 |------|------|
 | ESP32-C3 + WS2812B 环形灯 | 24 颗 RGB LED 圆环，支持 BLE + WiFi 共存，通过 HTTP/UDP/串口 接收状态指令 |
+| ESP32-C6-Touch-AMOLED-1.8 | Waveshare 1.8" AMOLED 触摸屏桌宠，SPIFFS 动画资源、BLE GATT、中文网页管理、审批请求 |
 
 <p align="center">
   <img src="docs/ESP32开发板圆形幻彩灯WS2812B圆环.png" width="300" alt="ESP32 圆环灯板">
+  <img src="docs/ESP32-C6-Touch-AMOLED-1.8.jpg" width="300" alt="ESP32-C6 AMOLED 桌宠">
 </p>
 
 ---
@@ -101,8 +103,10 @@ AgentAura/
 ├── Arduino_ESP32_RingLight/             # 硬件：ESP32 环形灯
 │   ├── ESP32_RingLight_Demo/
 │   └── ESP32_RingLight_Firmware/
+├── Arduino_ESP32_AMOLED_Pet/            # 硬件：ESP32-C6 AMOLED 桌宠
 ├── docs/                                # 文档与资源
-│   └── ESP32开发板圆形幻彩灯WS2812B圆环.png
+│   ├── ESP32开发板圆形幻彩灯WS2812B圆环.png
+│   └── ESP32-C6-Touch-AMOLED-1.8.jpg
 └── dist/                                # 构建产物
     ├── plugin/                          # 各插件的安装包（.tgz / .zip / .vsix）
     └── desktop/                         # PetDesktop 安装包（msi / exe / portable.zip）
@@ -110,7 +114,7 @@ AgentAura/
 
 ### 目录命名约定
 
-- `Arduino_{MCU}_{硬件类型}/`：硬件子项目，例如 `Arduino_ESP32_RingLight` 表示基于 ESP32 的环形灯。
+- `Arduino_{MCU}_{硬件类型}/`：硬件子项目，例如 `Arduino_ESP32_RingLight`（环形灯）、`Arduino_ESP32_AMOLED_Pet`（AMOLED 桌宠）。
 - `Agent_Plugin/{plugin-name}/`：IDE / Agent CLI 插件，命名统一为 `agent-aura-{平台名}`，例如 `agent-aura-copilot`、`agent-aura-claude`、`agent-aura-kimi-code`、`agent-aura-qwencode`，其中 qwenpaw 因平台名称特殊保留为 `qwenpaw-plugin`。
 
 ---
