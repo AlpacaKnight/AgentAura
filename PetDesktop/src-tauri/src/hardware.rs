@@ -576,13 +576,23 @@ pub async fn discover() -> Result<Vec<DiscoveredHardware>, String> {
 pub fn serial_ports() -> Result<Vec<SerialPortInfo>, String> {
     let ports = serialport::available_ports()
         .map_err(|error| format!("cannot list serial ports: {error}"))?;
-    Ok(ports
+    let mut ports = ports
         .into_iter()
-        .map(|port| SerialPortInfo {
-            name: port.port_name,
-            port_type: format_port_type(&port.port_type),
-        })
-        .collect())
+        .filter_map(usb_serial_port)
+        .collect::<Vec<_>>();
+    ports.sort_unstable_by(|left, right| left.name.cmp(&right.name));
+    ports.dedup_by(|left, right| left.name == right.name);
+    Ok(ports)
+}
+
+fn usb_serial_port(port: serialport::SerialPortInfo) -> Option<SerialPortInfo> {
+    if !matches!(port.port_type, serialport::SerialPortType::UsbPort(_)) {
+        return None;
+    }
+    Some(SerialPortInfo {
+        name: port.port_name,
+        port_type: format_port_type(&port.port_type),
+    })
 }
 
 /// 将串口类型枚举转换为简洁的可读标签，避免 `{:?}` 输出的冗长调试信息。
@@ -638,6 +648,29 @@ fn hardware_message_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serial_scan_keeps_only_usb_ports() {
+        let usb = serialport::SerialPortInfo {
+            port_name: "/dev/ttyACM0".to_string(),
+            port_type: serialport::SerialPortType::UsbPort(serialport::UsbPortInfo {
+                vid: 0x303a,
+                pid: 0x1001,
+                serial_number: None,
+                manufacturer: Some("Espressif".to_string()),
+                product: Some("USB JTAG/serial debug unit".to_string()),
+            }),
+        };
+        let unknown = serialport::SerialPortInfo {
+            port_name: "/dev/ttyS0".to_string(),
+            port_type: serialport::SerialPortType::Unknown,
+        };
+
+        let usb = usb_serial_port(usb).expect("USB serial port should be retained");
+        assert_eq!(usb.name, "/dev/ttyACM0");
+        assert!(usb.port_type.contains("303a:1001"));
+        assert!(usb_serial_port(unknown).is_none());
+    }
 
     #[tokio::test]
     async fn disabled_transport_returns_a_clear_error() {
