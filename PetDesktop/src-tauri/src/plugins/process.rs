@@ -19,8 +19,8 @@ use tokio::sync::oneshot;
 use zip::ZipArchive;
 
 use super::env::{
-    backup_qwen_extension, config, emit_log, hook_present, node_command, npm_command, out, pkg,
-    qwen_command, qwen_extension_dir, remove_backup, rollback_qwen_extension, root, run,
+    backup_qwen_extension, config, emit_log, home, hook_present, node_command, npm_command, out,
+    pkg, qwen_command, qwen_extension_dir, remove_backup, rollback_qwen_extension, root, run,
 };
 use super::inspect::{safe, validate_qwen_zip};
 use super::model::{
@@ -397,8 +397,37 @@ fn global_node_package_installed(package: &str) -> bool {
     global_node_package_version(package).is_some()
 }
 
+fn claude_install_info_from(path: &Path) -> (bool, Option<String>) {
+    let value: Value = match fs::read(path)
+        .ok()
+        .and_then(|content| serde_json::from_slice(&content).ok())
+    {
+        Some(value) => value,
+        None => return (false, None),
+    };
+    let Some(plugins) = value.get("plugins").and_then(Value::as_object) else {
+        return (false, None);
+    };
+    let Some(installs) = plugins.iter().find_map(|(name, installs)| {
+        name.starts_with("agent-aura-claude@")
+            .then_some(installs)
+    }) else {
+        return (false, None);
+    };
+    let version = installs
+        .as_array()
+        .and_then(|entries| entries.first())
+        .and_then(|entry| entry.get("version"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    (true, version)
+}
+
 fn external_install_info(p: PluginProvider) -> (bool, Option<String>) {
     match p {
+        PluginProvider::Claude => home()
+            .map(|home| claude_install_info_from(&home.join(".claude/plugins/installed_plugins.json")))
+            .unwrap_or((false, None)),
         PluginProvider::Copilot => run(Command::new("code")
             .arg("--list-extensions")
             .arg("--show-versions"))
@@ -444,6 +473,48 @@ fn external_install_info(p: PluginProvider) -> (bool, Option<String>) {
             })
             .unwrap_or((false, None)),
         _ => (false, None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::claude_install_info_from;
+    use std::fs;
+
+    #[test]
+    fn detects_claude_marketplace_installation() {
+        let directory = tempfile::tempdir().unwrap();
+        let registry = directory.path().join("installed_plugins.json");
+        fs::write(
+            &registry,
+            r#"{
+                "version": 2,
+                "plugins": {
+                    "agent-aura-claude@agentaura": [
+                        {"scope": "user", "version": "0.3.0"}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            claude_install_info_from(&registry),
+            (true, Some("0.3.0".to_string()))
+        );
+    }
+
+    #[test]
+    fn ignores_unrelated_claude_plugins() {
+        let directory = tempfile::tempdir().unwrap();
+        let registry = directory.path().join("installed_plugins.json");
+        fs::write(
+            &registry,
+            r#"{"plugins":{"another-plugin@marketplace":[{"version":"1.0.0"}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(claude_install_info_from(&registry), (false, None));
     }
 }
 
