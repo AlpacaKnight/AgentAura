@@ -408,10 +408,10 @@ fn claude_install_info_from(path: &Path) -> (bool, Option<String>) {
     let Some(plugins) = value.get("plugins").and_then(Value::as_object) else {
         return (false, None);
     };
-    let Some(installs) = plugins.iter().find_map(|(name, installs)| {
-        name.starts_with("agent-aura-claude@")
-            .then_some(installs)
-    }) else {
+    let Some(installs) = plugins
+        .iter()
+        .find_map(|(name, installs)| name.starts_with("agent-aura-claude@").then_some(installs))
+    else {
         return (false, None);
     };
     let version = installs
@@ -426,7 +426,9 @@ fn claude_install_info_from(path: &Path) -> (bool, Option<String>) {
 fn external_install_info(p: PluginProvider) -> (bool, Option<String>) {
     match p {
         PluginProvider::Claude => home()
-            .map(|home| claude_install_info_from(&home.join(".claude/plugins/installed_plugins.json")))
+            .map(|home| {
+                claude_install_info_from(&home.join(".claude/plugins/installed_plugins.json"))
+            })
             .unwrap_or((false, None)),
         PluginProvider::Copilot => run(Command::new("code")
             .arg("--list-extensions")
