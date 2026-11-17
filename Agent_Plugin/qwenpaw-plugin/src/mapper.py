@@ -4,7 +4,7 @@
 The mapping table is the single source of truth — adjust which light
 state each QwenPaw event triggers here. ``dispatch`` is async-safe:
 sync ``httpx`` calls are dispatched to a worker thread so the asyncio
-event loop (which drives ``AgentRunner.query_handler``) is never blocked.
+event loop (which drives QwenPaw's query stream) is never blocked.
 """
 
 from __future__ import annotations

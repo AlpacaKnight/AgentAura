@@ -153,6 +153,15 @@ function RingLightConfigPage() {
   const [discovering, setDiscovering] = React.useState(false);
   const [serialPorts, setSerialPorts] = React.useState<SerialPortInfo[]>([]);
   const [portsLoading, setPortsLoading] = React.useState(false);
+  // null = unknown (older backend), so the hint only shows once confirmed.
+  const [pyserialAvailable, setPyserialAvailable] = React.useState<
+    boolean | null
+  >(null);
+  const [installingDeps, setInstallingDeps] = React.useState(false);
+  const [runtime, setRuntime] = React.useState<{
+    plugin?: string;
+    qwenpaw?: string;
+  } | null>(null);
   const [transport, setTransport] = React.useState<Transport>("http");
   const [testing, setTesting] = React.useState<string | null>(null);
   const [authTokenTouched, setAuthTokenTouched] = React.useState(false);
@@ -164,6 +173,13 @@ function RingLightConfigPage() {
       const st = await apiGet("/agentaura/status");
       const client: ClientStatus = st.client ?? {};
       setStatus(client);
+      if (typeof st.pyserial_available === "boolean") {
+        setPyserialAvailable(st.pyserial_available);
+      }
+      setRuntime({
+        plugin: st.plugin_version,
+        qwenpaw: st.qwenpaw_version,
+      });
       // Sync the form with the backend's current config so the UI always
       // reflects what the device is actually using.
       const t: Transport = (client.transport as Transport) || "http";
@@ -214,7 +230,14 @@ function RingLightConfigPage() {
     try {
       const r = await apiGet("/agentaura/serial-ports");
       setSerialPorts(r.ports || []);
-      if ((r.ports || []).length === 0) {
+      if (typeof r.pyserial_available === "boolean") {
+        setPyserialAvailable(r.pyserial_available);
+      }
+      if (r.pyserial_available === false) {
+        message.warning(
+          "当前 QwenPaw 环境未安装 pyserial，串口功能不可用（见 README 的可选依赖说明）",
+        );
+      } else if ((r.ports || []).length === 0) {
         message.info(
           "未发现串口，请确认设备已通过 USB 连接并被系统识别",
         );
@@ -231,6 +254,29 @@ function RingLightConfigPage() {
       void listSerialPorts();
     }
   }, [transport]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- install optional python deps (pyserial) from inside the plugin
+  const installSerialDeps = async () => {
+    setInstallingDeps(true);
+    try {
+      const r = await apiPost("/agentaura/deps/install", {
+        modules: ["serial"],
+      });
+      if (r.ok) {
+        message.success("串口依赖已安装，可直接选择串口");
+        setPyserialAvailable(true);
+        await listSerialPorts();
+      } else {
+        message.error(
+          `安装失败：${r.detail || "pip 未完成，请检查网络或在运行环境手动安装"}`,
+        );
+      }
+    } catch (e: any) {
+      message.error(e?.message || String(e));
+    } finally {
+      setInstallingDeps(false);
+    }
+  };
 
   // --- save config
   const saveConfig = async () => {
@@ -371,6 +417,12 @@ function RingLightConfigPage() {
               { color: reachable ? "green" : "red" },
               reachable ? "● 设备在线" : "● 设备离线",
             ),
+            runtime?.qwenpaw &&
+              React.createElement(
+                Tag,
+                null,
+                `QwenPaw ${runtime.qwenpaw} / 插件 ${runtime.plugin || "?"}`,
+              ),
             status?.host &&
               React.createElement(AntText, { type: "secondary" }, `Host: ${status.host}`),
             status?.serial_port &&
@@ -456,17 +508,44 @@ function RingLightConfigPage() {
               React.createElement(
                 "div",
                 { key: "serial" },
-                React.createElement(
-                  Alert,
-                  {
-                    type: "info",
-                    showIcon: true,
-                    style: { marginBottom: 16 },
-                    message: "USB 串口模式",
-                    description:
-                      "pyserial 会在安装插件时自动安装。设备通过 USB 连接到本机，无需 WiFi。",
-                  },
-                ),
+                React.createElement(Alert, {
+                  type: pyserialAvailable === false ? "warning" : "info",
+                  showIcon: true,
+                  style: { marginBottom: 16 },
+                  message:
+                    pyserialAvailable === false
+                      ? "USB 串口模式（缺少 pyserial）"
+                      : "USB 串口模式",
+                  description:
+                    pyserialAvailable === false
+                      ? React.createElement(
+                          "div",
+                          null,
+                          React.createElement(
+                            AntText,
+                            { type: "secondary" },
+                            "pyserial 是可选依赖（为避免插件被判定为异常，不写进硬依赖）。" +
+                              "插件启动时会自动尝试安装；也可以点击下面的按钮立即安装到 " +
+                              "QwenPaw 的插件依赖目录。离线环境请在该插件运行的解释器里手动执行 " +
+                              "`python -m pip install pyserial`。",
+                          ),
+                          React.createElement(
+                            "div",
+                            { style: { marginTop: 8 } },
+                            React.createElement(
+                              Button,
+                              {
+                                size: "small",
+                                type: "primary",
+                                loading: installingDeps,
+                                onClick: () => void installSerialDeps(),
+                              },
+                              "安装串口依赖",
+                            ),
+                          ),
+                        )
+                      : "设备通过 USB 连接到本机，无需 WiFi。",
+                }),
                 React.createElement(
                   Form.Item,
                   {

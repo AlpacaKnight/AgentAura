@@ -1,167 +1,264 @@
 # -*- coding: utf-8 -*-
-"""Patch ``AgentRunner.query_handler`` to emit ringlight events.
+"""Capture the QwenPaw query lifecycle and emit ring-light events.
+
+Supported runtime: **QwenPaw >= 2.3.0**. Every request flows through
+``qwenpaw.app.workspace.workspace.Workspace.stream_query`` (its docstring
+literally calls itself the *drop-in replacement for the old*
+``Runner.stream_query()``). The stream yields the schema objects from
+``qwenpaw.schemas``: ``AgentResponse`` / ``Message`` envelopes plus bare
+``TextContent`` / ``DataContent`` blocks.
+
+Tool activity is carried by ``DataContent`` blocks: a tool call exposes a
+``FunctionCall`` payload (``call_id`` / ``name`` / ``arguments``), a tool
+result a ``FunctionCallOutput`` payload (… / ``output``). Text blocks map
+to "the agent started replying".
 
 Adapted from ``qwenpaw-pet/patch_runner.py`` — same event-classification
-logic, but the emit target is the ESP32 ring light via
-``mapper.schedule_emit`` instead of the desktop pet HTTP bridge.
+intent, emit target swapped to the ESP32 ring light via
+``mapper.schedule_emit``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Iterator
 
 from .mapper import schedule_emit
 
 logger = logging.getLogger("agentaura")
 
-_ORIGINAL_QUERY_HANDLER = None
+# Patched targets, as ``(owner, attribute, original)`` triples so that a
+# restore() puts back exactly what was replaced.
+_ORIGINALS: list[tuple[Any, str, Any]] = []
 _PATCHED = False
 
+# Keys of the ``FunctionCall`` payload carried by a 2.x ``DataContent``
+# block. A tool *result* instead carries ``output``.
+_CALL_KEYS = ("call_id", "name", "arguments")
 
-def _request_meta(runner: Any, request: Any) -> dict[str, Any]:
+# Content block types emitted directly on the stream.
+_CONTENT_BLOCK_TYPES = frozenset(
+    {"text", "data", "image", "audio", "video", "file", "refusal"},
+)
+
+
+# --------------------------------------------------------------- accessors
+
+
+def _get(obj: Any, key: str, default: Any = None) -> Any:
+    """Read *key* from a dict or from an attribute-based schema object."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _block_type(block: Any) -> str:
+    value = _get(block, "type")
+    # Both the schema enums (ContentType) and plain strings appear here.
+    value = getattr(value, "value", value)
+    return str(value or "").strip().lower()
+
+
+def _payload_dict(block: Any) -> dict[str, Any]:
+    """Return the ``FunctionCall``/``FunctionCallOutput`` dict of a block."""
+    data = _get(block, "data")
+    if isinstance(data, dict):
+        return data
+    # Some builds hand over a pydantic model instead of a dumped dict.
+    dump = getattr(data, "model_dump", None)
+    if callable(dump):
+        try:
+            dumped = dump()
+        except Exception:  # pragma: no cover - defensive
+            return {}
+        return dumped if isinstance(dumped, dict) else {}
+    return {}
+
+
+def _request_meta(owner: Any, request: Any) -> dict[str, Any]:
+    """Build the identity payload attached to every emitted event."""
     return {
-        "agent_id": getattr(runner, "agent_id", "default"),
-        "agent_name": getattr(runner, "agent_name", "QwenPaw"),
-        "session_id": getattr(request, "session_id", "") if request else "",
-        "user_id": getattr(request, "user_id", "") if request else "",
-        "channel": getattr(request, "channel", "") if request else "",
+        "agent_id": _get(owner, "agent_id", None) or "default",
+        "agent_name": _get(owner, "agent_name", None) or "QwenPaw",
+        "session_id": _get(request, "session_id", "") or "",
+        "user_id": _get(request, "user_id", "") or "",
+        "channel": _get(request, "channel", "") or "",
     }
 
 
-def _block_get(block: Any, key: str, default: Any = None) -> Any:
-    if isinstance(block, dict):
-        return block.get(key, default)
-    return getattr(block, key, default)
+# ------------------------------------------------------------ classification
 
 
-def _iter_blocks(msg: Any):
-    content = getattr(msg, "content", None)
-    if content is None and isinstance(msg, dict):
-        content = msg.get("content")
-    if isinstance(content, list):
+def _iter_blocks(item: Any) -> Iterator[Any]:
+    """Yield the content blocks carried by one streamed item.
+
+    Handles a bare content block, a ``Message`` (``.content``) and an
+    ``AgentResponse`` (``.output`` holding messages).
+    """
+    if item is None:
+        return
+
+    if _block_type(item) in _CONTENT_BLOCK_TYPES:
+        yield item
+        return
+
+    content = _get(item, "content")
+    if isinstance(content, (list, tuple)):
         yield from content
-    elif isinstance(content, dict):
+    elif content is not None and not isinstance(content, str):
         yield content
-    elif isinstance(content, str) and content.strip():
-        yield {"type": "text", "text": content}
+
+    output = _get(item, "output")
+    if isinstance(output, (list, tuple)):
+        for entry in output:
+            yield from _iter_blocks(entry)
 
 
-def _is_tool_guard_approval_msg(msg: Any) -> bool:
-    metadata = getattr(msg, "metadata", None)
-    if isinstance(msg, dict):
-        metadata = msg.get("metadata", metadata)
+def _is_tool_guard_approval(item: Any) -> bool:
+    """True for the approval prompt message QwenPaw streams into chat."""
+    metadata = _get(item, "metadata")
     return (
         isinstance(metadata, dict)
         and metadata.get("message_type") == "tool_guard_approval"
     )
 
 
-def _classify_msg(msg: Any) -> tuple[str | None, str | None]:
-    """Return ``(event_name, text)`` for a streamed message chunk."""
-    if _is_tool_guard_approval_msg(msg):
-        return None, None
-    for block in _iter_blocks(msg):
-        block_type = _block_get(block, "type")
-        if block_type == "tool_use":
-            name = _block_get(block, "name") or "tool"
-            return "tool.detected", f"Using {str(name)[:40]}"
-        if block_type == "tool_result":
+def _classify_block(block: Any) -> tuple[str | None, str | None]:
+    """Map one content block to ``(event_name, text)``.
+
+    ``(None, None)`` means "nothing worth showing on the light".
+    """
+    block_type = _block_type(block)
+
+    # Tool call / tool result: DataContent carrying a FunctionCall or
+    # FunctionCallOutput payload.
+    if block_type == "data":
+        payload = _payload_dict(block)
+        if not payload:
+            return None, None
+        if "output" in payload:
             return "tool.result", "Tool result"
-        if block_type == "text":
-            text = str(_block_get(block, "text") or "").strip()
-            if text:
-                return "query.first_token", "Replying"
+        if any(key in payload for key in _CALL_KEYS):
+            name = payload.get("name") or _get(block, "name") or "tool"
+            return "tool.detected", f"Using {str(name)[:40]}"
+        return None, None
+
+    # Text: the assistant started replying.
+    if block_type == "text":
+        text = str(_get(block, "text") or "").strip()
+        if text:
+            return "query.first_token", "Replying"
+        return None, None
+
     return None, None
 
 
-def _split_result(result: Any) -> tuple[Any, bool | None]:
-    if isinstance(result, tuple) and len(result) >= 2:
-        return result[0], result[1]
-    if isinstance(result, list) and len(result) >= 2:
-        return result[0], result[1]
-    return result, None
+def classify_item(item: Any) -> tuple[str | None, str | None]:
+    """Return ``(event_name, text)`` for one streamed item.
+
+    The first classifiable block wins; a tool call is preferred over
+    plain text so that a message carrying both is reported as tool usage.
+    """
+    if _is_tool_guard_approval(item):
+        return None, None
+
+    fallback: tuple[str | None, str | None] = (None, None)
+    for block in _iter_blocks(item):
+        event, text = _classify_block(block)
+        if event is None:
+            continue
+        if event == "tool.detected":
+            return event, text
+        if fallback[0] is None:
+            fallback = (event, text)
+    return fallback
 
 
-def patch_agent_runner() -> None:
-    """Wrap ``AgentRunner.query_handler`` to observe the reply stream."""
-    global _ORIGINAL_QUERY_HANDLER, _PATCHED
+# ------------------------------------------------------------------- patching
 
-    if _PATCHED:
-        return
 
-    from qwenpaw.app.runner.runner import AgentRunner
+def _wrap_stream(original: Any) -> Any:
+    """Wrap an async query stream so each stage drives the ring light."""
 
-    _ORIGINAL_QUERY_HANDLER = AgentRunner.query_handler
-
-    async def patched_query_handler(self, msgs, request=None, **kwargs):
+    async def patched(self, request=None, *args, **kwargs):
         meta = _request_meta(self, request)
-        saw_first_output = False
-        last_event = None
+        last_event: str | None = None
 
         schedule_emit("query.received", text="New message", **meta)
         schedule_emit("query.running", text="Thinking", **meta)
 
         try:
-            async for result in _ORIGINAL_QUERY_HANDLER(
-                self,
-                msgs,
-                request,
-                **kwargs,
-            ):
-                msg, is_last = _split_result(result)
-                event, text = _classify_msg(msg)
-
+            async for item in original(self, request, *args, **kwargs):
+                event, text = classify_item(item)
                 if event and event != last_event:
                     schedule_emit(event, text=text, **meta)
                     last_event = event
-
-                if not saw_first_output:
-                    saw_first_output = True
-                    if event is None:
-                        schedule_emit(
-                            "query.first_token",
-                            text="Replying",
-                            **meta,
-                        )
-                        last_event = "query.first_token"
-
-                yield result
-
-                if is_last:
-                    last_event = None
+                yield item
 
             schedule_emit("query.done", text="Done", **meta)
 
         except asyncio.CancelledError:
-            schedule_emit(
-                "query.cancelled",
-                text="Interrupted",
-                **meta,
-            )
+            schedule_emit("query.cancelled", text="Interrupted", **meta)
             raise
         except Exception as exc:
-            schedule_emit(
-                "query.error",
-                text=type(exc).__name__,
-                **meta,
-            )
+            schedule_emit("query.error", text=type(exc).__name__, **meta)
             raise
 
-    AgentRunner.query_handler = patched_query_handler
-    _PATCHED = True
-    logger.info("RingLight patched AgentRunner.query_handler")
+    return patched
 
 
-def restore_agent_runner() -> None:
+def _patch_target(owner: Any, attribute: str) -> bool:
+    """Replace ``owner.attribute`` with a wrapped version, once."""
+    original = getattr(owner, attribute, None)
+    if original is None or getattr(original, "_agentaura_wrapped", False):
+        return False
+    wrapped = _wrap_stream(original)
+    wrapped._agentaura_wrapped = True  # type: ignore[attr-defined]
+    setattr(owner, attribute, wrapped)
+    _ORIGINALS.append((owner, attribute, original))
+    return True
+
+
+def patch_query_stream() -> None:
+    """Patch ``Workspace.stream_query`` of the running QwenPaw (>= 2.3.0).
+
+    Raises:
+        RuntimeError: when the entry point is missing — the plugin logs
+            this and keeps its HTTP routes usable.
+    """
     global _PATCHED
 
-    if not _PATCHED or _ORIGINAL_QUERY_HANDLER is None:
+    if _PATCHED:
         return
 
-    from qwenpaw.app.runner.runner import AgentRunner
+    from qwenpaw.app.workspace.workspace import Workspace
 
-    AgentRunner.query_handler = _ORIGINAL_QUERY_HANDLER
+    if not _patch_target(Workspace, "stream_query"):
+        raise RuntimeError(
+            "Workspace.stream_query not patchable "
+            "(missing or already wrapped); lifecycle events unavailable",
+        )
+
+    _PATCHED = True
+    logger.info("AgentAura patched Workspace.stream_query")
+
+
+def restore_query_stream() -> None:
+    """Undo every patch applied by :func:`patch_query_stream`."""
+    global _PATCHED
+
+    while _ORIGINALS:
+        owner, attribute, original = _ORIGINALS.pop()
+        try:
+            setattr(owner, attribute, original)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug(
+                "AgentAura: failed to restore %s",
+                attribute,
+                exc_info=True,
+            )
     _PATCHED = False
-    logger.info("RingLight restored AgentRunner.query_handler")
+    logger.info("AgentAura restored query stream patches")

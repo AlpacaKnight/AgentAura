@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """Patch ``ApprovalService`` so pending approvals drive the ring light.
 
-Adapted from ``qwenpaw-pet/patch_approval.py`` — same hook points
-(``create_pending`` / ``resolve_request`` / ``cancel_all_pending``),
-emit target swapped to the ESP32 ring light.
+Targets **QwenPaw >= 2.3.0**: the three hook points used here
+(``create_pending`` / ``resolve_request`` / ``cancel_all_pending_by_root_session``)
+are stable, but ``resolve_request`` carries ``scope`` plus a keyword-only
+``actor``. The wrappers below forward ``*args`` / ``**kwargs`` verbatim so
+approval resolution keeps working even when QwenPaw adds parameters.
+
+Adapted from ``qwenpaw-pet/patch_approval.py`` — same hook points, emit
+target swapped to the ESP32 ring light.
 """
 
 from __future__ import annotations
@@ -35,15 +40,27 @@ def patch_approval_service() -> None:
     _ORIG_RESOLVE_REQUEST = ApprovalService.resolve_request
     _ORIG_CANCEL_ALL = ApprovalService.cancel_all_pending_by_root_session
 
-    async def create_pending_wrapped(self, **kwargs: Any):
-        pending = await _ORIG_CREATE_PENDING(self, **kwargs)
+    def _decision_event(decision: Any) -> str:
+        """Map an ``ApprovalDecision`` to an event name.
+
+        Anything that is neither approved nor denied (``timeout`` today,
+        possibly more values later) is reported as a timeout.
+        """
+        if decision == ApprovalDecision.APPROVED:
+            return "approval.approved"
+        if decision == ApprovalDecision.DENIED:
+            return "approval.denied"
+        return "approval.timed_out"
+
+    async def create_pending_wrapped(self, *args: Any, **kwargs: Any):
+        pending = await _ORIG_CREATE_PENDING(self, *args, **kwargs)
         try:
             schedule_emit(
                 "approval.pending",
-                tool_name=pending.tool_name,
-                session_id=pending.session_id,
-                agent_id=pending.agent_id,
-                channel=pending.channel,
+                tool_name=getattr(pending, "tool_name", None),
+                session_id=getattr(pending, "session_id", ""),
+                agent_id=getattr(pending, "agent_id", ""),
+                channel=getattr(pending, "channel", ""),
             )
         except Exception:
             logger.debug(
@@ -52,29 +69,21 @@ def patch_approval_service() -> None:
             )
         return pending
 
-    async def resolve_request_wrapped(self, request_id: str, decision: Any):
-        resolved = await _ORIG_RESOLVE_REQUEST(self, request_id, decision)
+    async def resolve_request_wrapped(self, *args: Any, **kwargs: Any):
+        # ``args`` / ``kwargs`` are forwarded untouched: QwenPaw passes
+        # ``scope=`` and the keyword-only ``actor=`` here.
+        resolved = await _ORIG_RESOLVE_REQUEST(self, *args, **kwargs)
         if resolved is None:
             return None
+        decision = kwargs.get("decision")
+        if decision is None:
+            decision = args[1] if len(args) > 1 else None
         try:
-            if decision == ApprovalDecision.APPROVED:
-                schedule_emit(
-                    "approval.approved",
-                    session_id=resolved.session_id,
-                    agent_id=resolved.agent_id,
-                )
-            elif decision == ApprovalDecision.DENIED:
-                schedule_emit(
-                    "approval.denied",
-                    session_id=resolved.session_id,
-                    agent_id=resolved.agent_id,
-                )
-            else:
-                schedule_emit(
-                    "approval.timed_out",
-                    session_id=resolved.session_id,
-                    agent_id=resolved.agent_id,
-                )
+            schedule_emit(
+                _decision_event(decision),
+                session_id=getattr(resolved, "session_id", ""),
+                agent_id=getattr(resolved, "agent_id", ""),
+            )
         except Exception:
             logger.debug(
                 "AgentAura: schedule approval.resolved failed",
@@ -112,8 +121,11 @@ def restore_approval_service() -> None:
 
     from qwenpaw.app.approvals.service import ApprovalService
 
-    ApprovalService.create_pending = _ORIG_CREATE_PENDING
-    ApprovalService.resolve_request = _ORIG_RESOLVE_REQUEST
-    ApprovalService.cancel_all_pending_by_root_session = _ORIG_CANCEL_ALL
+    if _ORIG_CREATE_PENDING is not None:
+        ApprovalService.create_pending = _ORIG_CREATE_PENDING
+    if _ORIG_RESOLVE_REQUEST is not None:
+        ApprovalService.resolve_request = _ORIG_RESOLVE_REQUEST
+    if _ORIG_CANCEL_ALL is not None:
+        ApprovalService.cancel_all_pending_by_root_session = _ORIG_CANCEL_ALL
     _PATCHED = False
     logger.info("AgentAura restored ApprovalService")

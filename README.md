@@ -28,7 +28,7 @@
 
 | 插件 | Agent 平台 | 安装方式 | 状态获取 | Hook 支持 | 气泡 | 配置页 | 状态 |
 |------|-----------|----------|----------|-----------|:----:|--------|------|
-| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 | AgentRunner API | 原生 | ✅ | ✅ | ✅ 完善 |
+| **agent-aura-qwenpaw** | QwenPaw | PetDesktop 托管 / 插件市场 | `Workspace.stream_query` + ApprovalService | 原生 | ✅ | ✅ | ✅ 完善（要求 QwenPaw ≥ 2.3.0） |
 | **agent-aura-claude** | Claude Code | Marketplace / 托管 | Hooks + CLI | 原生 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-codex** | Codex ~/.codex 配置 | 托管 | hooks.json 命令型 | 官方 10 事件 | ✅ | ✅ | ✅ 完善 |
 | **agent-aura-kimi-code** | Kimi Code | 托管 | config.toml [[hooks]] | 15 事件 | ✅ | ✅ | ✅ 完善 |
@@ -70,7 +70,7 @@
 | `agent-aura-kimi-code/` | Kimi Code hook 插件。通过 `~/.kimi-code/config.toml` 的 `[[hooks]]` 机制注册命令型 hook，捕获 `UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop` 事件。兼容 PetDesktop 身份请求头与 Bearer Token。 |
 | `agent-aura-qwencode/` | Qwen Code 扩展 + 托管双重支持。通过 Qwen 扩展机制与 hooks 文件捕获事件，支持 `SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`Stop`。提供 CLI 配置与设备发现。 |
 | `agent-aura-zcode/` | ZCode 原生插件。通过 `.zcode-plugin/plugin.json` + `hooks/hooks.json` 捕获 ZCode 的 7 个生命周期事件（`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`Stop`），映射为固件状态指令。支持 PetDesktop 桥接（注册/心跳/桌宠气泡消息）与 ESP32 固件直连。提供 `/agent-aura-zcode:aura` 会话内命令。 |
-| `qwenpaw-plugin/` | QwenPaw 独立插件。包装 `AgentRunner` 与 `ApprovalService` 获取智能体事件与审批流程状态，支持 HTTP/UDP/串口，并通过 PetDesktop v1 API 提供注册、心跳、状态与气泡同步。 |
+| `qwenpaw-plugin/` | QwenPaw 独立插件。包装 `Workspace.stream_query` 与 `ApprovalService` 获取智能体事件与审批流程状态，支持 HTTP/UDP/串口，并通过 PetDesktop v1 API 提供注册、心跳、状态与气泡同步。当前 0.3.1 要求 QwenPaw ≥ 2.3.0（QwenPaw ≤ 2.1.0 请用早期 0.3.x 发行包）。 |
 
 ### Arduino_ESP32_RingLight — 硬件固件
 

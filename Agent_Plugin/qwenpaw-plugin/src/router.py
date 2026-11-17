@@ -12,6 +12,8 @@ Provides:
   POST /command       — send an arbitrary text command
   GET  /state         — proxy to the device's state query
   POST /test-event    — simulate a QwenPaw lifecycle event
+  GET  /deps          — optional dependency status (pyserial / psutil)
+  POST /deps/install  — install the missing optional dependencies now
 """
 
 from __future__ import annotations
@@ -21,9 +23,23 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from . import deps
 from .discovery import discover_devices
 from .mapper import EVENT_TO_AGENT_STATE, dispatch_sync
 from .client import VALID_TRANSPORTS, RingLightClient
+
+# Reported by ``GET /status`` so the UI can show which build it talks to.
+_PLUGIN_VERSION = "0.3.1"
+
+
+def _qwenpaw_version() -> str:
+    """Running QwenPaw version (``"unknown"`` if it cannot be read)."""
+    try:
+        from qwenpaw.__version__ import __version__  # type: ignore
+
+        return str(__version__)
+    except Exception:  # noqa: BLE001 - never let a status call fail
+        return "unknown"
 
 # agent states the firmware actually implements (per doc/API.md §9)
 _VALID_AGENT_STATES = {
@@ -133,6 +149,32 @@ class TestEmitRequest(BaseModel):
         return v
 
 
+class DepsInstallRequest(BaseModel):
+    """Optional dependency installation request.
+
+    ``modules`` is restricted to the plugin's whitelist (``serial`` /
+    ``psutil``); omitting it installs everything that is missing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    modules: list[str] | None = None
+
+
+def _pyserial_available() -> bool:
+    """True when ``pyserial`` is importable in the QwenPaw environment.
+
+    ``pyserial`` is an optional extra since QwenPaw 2.3.0 refuses to load
+    plugins whose declared dependencies are missing — the frontend uses
+    this flag to explain why the serial transport is unavailable instead
+    of showing an empty port list.
+    """
+    try:
+        import serial  # noqa: F401  # pylint: disable=import-outside-toplevel
+    except Exception:  # noqa: BLE001 - any import failure means "unavailable"
+        return False
+    return True
+
+
 def _list_serial_ports() -> list[dict[str, Any]]:
     """Enumerate available serial ports via ``pyserial``.
 
@@ -174,6 +216,10 @@ def build_router() -> APIRouter:
         return {
             "ok": True,
             "plugin": "agentaura",
+            "plugin_version": _PLUGIN_VERSION,
+            "qwenpaw_version": _qwenpaw_version(),
+            "pyserial_available": _pyserial_available(),
+            "deps": deps.state(),
             "client": client.status_summary(),
         }
 
@@ -184,7 +230,11 @@ def build_router() -> APIRouter:
 
     @router.get("/serial-ports")
     def serial_ports() -> dict[str, Any]:
-        return {"ok": True, "ports": _list_serial_ports()}
+        return {
+            "ok": True,
+            "ports": _list_serial_ports(),
+            "pyserial_available": _pyserial_available(),
+        }
 
     @router.post("/config", include_in_schema=False)
     @router.post("/connection-config")
@@ -211,6 +261,25 @@ def build_router() -> APIRouter:
             "auto_discover": payload.auto_discover,
             "configured": client.is_configured,
         }
+
+    @router.get("/deps")
+    def deps_status() -> dict[str, Any]:
+        return {"ok": True, **deps.state()}
+
+    @router.post("/deps/install")
+    def deps_install(payload: DepsInstallRequest | None = None) -> dict[str, Any]:
+        """Install missing optional deps into the plugin dependency site.
+
+        Runs synchronously in FastAPI's threadpool with a hard timeout; a
+        failure (offline host, no pip) is reported in the body instead of
+        raising, so the UI can show the manual fallback.
+        """
+        modules = payload.modules if payload else None
+        try:
+            result = deps.install(modules)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": bool(result.get("ok")), **result}
 
     @router.post("/agent")
     def agent(payload: AgentRequest) -> dict[str, Any]:
